@@ -225,3 +225,8 @@ single
 trilinos_only
 xcode
 installed
+
+# JAMES: files I want to personally ignore
+
+# want to ignore all the files in results directories in dphil folder
+examples/dphil/*/results

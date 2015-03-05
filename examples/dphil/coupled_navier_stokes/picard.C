@@ -1,0 +1,1930 @@
+
+#include "picard.h"
+
+
+// Bring in everything from the libMesh namespace
+using namespace libMesh;
+
+void Picard::assemble(ErrorVector&)// error_vector)
+{
+
+	if(threed)
+		std::cout << "Begin 3D assembly... ";
+	else
+		std::cout << "Begin 2D assembly... ";
+
+	TransientLinearImplicitSystem * system;
+  // Get a reference to the Stokes system object.
+	if(pressure_coupled)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+	}
+	else
+	{
+		system =
+	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	}
+
+	// Problem parameters
+  const Real dt    = es->parameters.get<Real>("dt");
+	const Real time = system->time;
+  Real Re    = es->parameters.get<Real>("reynolds_number");
+  const unsigned int unsteady    = es->parameters.get<unsigned int>("unsteady");
+  bool stokes    = es->parameters.get<bool>("stokes");
+  bool stab    = es->parameters.get<bool>("stab");
+  const Real alpha    = es->parameters.get<Real>("alpha");
+	//const Real period	= es->parameters.get<Real>("period");
+	const bool newton	= es->parameters.get<bool>("newton");
+	//const double density	= es->parameters.get<double>("density");
+	const bool convective_form	= es->parameters.get<bool>("convective_form");
+	const double backflow_stab_param	= es->parameters.get<double>("backflow_stab_param");
+	const double bertoglio_stab_param	= es->parameters.get<double>("bertoglio_stab_param");
+	bool supg	= es->parameters.get<bool>("supg");
+	bool pspg	= es->parameters.get<bool>("pspg");
+	bool lsic	= es->parameters.get<bool>("lsic");
+	bool supg_laplacian	= es->parameters.get<bool>("supg_laplacian");
+	bool symmetric_gradient = es->parameters.get<bool>("symmetric_gradient");
+
+
+	//for the first time step we solve stokes - so that easy
+	// in any case the system is stokes by default
+	if(false)//es->parameters.get<unsigned int> ("t_step") == 1)
+	{
+		stokes = true;
+		stab = true;
+		supg = false;
+		pspg = false;
+		lsic = false;
+	}
+
+	// Mesh and system things
+	const MeshBase& mesh = es->get_mesh();
+  const unsigned int dim = mesh.mesh_dimension();
+
+  const unsigned int u_var = system->variable_number ("u");
+  const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+  const unsigned int p_var = system->variable_number ("p");
+
+	ForcingFunction<> forcing_function(*es);
+
+
+	// Finite element types
+  FEType fe_vel_type = system->variable_type(u_var);
+	FEType fe_pres_type = system->variable_type(p_var);
+
+  AutoPtr<FEBase> fe_vel  (FEBase::build(dim, fe_vel_type));
+	AutoPtr<FEBase> fe_pres (FEBase::build(dim, fe_pres_type));
+
+
+	// Quadrature rules
+  //QGauss qrule (dim, fe_vel_type.default_quadrature_order());
+
+	int default_quad_order = static_cast<int>(fe_vel_type.default_quadrature_order());
+	std::cout << "quad_order = " << default_quad_order << std::endl; 
+	//QGauss qrule(dim, static_cast<Order>(default_quad_order));
+
+	QGauss qrule(dim, static_cast<Order>(default_quad_order));
+
+	//std::cout << "default quad order = " << fe_vel_type.default_quadrature_order() << std::endl;
+	//std::cout << "quad order used = " << qrule.get_order() << std::endl;
+
+  fe_vel->attach_quadrature_rule (&qrule);
+  fe_pres->attach_quadrature_rule (&qrule);
+
+
+	// Boundary finite element types
+	AutoPtr<FEBase> fe_vel_face (FEBase::build(dim, fe_vel_type));
+	AutoPtr<FEBase> fe_pres_face (FEBase::build(dim, fe_pres_type));
+
+	QGauss qface(dim-1, static_cast<Order>(default_quad_order+2));
+	//QGauss qface(dim-1, static_cast<Order>(6));
+	fe_vel_face->attach_quadrature_rule (&qface);
+	fe_pres_face->attach_quadrature_rule (&qface);
+
+
+	// Initialise some variables
+  const std::vector<Real>& JxW_elem = fe_vel->get_JxW();	
+  const std::vector<std::vector<Real> >& phi = fe_vel->get_phi();
+  const std::vector<std::vector<RealGradient> >& dphi = fe_vel->get_dphi();
+  const std::vector<std::vector<RealTensor> >& d2phi = fe_vel->get_d2phi();
+  const std::vector<std::vector<Real> >& psi = fe_pres->get_phi();
+  const std::vector<std::vector<RealGradient> >& dpsi = fe_pres->get_dphi();
+  // const std::vector<std::vector<RealGradient> >& dpsi = fe_pres->get_dphi();
+  const std::vector<Real>& JxW_face_elem = fe_vel_face->get_JxW();
+  const std::vector<std::vector<Real> >& phi_face = fe_vel_face->get_phi();
+  const std::vector<std::vector<RealGradient> >& dphi_face = fe_vel_face->get_dphi();
+  const std::vector<Point>& 						 qface_normals = fe_vel_face->get_normals();
+	const std::vector< std::vector<Point> > &		qface_tangents = fe_vel_face->get_tangents();
+  const std::vector<Point>& 						 qpoint_face = fe_vel_face->get_xyz();
+  const std::vector<Point>& 						 qpoint = fe_vel->get_xyz();
+
+
+  // Local element matrix
+  DenseMatrix<Number> Ke;
+  DenseVector<Number> Fe;
+  DenseVector<Number> Fe_coupled_p;
+  DenseVector<Number> Fe_coupled_u;
+
+  DenseSubMatrix<Number>
+    Kuu(Ke), Kuv(Ke), Kuw(Ke), Kup(Ke),
+    Kvu(Ke), Kvv(Ke), Kvw(Ke), Kvp(Ke),
+    Kwu(Ke), Kwv(Ke), Kww(Ke), Kwp(Ke),
+    Kpu(Ke), Kpv(Ke), Kpw(Ke), Kpp(Ke);
+
+
+  DenseSubVector<Number>
+    Fu(Fe),
+    Fv(Fe),
+    Fw(Fe),
+    Fp(Fe);
+
+  DenseSubVector<Number>
+    Fu_coupled_p(Fe_coupled_p),
+    Fv_coupled_p(Fe_coupled_p),
+    Fw_coupled_p(Fe_coupled_p),
+    Fp_coupled_p(Fe_coupled_p); //unnecessary
+
+
+  DenseSubVector<Number>
+    Fu_coupled_u(Fe_coupled_u),
+    Fv_coupled_u(Fe_coupled_u),
+    Fw_coupled_u(Fe_coupled_u),
+    Fp_coupled_u(Fe_coupled_u); //unnecessary
+
+
+	
+	
+
+
+	// DofMap things
+  const DofMap & dof_map = system->get_dof_map();
+
+  std::vector<dof_id_type> dof_indices;
+  std::vector<dof_id_type> dof_indices_u;
+  std::vector<dof_id_type> dof_indices_v;
+  std::vector<dof_id_type> dof_indices_w;
+  std::vector<dof_id_type> dof_indices_p;
+
+	// 0 corresponds to the one actually on the boundary
+	// 1 corresponds to the other dof on the element
+	// let us build this map before for ease of coding
+	dof_id_type pressure_1d_index = 0;//p0
+	dof_id_type flux_1d_index = 0;//q0
+
+
+  bool pin_pressure = false;
+	if(es->parameters.get<unsigned int>("problem_type") == 4 || es->parameters.get<unsigned int>("problem_type") == 5)
+		pin_pressure = true;
+
+
+  // Iterators
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	double max_u = 0.0;
+	double max_u_old = 0.0;
+	//double u_mag = 0.0;
+
+	NumberVectorValue total_residual(0,0);
+	NumberVectorValue total_residual_1(0,0);
+	NumberVectorValue total_residual_2(0,0);
+	NumberVectorValue total_residual_3(0,0);
+	NumberVectorValue total_residual_4(0,0);
+		
+
+	double tau_sum = 0.;
+  for ( ; el != end_el; ++el)
+  {				
+    const Elem* elem = *el;
+		// only solve on the 3d subdomain
+		if(elem->subdomain_id() == 0)
+		{
+
+		  dof_map.dof_indices (elem, dof_indices);
+		  dof_map.dof_indices (elem, dof_indices_u, u_var);
+		  dof_map.dof_indices (elem, dof_indices_v, v_var);
+			if(threed)
+				dof_map.dof_indices (elem, dof_indices_w, w_var);
+		  dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+		  unsigned int n_dofs   = dof_indices.size();
+		  unsigned int n_u_dofs = dof_indices_u.size();
+		  unsigned int n_v_dofs = dof_indices_v.size();
+			unsigned int n_w_dofs = 0;
+			if(threed)
+				n_w_dofs = dof_indices_w.size();
+		  unsigned int n_p_dofs = dof_indices_p.size();
+
+		  // Compute shape functions etc of current element
+		  fe_vel->reinit  (elem);
+		  fe_pres->reinit (elem);
+			Real elem_volume = elem->volume();
+			//take cube root to get diameter of the element
+			double h_T = 0;
+			if(threed)
+				h_T = pow(elem_volume,1.0/3.0);
+			else
+				h_T = pow(elem_volume,1.0/2.0);
+
+			// ************* SET UP ELEMENT MATRICES ************ //
+
+		  Ke.resize (n_dofs, n_dofs);
+		  Fe.resize (n_dofs);
+		  Fe_coupled_p.resize (n_dofs);
+		  Fe_coupled_u.resize (n_dofs);
+
+		  // Reposition the submatrices
+			Kuu.reposition (u_var*n_u_dofs, u_var*n_u_dofs, n_u_dofs, n_u_dofs);
+		  Kuv.reposition (u_var*n_u_dofs, v_var*n_u_dofs, n_u_dofs, n_v_dofs);
+		  Kup.reposition (u_var*n_u_dofs, p_var*n_u_dofs, n_u_dofs, n_p_dofs);
+			if(threed)
+				Kuw.reposition (u_var*n_u_dofs, w_var*n_u_dofs, n_u_dofs, n_w_dofs);
+
+		  Kvu.reposition (v_var*n_v_dofs, u_var*n_v_dofs, n_v_dofs, n_u_dofs);
+		  Kvv.reposition (v_var*n_v_dofs, v_var*n_v_dofs, n_v_dofs, n_v_dofs);
+		  Kvp.reposition (v_var*n_v_dofs, p_var*n_v_dofs, n_v_dofs, n_p_dofs);
+			if(threed)
+				Kvw.reposition (v_var*n_v_dofs, w_var*n_v_dofs, n_v_dofs, n_w_dofs);
+
+			if(threed)
+			{
+				Kwu.reposition (w_var*n_w_dofs, u_var*n_w_dofs, n_w_dofs, n_u_dofs);
+				Kwv.reposition (w_var*n_w_dofs, v_var*n_w_dofs, n_w_dofs, n_v_dofs);
+				Kww.reposition (w_var*n_w_dofs, w_var*n_w_dofs, n_w_dofs, n_w_dofs);
+				Kwp.reposition (w_var*n_w_dofs, p_var*n_w_dofs, n_w_dofs, n_p_dofs);
+			}
+		
+		  Kpu.reposition (p_var*n_u_dofs, u_var*n_u_dofs, n_p_dofs, n_u_dofs);
+		  Kpv.reposition (p_var*n_u_dofs, v_var*n_u_dofs, n_p_dofs, n_v_dofs);
+		  Kpp.reposition (p_var*n_u_dofs, p_var*n_u_dofs, n_p_dofs, n_p_dofs);
+			if(threed)
+				Kpw.reposition (p_var*n_u_dofs, w_var*n_u_dofs, n_p_dofs, n_w_dofs);
+
+		  Fu.reposition (u_var*n_u_dofs, n_u_dofs);
+		  Fv.reposition (v_var*n_u_dofs, n_v_dofs);
+		  Fp.reposition (p_var*n_u_dofs, n_p_dofs);
+			if(threed)
+				Fw.reposition (w_var*n_u_dofs, n_w_dofs);
+
+
+		  Fu_coupled_p.reposition (u_var*n_u_dofs, n_u_dofs);
+		  Fv_coupled_p.reposition (v_var*n_u_dofs, n_v_dofs);
+		  Fp_coupled_p.reposition (p_var*n_u_dofs, n_p_dofs);
+			if(threed)
+				Fw_coupled_p.reposition (w_var*n_u_dofs, n_w_dofs);
+
+		  Fu_coupled_u.reposition (u_var*n_u_dofs, n_u_dofs);
+		  Fv_coupled_u.reposition (v_var*n_u_dofs, n_v_dofs);
+		  Fp_coupled_u.reposition (p_var*n_u_dofs, n_p_dofs);
+			if(threed)
+				Fw_coupled_u.reposition (w_var*n_u_dofs, n_w_dofs);
+
+			std::vector<Real> JxW = JxW_elem;
+			//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+			if(es->parameters.get<unsigned int> ("geometry_type") == 5)
+			{
+				for(unsigned int qp=0; qp<qrule.n_points(); qp++)
+				{
+					JxW[qp] *= qpoint[qp](1);
+				}
+			}
+
+			// *************************************************************************** //
+
+
+		  // ******** Build volume contribution to element matrix and rhs ************** //
+		  for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+		  {
+
+				
+				// ************* SET UP VARIABLES FROM PREVIOUS ITERATE/TIMESTEP ************* //
+
+		    // Values to hold the solution & its gradient at the previous timestep.
+		    Number   u = 0., u_old = 0., v = 0., v_old = 0., w = 0., w_old = 0.;
+		    Gradient grad_u, grad_v, grad_w, grad_p, grad_u_old, grad_v_old, grad_w_old;
+				Number lap_u = 0., lap_v = 0., lap_w = 0.;
+
+		    // Compute the velocity & its gradient from the previous timestep
+		    // and the old Newton iterate.
+		    for (unsigned int l=0; l<n_u_dofs; l++)
+		    {
+		      // From the old timestep:
+		      u_old += phi[l][qp]*system->old_solution (dof_indices_u[l]);
+		      v_old += phi[l][qp]*system->old_solution (dof_indices_v[l]);
+					if(threed)
+			      w_old += phi[l][qp]*system->old_solution (dof_indices_w[l]);
+
+
+		      // From the previous Newton iterate:
+		      u += phi[l][qp]*system->current_solution (dof_indices_u[l]);
+		      v += phi[l][qp]*system->current_solution (dof_indices_v[l]);
+					if(threed)
+			      w += phi[l][qp]*system->current_solution (dof_indices_w[l]);
+
+		      grad_u.add_scaled (dphi[l][qp],system->current_solution (dof_indices_u[l]));
+		      grad_v.add_scaled (dphi[l][qp],system->current_solution (dof_indices_v[l]));
+					if(threed)
+			      grad_w.add_scaled (dphi[l][qp],system->current_solution (dof_indices_w[l]));
+
+
+		      grad_u_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_u[l]));
+		      grad_v_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_v[l]));
+					if(threed)
+			      grad_w_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_w[l]));
+
+					double laplacian_operator = 0;
+					laplacian_operator += d2phi[l][qp](0,0) +	d2phi[l][qp](1,1);
+					if(threed) {laplacian_operator += d2phi[l][qp](2,2); }
+
+		      lap_u += laplacian_operator*system->current_solution (dof_indices_u[l]);
+		      lap_v += laplacian_operator*system->current_solution (dof_indices_v[l]);
+					if(threed)
+			      lap_w += laplacian_operator*system->current_solution (dof_indices_w[l]);
+
+		    }
+
+				for(unsigned int l=0; l<n_p_dofs; l++)
+				{
+		      grad_p.add_scaled (dpsi[l][qp],system->current_solution (dof_indices_p[l]));
+				}
+
+				if(pow(pow(u,2.0) + pow(v,2.0),0.5) > max_u)
+					max_u = pow(pow(u,2.0) + pow(v,2.0),0.5);
+
+				if(pow(pow(u_old,2.0) + pow(v_old,2.0),0.5) > max_u_old)
+					max_u_old = pow(pow(u_old,2.0) + pow(v_old,2.0),0.5);
+
+				/*
+				if(threed)
+					u_mag = pow(pow(u,2.0) + pow(v,2.0) + pow(w,2.0),0.5);
+				else
+					u_mag = pow(pow(u,2.0) + pow(v,2.0),0.5);
+				*/
+				
+
+				//if(fabs(u_old) > max_u)
+				//	max_u =fabs(u_old);
+
+		    NumberVectorValue U_old;
+				if(threed)
+					U_old = NumberVectorValue(u_old, v_old, w_old);
+				else
+					U_old = NumberVectorValue(u_old, v_old);
+
+
+		    NumberVectorValue U;
+				if(threed)
+					U = NumberVectorValue(u, v, w);
+				else
+					U = NumberVectorValue(u, v);
+
+			
+				
+				// *************************************************************************** //
+
+				// ********************* REGULAR NAVIER STOKES TERMS ************************* //
+
+		    // First, an i-loop over the velocity degrees of freedom.
+		    for (unsigned int i=0; i<n_u_dofs; i++)
+		    {
+
+					// *********** Unsteady term
+					if(unsteady)
+					{
+		        Fu(i) -= -JxW[qp]*(u_old*phi[i][qp]);
+		        Fv(i) -= -JxW[qp]*(v_old*phi[i][qp]);
+						if(threed) {	Fw(i) -= -JxW[qp]*(w_old*phi[i][qp]); }
+					}
+
+					// ********** Forcing term
+				  DenseVector<Number> f;
+		  		f.resize (dim);
+					forcing_function(qpoint[qp],time,f);
+					//std::cout << "f[" << qpoint[qp] << "] = " << f;
+					//if(unsteady)
+					//{
+		        Fu(i) += JxW[qp]*(phi[i][qp]*f(0));
+		        Fv(i) += JxW[qp]*(phi[i][qp]*f(1));
+						if(threed) {	Fw(i) += JxW[qp]*(phi[i][qp]*f(2)); }
+					//}
+
+					// ********** Newton convection term
+
+					if(!stokes && newton)
+					{
+						if(convective_form)
+						{
+					    Fu(i) += JxW[qp]*dt*((U*grad_u)*phi[i][qp]);
+					    Fv(i) += JxW[qp]*dt*((U*grad_v)*phi[i][qp]);
+							if(threed) { Fw(i) += JxW[qp]*dt*((U*grad_w)*phi[i][qp]); }
+						}
+						else
+						{
+					    Fu(i) += -JxW[qp]*dt*(U*dphi[i][qp])*u;
+					    Fv(i) += -JxW[qp]*dt*(U*dphi[i][qp])*v;
+							if(threed) {	Fw(i) += -JxW[qp]*dt*(U*dphi[i][qp])*w; }
+						}
+					}		
+
+
+		      // Matrix contributions for the uu and vv couplings. i.e. first equation
+		      for (unsigned int j=0; j<n_u_dofs; j++)
+		      {
+						// *************** Unsteady term i.e. mass matrix
+						if(unsteady)
+						{
+		        	Kuu(i,j) += JxW[qp]*(phi[i][qp]*phi[j][qp]);                // mass matrix term
+		        	Kvv(i,j) += JxW[qp]*(phi[i][qp]*phi[j][qp]);                // mass matrix term
+							if(threed) {	Kww(i,j) += JxW[qp]*(phi[i][qp]*phi[j][qp]); }                // mass matrix term
+						}
+
+
+						// *************** Diffusion terms
+
+						if(!symmetric_gradient)
+						{
+			        Kuu(i,j) += JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+			        Kvv(i,j) += JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							if(threed) { Kww(i,j) += JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));}   // diffusion
+						}
+						else
+						{
+			        Kuu(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+			        Kvv(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							if(threed) { Kww(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp]*dphi[j][qp]));}   // diffusion
+
+			        Kuu(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](0)*dphi[j][qp](0)));   // diffusion
+			        Kuv(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](0)*dphi[j][qp](1)));   // diffusion
+							if(threed) { Kuw(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](0)*dphi[j][qp](2)));}   // diffusion
+			        Kvu(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](1)*dphi[j][qp](0)));   // diffusion
+			        Kvv(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](1)*dphi[j][qp](1)));   // diffusion
+			        if(threed) { Kvw(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](1)*dphi[j][qp](2)));}   // diffusion
+			        Kwu(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](2)*dphi[j][qp](0)));   // diffusion
+			        Kwv(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](2)*dphi[j][qp](1)));   // diffusion
+			        if(threed) { Kww(i,j) += 0.5*JxW[qp]*(dt/Re*(dphi[i][qp](2)*dphi[j][qp](2)));}   // diffusion
+
+						}
+
+
+						// *************** Convection terms
+						if(!stokes)
+						{
+		                             
+							if(convective_form)
+							{
+				        Kuu(i,j) += JxW[qp]*(dt*(U*dphi[j][qp])*phi[i][qp]);  // convection
+				        Kvv(i,j) += JxW[qp]*(dt*(U*dphi[j][qp])*phi[i][qp]);   // convection
+								if(threed){ Kww(i,j) += JxW[qp]*(dt*(U*dphi[j][qp])*phi[i][qp]);}   // convection
+							}
+							else
+							{
+				        Kuu(i,j) += -JxW[qp]*(dt*(U*dphi[i][qp])*phi[j][qp]);  // convection
+				        Kvv(i,j) += -JxW[qp]*(dt*(U*dphi[i][qp])*phi[j][qp]);   // convection
+				        if(threed) { Kww(i,j) += -JxW[qp]*(dt*(U*dphi[i][qp])*phi[j][qp]);}   // convection
+							}
+
+														
+
+							if(newton)
+							{
+								if(convective_form)
+								{
+					      	Kuu(i,j) += JxW[qp]*(dt*grad_u(0)*phi[i][qp]*phi[j][qp]);
+					      	Kuv(i,j) += JxW[qp]*(dt*grad_u(1)*phi[i][qp]*phi[j][qp]);                
+					      	if(threed) { Kuw(i,j) += JxW[qp]*(dt*grad_u(2)*phi[i][qp]*phi[j][qp]); }          
+					      	Kvu(i,j) += JxW[qp]*(dt*grad_v(0)*phi[i][qp]*phi[j][qp]);                
+					      	Kvv(i,j) += JxW[qp]*(dt*grad_v(1)*phi[i][qp]*phi[j][qp]);                
+					      	if(threed) { Kvw(i,j) += JxW[qp]*(dt*grad_v(2)*phi[i][qp]*phi[j][qp]); }             
+									if(threed) { Kwu(i,j) += JxW[qp]*(dt*grad_w(0)*phi[i][qp]*phi[j][qp]); }             
+									if(threed) { Kwv(i,j) += JxW[qp]*(dt*grad_w(1)*phi[i][qp]*phi[j][qp]); }
+									if(threed) { Kww(i,j) += JxW[qp]*(dt*grad_w(2)*phi[i][qp]*phi[j][qp]); }
+								}
+								else
+								{
+					      	Kuu(i,j) += -JxW[qp]*(dt*u*dphi[i][qp](0)*phi[j][qp]);
+					      	Kuv(i,j) += -JxW[qp]*(dt*u*dphi[i][qp](1)*phi[j][qp]);                
+					      	if(threed) { Kuw(i,j) += -JxW[qp]*(dt*u*dphi[i][qp](2)*phi[j][qp]); }                
+					      	Kvu(i,j) += -JxW[qp]*(dt*v*dphi[i][qp](0)*phi[j][qp]);                
+					      	Kvv(i,j) += -JxW[qp]*(dt*v*dphi[i][qp](1)*phi[j][qp]);                
+					      	if(threed) { Kvw(i,j) += -JxW[qp]*(dt*v*dphi[i][qp](2)*phi[j][qp]); }              
+									if(threed) { Kwu(i,j) += -JxW[qp]*(dt*w*dphi[i][qp](0)*phi[j][qp]); }              
+									if(threed) { Kwv(i,j) += -JxW[qp]*(dt*w*dphi[i][qp](1)*phi[j][qp]); }
+									if(threed) { Kww(i,j) += -JxW[qp]*(dt*w*dphi[i][qp](2)*phi[j][qp]); }
+								}
+							}
+						}
+
+		      }
+
+		      // ************ Pressure gradient term
+					// put the density in here
+		      for (unsigned int j=0; j<n_p_dofs; j++)
+		      {
+		        Kup(i,j) += -JxW[qp]*dt*psi[j][qp]*dphi[i][qp](0);
+		        Kvp(i,j) += -JxW[qp]*dt*psi[j][qp]*dphi[i][qp](1);
+						if(threed) { Kwp(i,j) += -JxW[qp]*dt*psi[j][qp]*dphi[i][qp](2); }
+		      }
+		    }
+
+		    // ************* Continuity equation - could possibly be NOT multiplied by negative.
+				// remember this equation has been multiplied by negative dt for purposes of symmetry
+		    for (unsigned int i=0; i<n_p_dofs; i++)
+		    {
+		      for (unsigned int j=0; j<n_u_dofs; j++)
+		      {
+		        Kpu(i,j) += -JxW[qp]*dt*psi[i][qp]*dphi[j][qp](0);
+		        Kpv(i,j) += -JxW[qp]*dt*psi[i][qp]*dphi[j][qp](1);
+						if(threed) { Kpw(i,j) += -JxW[qp]*dt*psi[i][qp]*dphi[j][qp](2); }
+		      }
+
+					// ************** Stabilisation term - should be opposite sign to continuity equation
+					// stabilisation depends on if using P1-P1 or P1-P0
+					// need stabilisation for first tstep of pspg because parameter is zero
+					if(stab || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg))
+					{
+		      	for (unsigned int j=0; j<n_p_dofs; j++)
+		        {
+		          //Kpp(i,j) += alpha*elem_volume*JxW[qp]*dt*dpsi[i][qp]*dpsi[j][qp];
+							Kpp(i,j) += -alpha*h_T*h_T*JxW[qp]*dt*dpsi[i][qp]*dpsi[j][qp];
+		        }
+					}
+		    }
+
+
+				// *************************************************************************** //
+
+
+
+				// ************************** SUPG/PSPG/LSIC TERMS *************************** //
+				// we only want to apply this if there is a nonzero velocity
+
+				if(supg || pspg || lsic)
+		    {
+					
+
+
+					double length_scale = es->parameters.get<double> ("length_scale");
+					double velocity_scale = es->parameters.get<double> ("velocity_scale");
+					double time_scale = length_scale/velocity_scale;
+					double mu = es->parameters.get<double> ("viscosity");
+					double rho = es->parameters.get<double> ("density");
+
+					// petrov galerkin velocity - if unsteady use previous timestep ala tedzuyar, otherwise use current (picard)
+					NumberVectorValue velocity;	//velocity to use for supg - could be previous timestep most likely
+
+					NumberVectorValue grad_V_u;
+					NumberVectorValue grad_V_v;
+					NumberVectorValue grad_V_w;
+					// not we can't use ismail parameters when steady sim
+					// obviousl can't be constant on the first time step, oh well this is to complex now
+					if(unsteady && es->parameters.get<bool> ("supg_constant_constant"))
+					{
+						velocity = U_old;
+						grad_V_u = grad_u_old;
+						grad_V_v = grad_v_old;
+						grad_V_w = grad_w_old;
+						//velocity = NumberVectorValue(1., 0.);
+					}
+					else
+					{
+						velocity = U;
+						grad_V_u = grad_u;
+						grad_V_v = grad_v;
+						grad_V_w = grad_w;
+					}
+
+					
+
+					//if(es->parameters.get<bool>("supg_full_newton"))
+					//	velocity = U;
+
+					NumberVectorValue grad_Vx;
+					NumberVectorValue grad_Vy;
+					NumberVectorValue grad_Vz;
+					NumberVectorValue r;
+					if(threed)
+					{
+						grad_Vx = NumberVectorValue(grad_V_u(0), grad_V_v(0), grad_V_w(0));
+						grad_Vy = NumberVectorValue(grad_V_u(1), grad_V_v(1), grad_V_w(1));
+						grad_Vz = NumberVectorValue(grad_V_u(2), grad_V_v(2), grad_V_w(2));
+						r = NumberVectorValue(grad_Vx*velocity, grad_Vy*velocity, grad_Vz*velocity);
+						r = r.unit();
+					}
+					else
+					{
+						grad_Vx = NumberVectorValue(grad_V_u(0), grad_V_v(0));
+						grad_Vy = NumberVectorValue(grad_V_u(1), grad_V_v(1));
+						r = NumberVectorValue(grad_Vx*velocity, grad_Vy*velocity);
+						r = r.unit();
+					}
+
+					//velocity = U;		// always use from previous time step?
+					
+					double velocity_mag = velocity.size();
+
+					// need this to calc the local reynolds number
+					double grad_times_r = 0.;
+					for (unsigned int i=0; i<n_u_dofs; i++)
+				  {
+						grad_times_r += fabs(dphi[i][qp] * r);	//r is already unit /length_scale for the grad
+					}
+					double h_rgn = 2./grad_times_r;					
+
+					double reynolds_supg = velocity_mag	*h_rgn / (2*mu/rho) * velocity_scale * length_scale;
+
+					//supg parameter
+					double tau_supg = 1.0/sqrt(pow(2*velocity_mag/h_T,2.0) + 9.0*pow(4/(h_T*h_T*reynolds_supg),2.0));
+					//std::cout << "tau_supg = " << tau_supg << std::endl;					
+					//tau_supg /= 2.0;
+					//tau_supg = h_T*h_T;
+				
+					double tau_pspg = 0.;
+					double tau_lsic = 0.;
+
+
+					// note the supg parameter is not affected by the nondimensionalisation so need to redimensionalise
+					// including the length scales
+
+					if(velocity_mag < 1e-10)
+					{
+						tau_supg = 0.;
+						tau_pspg = 0.;
+						tau_lsic = 0.;
+					}
+					else
+					{
+						if(es->parameters.get<bool> ("ismail_supg_parameter"))	//not great nonlinear conv but better
+						{
+							//static characteristic element length
+							double h_p = pow(6*elem_volume/pi,1.0/3.0)/sqrt(3.0);
+							double grad_times_velocity = 0.;
+							double grad_times_r = 0.;
+
+
+							// dimensionalised already
+						  for (unsigned int i=0; i<n_u_dofs; i++)
+						  {
+								grad_times_velocity += dphi[i][qp] * velocity;	///length_scale for the grad
+							}
+							double h_u = 2./grad_times_velocity;
+
+							// in this method, we definitely use the actual reynolds number we use the calc, cause comes from viscosity
+							double m_k = 1./3.;		//for linearly interpolated elements
+							double xi_C = std::min(m_k * velocity_mag * h_p * Re / 2., 1.);
+							double tau_C = velocity_mag * h_p / 2 * xi_C;
+
+							double f_T = 1.0; // depends on time integration scheme
+							double xi_M1p = std::max(4 * f_T * dt / ( Re * m_k * h_p*h_p), 1.);
+							double xi_M2p = std::max(m_k * velocity_mag * h_p * Re / 2., 1.);
+							double tau_Mp = 1./ (1./(f_T*dt)*xi_M1p + 4./(Re *m_k*h_p*h_p)*xi_M2p );
+
+							double xi_M1u = std::max(4 * f_T * dt / ( Re * m_k * h_u*h_u), 1.);
+							double xi_M2u = std::max(m_k * velocity_mag * h_u * Re / 2., 1.);
+							double tau_Mu = 1./ (1./(f_T*dt)*xi_M1u + 4./(Re *m_k*h_p*h_p)*xi_M2u );
+
+							//std::cout << "tau old = " << tau_supg << std::endl;
+							tau_supg = tau_Mu;
+							//std::cout << "tau new = " << tau_supg << std::endl;
+							tau_lsic = tau_C;
+							tau_pspg = tau_Mp;
+						}
+						else if(es->parameters.get<bool> ("tezduyar_supg_parameter"))	// slow convergence (none with changing)
+						{
+							//static characteristic element length
+							//double h_p = pow(6*elem_volume/pi,1.0/3.0)/sqrt(3.0);
+							double grad_times_velocity = 0.;
+							double grad_times_r = 0.;
+						
+						  for (unsigned int i=0; i<n_u_dofs; i++)
+						  {
+								grad_times_velocity += fabs(dphi[i][qp] * velocity);
+							}
+							double tau_sugn12 = 1./grad_times_velocity;
+
+							double tau_sugn3 = h_rgn*h_rgn*reynolds_supg/4.;
+
+							tau_supg = 1./sqrt(1./(tau_sugn12*tau_sugn12) + 1./(tau_sugn3*tau_sugn3));
+							tau_pspg = tau_supg;
+							tau_lsic = tau_supg * velocity_mag*velocity_mag;
+
+						}
+						else if(es->parameters.get<bool> ("tezduyar_supg_parameter_2"))	//good convecgence
+						{
+							double grad_times_velocity = 0.;
+							double grad_times_r = 0.;
+
+						  for (unsigned int i=0; i<n_u_dofs; i++)
+						  {
+								grad_times_velocity += fabs(dphi[i][qp] * velocity);
+							}
+							double h_ugn = 2.*velocity_mag/grad_times_velocity;
+							double tau_sugn1 = h_ugn/2./velocity_mag;
+							double tau_sugn2 = dt/2.;
+							double tau_sugn3 = h_ugn*h_ugn*reynolds_supg/4.;
+			
+							double Re_ugn = velocity_mag * h_ugn * reynolds_supg / 2.;
+							double z = 0.;
+							if(Re_ugn <= 3.)
+								z = Re_ugn / 3.;
+							else
+								z = 1.;
+
+							tau_supg = 1./sqrt(1./(tau_sugn1*tau_sugn1) + 1./(tau_sugn2*tau_sugn2)+ 1./(tau_sugn3*tau_sugn3));
+							tau_pspg = tau_supg;
+							tau_lsic = h_ugn / 2.0 * velocity_mag * z;
+
+						}
+						else
+						{
+							tau_pspg = tau_supg;
+
+						}
+					}
+
+
+
+					tau_supg *= es->parameters.get<double>("supg_scale");
+					tau_pspg *= es->parameters.get<double>("supg_scale");
+					tau_lsic *= es->parameters.get<double>("supg_scale");
+
+
+					tau_sum += tau_supg;
+
+					/*
+					//calculate tau_supg on an element level basis
+					DenseMatrix m, c, k, k_tilde, c_tilde;
+					m.resize(n_dofs,n_u_dofs);
+					c.resize(n_dofs,n_u_dofs);
+					k.resize(n_dofs,n_u_dofs);
+					k_tilde.resize(n_dofs,n_u_dofs);
+					c_tilde.resize(n_dofs,n_u_dofs);
+
+					double tau_advection = 0.;
+					double tau_transient = 0.;
+					double tau_diffusion = 0.;
+
+					for (unsigned int i=0; i<n_u_dofs; i++)
+					{
+						for (unsigned int j=0; j<n_u_dofs; j++)
+						{
+							m(i,j) +=phi
+						}
+					}
+					*/
+
+
+
+					// now that we have set up the parameter, we can use s different velocity for the picard/newton iterations
+					// not we can't use ismail parameters when steady sim
+					if(false)//unsteady)
+					{
+						velocity = U_old;
+						grad_V_u = grad_u_old;
+						grad_V_v = grad_v_old;
+						grad_V_w = grad_w_old;
+						//velocity = NumberVectorValue(1., 0.);
+					}
+					else
+					{
+						velocity = U;
+						grad_V_u = grad_u;
+						grad_V_v = grad_v;
+						grad_V_w = grad_w;
+					}
+					
+
+					// let us use the velocity from the previous
+					// there is a dt from the actual time derivative as well as from inside the residual
+					if(supg)
+				  {
+						if(es->parameters.get<bool>("supg_newton"))
+						{
+
+							
+							for (unsigned int i=0; i<n_u_dofs; i++)
+							{
+		
+								if(unsteady)
+								{
+								  Fu(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*u_old);
+								  Fv(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*v_old);
+									if(threed) {	Fw(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*w_old); }
+								}
+
+								//the newton term bro
+								if(!stokes)
+								{
+									Fu(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_u));
+									Fv(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_v));
+									if(threed) {	Fw(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_w)); }
+								}
+								
+
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									if(!stokes)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(0) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp]));
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(1) * velocity*dphi[i][qp]);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(2) * velocity*dphi[i][qp]); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(0) * velocity*dphi[i][qp]);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(1) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp]));                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(2) * velocity*dphi[i][qp]); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(0) * velocity*dphi[i][qp]); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(1) * velocity*dphi[i][qp]); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(2) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp])); }
+									}
+
+									if(supg_laplacian)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }
+
+									}
+
+									if(unsteady)
+									{
+										Kuu(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]);               
+										Kvv(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]);                
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]); }
+
+									}
+								}
+
+								for (unsigned int j=0; j<n_p_dofs; j++)
+								{
+									Kup(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](0));      
+									Kvp(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](1));
+									if(threed) { Kwp(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](2)); } 
+								}
+
+							}
+
+						}
+						else if(es->parameters.get<bool>("supg_full_newton"))
+						{
+
+							
+							for (unsigned int i=0; i<n_u_dofs; i++)
+							{
+		
+								if(unsteady)
+								{
+								  Fu(i) -= -tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*u);
+								  Fv(i) -= -tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*v);
+									if(threed) {	Fw(i) -= -tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*w); }
+								}
+
+								//the newton term bro
+								if(!stokes)
+								{
+									Fu(i) += 2 * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_u));
+									Fv(i) += 2 * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_v));
+									if(threed) {	Fw(i) += 2 * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_w)); }
+								}
+								
+
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									// ignore the laplacian operator because we only really want to 
+									// don't need the pressure terms for some reason
+									if(!stokes)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](0) + (U*dphi[i][qp]) * (U*dphi[j][qp]) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(0));// + dphi[i][qp](0) * phi[j][qp]*grad_p(0));
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](1)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(1));// + dphi[i][qp](1) * phi[j][qp]*grad_p(0));                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](2)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(2));}// + dphi[i][qp](2) * phi[j][qp]*grad_p(0)); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](0) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(0));// + dphi[i][qp](0) * phi[j][qp]*grad_p(1));                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](1) + (U*dphi[i][qp]) * (U*dphi[j][qp]) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(1));// + dphi[i][qp](1) * phi[j][qp]*grad_p(1));                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](2)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(2));}// + dphi[i][qp](2) * phi[j][qp]*grad_p(1)); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](0)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(0));}// + dphi[i][qp](0) * phi[j][qp]*grad_p(2)); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](1)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(1));}// + dphi[i][qp](1) * phi[j][qp]*grad_p(2)); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](2) + (U*dphi[i][qp]) * (U*dphi[j][qp]) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(2));}// + dphi[i][qp](2) * phi[j][qp]*grad_p(2)); }
+									}
+									else
+									{
+										/*
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(dphi[i][qp](0) * phi[j][qp]*grad_p(0));
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(dphi[i][qp](1) * phi[j][qp]*grad_p(0));                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(dphi[i][qp](2) * phi[j][qp]*grad_p(0)); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(dphi[i][qp](0) * phi[j][qp]*grad_p(1));                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(dphi[i][qp](1) * phi[j][qp]*grad_p(1));                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(dphi[i][qp](2) * phi[j][qp]*grad_p(1)); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(dphi[i][qp](0) * phi[j][qp]*grad_p(2)); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(dphi[i][qp](1) * phi[j][qp]*grad_p(2)); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(dphi[i][qp](2) * phi[j][qp]*grad_p(2)); }
+										*/
+									}
+
+									if(supg_laplacian)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator);
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }
+									}
+
+
+									if(unsteady)
+									{
+										Kuu(i,j) += tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*phi[j][qp]);               
+										Kvv(i,j) += tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*phi[j][qp]);                
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt/dt*(U*dphi[i][qp]*phi[j][qp]); }
+
+										Kuu(i,j) += tau_supg*JxW[qp]*dt/dt*(u*dphi[i][qp](0)*phi[j][qp] - u_old*dphi[i][qp](0)*phi[j][qp]);               
+										Kuv(i,j) += tau_supg*JxW[qp]*dt/dt*(u*dphi[i][qp](1)*phi[j][qp] - u_old*dphi[i][qp](1)*phi[j][qp]);               
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt/dt*(u*dphi[i][qp](2)*phi[j][qp] - u_old*dphi[i][qp](2)*phi[j][qp]); }          
+										Kvu(i,j) += tau_supg*JxW[qp]*dt/dt*(v*dphi[i][qp](0)*phi[j][qp] - v_old*dphi[i][qp](0)*phi[j][qp]);          
+										Kvv(i,j) += tau_supg*JxW[qp]*dt/dt*(v*dphi[i][qp](1)*phi[j][qp] - v_old*dphi[i][qp](1)*phi[j][qp]);                        
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt/dt*(v*dphi[i][qp](2)*phi[j][qp] - v_old*dphi[i][qp](2)*phi[j][qp]); }         
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt/dt*(w*dphi[i][qp](0)*phi[j][qp] - w_old*dphi[i][qp](0)*phi[j][qp]); }
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt/dt*(w*dphi[i][qp](1)*phi[j][qp] - w_old*dphi[i][qp](1)*phi[j][qp]); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt/dt*(w*dphi[i][qp](2)*phi[j][qp] - w_old*dphi[i][qp](2)*phi[j][qp]); }
+
+									}
+								}
+
+								for (unsigned int j=0; j<n_p_dofs; j++)
+								{
+									Kup(i,j) += tau_supg*JxW[qp]*dt*(U*dphi[i][qp] * dpsi[j][qp](0));      
+									Kvp(i,j) += tau_supg*JxW[qp]*dt*(U*dphi[i][qp] * dpsi[j][qp](1));
+									if(threed) { Kwp(i,j) += tau_supg*JxW[qp]*dt*(U*dphi[i][qp] * dpsi[j][qp](2)); } 
+								}
+							}
+
+						}
+						else if(es->parameters.get<bool>("supg_convection_newton"))
+						{
+
+							
+							for (unsigned int i=0; i<n_u_dofs; i++)
+							{
+
+								//the newton term bro
+								if(!stokes)
+								{
+									Fu(i) += 2. * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_u));
+									Fv(i) += 2. * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_v));
+									if(threed) {	Fw(i) += 2 * tau_supg*JxW[qp]*dt*((U*dphi[i][qp])*(U*grad_w)); }
+								}
+								
+
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+									// ignore the laplacian operator because we only really want to 
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									if(!stokes)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](0) + (U*dphi[i][qp]) * (U*dphi[j][qp]) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(0));
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](1)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(1));                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(U*grad_u * phi[j][qp]*dphi[i][qp](2)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_u(2)); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](0)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(0));                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](1) + (U*dphi[i][qp]) * (U*dphi[j][qp]) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(1));                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(U*grad_v * phi[j][qp]*dphi[i][qp](2)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_v(2)); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](0) 
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(0)); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](1)
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(1)); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(U*grad_w * phi[j][qp]*dphi[i][qp](2) + (U*dphi[i][qp]) * (U*dphi[j][qp])
+																													+ U*dphi[i][qp] * phi[j][qp]*grad_w(2)); }
+									}
+									if(supg_laplacian)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*( - 1.0/Re * U*dphi[i][qp] * laplacian_operator);
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(	- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*( - 1.0/Re * U*dphi[i][qp] * laplacian_operator); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(	- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * U*dphi[i][qp] * laplacian_operator); }
+									}
+
+								}
+							}
+
+						}
+						else if(es->parameters.get<bool>("supg_convection"))
+						{
+
+							if(!stokes)
+							{
+								for (unsigned int i=0; i<n_u_dofs; i++)
+								{
+		
+
+									//the newton term bro
+									Fu(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_u));
+									Fv(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_v));
+									if(threed) {	Fw(i) += tau_supg*JxW[qp]*dt*((velocity*dphi[i][qp])*(U*grad_w)); }
+								
+
+
+									for (unsigned int j=0; j<n_u_dofs; j++)
+									{
+
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(0) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp]));
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(1) * velocity*dphi[i][qp]);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_u(2) * velocity*dphi[i][qp]); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(0) * velocity*dphi[i][qp]);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(1) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp]));                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_v(2) * velocity*dphi[i][qp]); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(0) * velocity*dphi[i][qp]); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(1) * velocity*dphi[i][qp]); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(phi[j][qp]*grad_w(2) * velocity*dphi[i][qp] + (U*dphi[j][qp]) * (velocity*dphi[i][qp])); }
+									}
+
+								}
+							}
+
+						}
+						else if(es->parameters.get<bool>("supg_picard"))
+						{
+
+							
+							for (unsigned int i=0; i<n_u_dofs; i++)
+							{
+		
+								if(unsteady)
+								{
+								  Fu(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*u_old);
+								  Fv(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*v_old);
+									if(threed) {	Fw(i) -= -tau_supg*JxW[qp]*dt/dt*(velocity*dphi[i][qp]*w_old); }
+								}
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									if(!stokes)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*((U*dphi[j][qp]) * (velocity*dphi[i][qp]));              
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*((U*dphi[j][qp]) * (velocity*dphi[i][qp]));          
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*((U*dphi[j][qp]) * (velocity*dphi[i][qp])); }
+									}
+									if(supg_laplacian)
+									{
+										Kuu(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);
+										Kuv(i,j) += 							tau_supg*JxW[qp]*dt*(	- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kuw(i,j) += tau_supg*JxW[qp]*dt*( - 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }          
+										Kvu(i,j) += 							tau_supg*JxW[qp]*dt*(	- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										Kvv(i,j) += 							tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator);                
+										if(threed) { Kvw(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwu(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }             
+										if(threed) { Kwv(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(- 1.0/Re * velocity*dphi[i][qp] * laplacian_operator); }
+									}
+
+									if(unsteady)
+									{
+										Kuu(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]);           
+										Kvv(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]);               
+										if(threed) { Kww(i,j) += tau_supg*JxW[qp]*dt*(1.0/dt*velocity*dphi[i][qp]*phi[j][qp]); }
+
+									}
+								}
+
+								for (unsigned int j=0; j<n_p_dofs; j++)
+								{
+									Kup(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](0));      
+									Kvp(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](1));
+									if(threed) { Kwp(i,j) += tau_supg*JxW[qp]*dt*(velocity*dphi[i][qp] * dpsi[j][qp](2)); } 
+								}
+
+							}
+
+						}
+						//else if(es->parameters.get<bool>("supg_newton"))
+						//{
+						//}
+						
+					}
+
+					if(lsic)
+				  {
+						for (unsigned int i=0; i<n_u_dofs; i++)
+						{
+							for (unsigned int j=0; j<n_u_dofs; j++)
+							{
+
+						  	Kuu(i,j) += 							tau_lsic*JxW[qp]*dt*(dphi[i][qp](0) * dphi[j][qp](0));
+						  	Kuv(i,j) += 							tau_lsic*JxW[qp]*dt*(dphi[i][qp](0) * dphi[j][qp](1));     
+						  	if(threed) { Kuw(i,j) += tau_lsic*JxW[qp]*dt*(dphi[i][qp](0) * dphi[j][qp](2)); }          
+						  	Kvu(i,j) += 							tau_lsic*JxW[qp]*dt*(dphi[i][qp](1) * dphi[j][qp](0));                
+						  	Kvv(i,j) += 							tau_lsic*JxW[qp]*dt*(dphi[i][qp](1) * dphi[j][qp](1));              
+						  	if(threed) { Kvw(i,j) += tau_lsic*JxW[qp]*dt*(dphi[i][qp](1) * dphi[j][qp](2)); }             
+								if(threed) { Kwu(i,j) += tau_lsic*JxW[qp]*dt*(dphi[i][qp](2) * dphi[j][qp](0)); }             
+								if(threed) { Kwv(i,j) += tau_lsic*JxW[qp]*dt*(dphi[i][qp](2) * dphi[j][qp](1)); }
+								if(threed) { Kww(i,j) += tau_lsic*JxW[qp]*dt*(dphi[i][qp](2) * dphi[j][qp](2)); }
+							}
+						}
+					}
+
+					// note the negative dt that has been introduced to preserve symmetry
+					if(pspg)
+				  {
+
+						if(es->parameters.get<bool>("pspg_newton"))
+						{
+
+							NumberVectorValue grad_Ux;
+							NumberVectorValue grad_Uy;
+							NumberVectorValue grad_Uz;
+							if(threed)
+							{
+								grad_Ux = NumberVectorValue(grad_u(0), grad_v(0), grad_w(0));
+								grad_Uy = NumberVectorValue(grad_u(1), grad_v(1), grad_w(1));
+								grad_Uz = NumberVectorValue(grad_u(2), grad_v(2), grad_w(2));
+							}
+							else
+							{
+								grad_Ux = NumberVectorValue(grad_u(0), grad_v(0));
+								grad_Uy = NumberVectorValue(grad_u(1), grad_v(1));
+							}
+							
+							for (unsigned int i=0; i<n_p_dofs; i++)
+							{
+		
+								if(unsteady)
+								{
+								  Fp(i) += -dt*tau_pspg*JxW[qp]*dt/dt*(dpsi[i][qp]*U_old);
+								}
+
+								//the newton term bro
+								if(!stokes)
+								{
+									Fp(i) += -dt*tau_pspg*JxW[qp]*dt*(dpsi[i][qp](0)*(U*grad_u) + dpsi[i][qp](1)*(U*grad_v));
+									if(threed) {	Fp(i) += -dt*tau_pspg*JxW[qp]*dt*(dpsi[i][qp](2)*(U*grad_w)); }
+								}
+								
+
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									if(!stokes)
+									{
+										Kpu(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(phi[j][qp]*grad_Ux*dpsi[i][qp] + (U*dphi[j][qp]) * dpsi[i][qp](0));
+										Kpv(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(phi[j][qp]*grad_Uy*dpsi[i][qp] + (U*dphi[j][qp]) * dpsi[i][qp](1));                
+										if(threed) { Kpw(i,j) +=  -dt*tau_pspg*JxW[qp]*dt*(phi[j][qp]*grad_Uz*dpsi[i][qp] + (U*dphi[j][qp]) * dpsi[i][qp](2)); }
+									}
+
+									if(supg_laplacian)
+									{
+										Kpu(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](0) * laplacian_operator);
+										Kpv(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](1) * laplacian_operator);                
+										if(threed) { Kpw(i,j) +=  -dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](2) * laplacian_operator); }
+									}
+
+									if(unsteady)
+									{
+										Kpu(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](0)*phi[j][qp]);
+										Kpv(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](1)*phi[j][qp]);                
+										if(threed) { Kpw(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](2)*phi[j][qp]); }      
+
+									}
+								}
+
+								// it is this term that is screwing things up grrr
+								for (unsigned int j=0; j<n_p_dofs; j++)
+								{
+									Kpp(i,j) += -dt*tau_pspg*JxW[qp]*dt*(dpsi[i][qp] * dpsi[j][qp]);      
+								}
+
+							}
+
+						}
+						else if(es->parameters.get<bool>("pspg_picard"))
+						{
+
+							
+							for (unsigned int i=0; i<n_p_dofs; i++)
+							{
+	
+								if(unsteady)
+								{
+								  Fp(i) += -dt*tau_pspg*JxW[qp]*dt/dt*(dpsi[i][qp]*U_old);
+								}
+
+								for (unsigned int j=0; j<n_u_dofs; j++)
+								{
+
+									double laplacian_operator = 0;
+									laplacian_operator += d2phi[j][qp](0,0) +	d2phi[j][qp](1,1);
+									if(threed) {laplacian_operator += d2phi[j][qp](2,2); }
+
+									if(!stokes)
+									{
+										Kpu(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*((U*dphi[j][qp]) * dpsi[i][qp](0));
+										Kpv(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*((U*dphi[j][qp]) * dpsi[i][qp](1));                
+										if(threed) { Kpw(i,j) +=  -dt*tau_pspg*JxW[qp]*dt*((U*dphi[j][qp]) * dpsi[i][qp](2)); }
+									}
+									if(supg_laplacian)
+									{
+										Kpu(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](0) * laplacian_operator);
+										Kpv(i,j) += 							-dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](1) * laplacian_operator);                
+										if(threed) { Kpw(i,j) +=  -dt*tau_pspg*JxW[qp]*dt*(- 1.0/Re * dpsi[i][qp](2) * laplacian_operator); }
+									}
+
+
+									if(unsteady)
+									{
+										Kpu(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](0)*phi[j][qp]);
+										Kpv(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](1)*phi[j][qp]);                
+										if(threed) { Kpw(i,j) += -dt*tau_pspg*JxW[qp]*dt*(1.0/dt*dpsi[i][qp](2)*phi[j][qp]); }      
+
+									}
+								}
+
+								for (unsigned int j=0; j<n_p_dofs; j++)
+								{
+									Kpp(i,j) += -dt*tau_pspg*JxW[qp]*dt*(dpsi[i][qp] * dpsi[j][qp]);      
+								}
+
+
+							}
+
+						}
+					}
+
+				}
+			
+				// *************************************************************************** //
+
+		  } // end of the quadrature point qp-loop
+
+					
+	
+
+		  // Apply boundary terms/conditions
+		  {
+		    // The penalty value.  \f$ \frac{1}{\epsilon} \f$
+		    const Real penalty = 1.e10;
+
+		    for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+					if(boundary_ids.size() > 0) 
+					{ 
+						int boundary_id = boundary_ids[0];	// should only have one
+ 
+						// stress boundary conditions/terms, which are only applied if not coupled
+						// otherwise we put these contributions 
+						// will have to think about this wrt the stabilisation term on the boundary
+						if(!pressure_coupled)
+						{
+							// mean pressure conditions/terms
+							if(bc_type[boundary_id].compare("pressure") == 0 || bc_type[boundary_id].compare("stress") == 0 || bc_type[boundary_id].compare("neumann") == 0)
+							{
+
+								double mean_pressure = bc_value[boundary_id];
+
+								if(bc_type[boundary_id].compare("neumann") == 0)
+									mean_pressure = 0;
+
+								// if coupled then we want the inflow to possibly be timeflow controlled, but future work
+								if(es->parameters.get<unsigned int>("sim_type") == 0 || es->parameters.get<unsigned int>("sim_type") == 2)
+									mean_pressure *= es->parameters.get<double>("time_scaling");
+
+								//at the moment we just to a vector in normal direction for stress
+								double stress_mag = bc_value[boundary_id];
+								if(es->parameters.get<unsigned int>("sim_type") == 0 || es->parameters.get<unsigned int>("sim_type") == 2)
+									stress_mag *= es->parameters.get<double>("time_scaling");
+					
+								DenseMatrix<Number> stress;
+								DenseVector<Number> normal_stress;
+								unsigned int dimension = 3;
+								if(!threed)
+									dimension = 2;
+								stress.resize (dimension,dimension);
+								normal_stress.resize (dimension);
+
+								//make stress identity times constant
+								stress(0,0) = 1.0; stress(1,1) = 1.0;
+								if(threed)
+									stress(2,2) = 1.0;
+								stress *= stress_mag;
+
+
+				
+								fe_vel_face->reinit(elem, s);
+								fe_pres_face->reinit(elem, s);
+
+								
+								std::vector<Real> JxW_face = JxW_face_elem;
+								//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+								if(es->parameters.get<unsigned int> ("geometry_type") == 5)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+										JxW_face[qp] *= qpoint_face[qp](1);
+								}
+
+								for (unsigned int qp=0; qp<qface.n_points(); qp++)
+								{
+
+									//std::cout << "face qpoint = " << qpoint_face[qp] << std::endl;
+
+									if(bc_type[boundary_id].compare("stress") == 0)
+									{
+										normal_stress(0) = stress(0,0) * qface_normals[qp](0)	+ stress(0,1) * qface_normals[qp](1);
+										if(threed) { normal_stress(0) += stress(0,2) * qface_normals[qp](2); }
+
+										normal_stress(1) = stress(1,0) * qface_normals[qp](0)	+ stress(1,1) * qface_normals[qp](1);
+										if(threed) { normal_stress(1) += stress(1,2) * qface_normals[qp](2); }
+
+										if(threed)
+											normal_stress(2) = stress(2,0) * qface_normals[qp](0)
+																				+ stress(2,1) * qface_normals[qp](1)
+																				+ stress(2,2) * qface_normals[qp](2);
+									}
+									else if(bc_type[boundary_id].compare("pressure") == 0)
+									{
+										normal_stress(0) = mean_pressure*qface_normals[qp](0);
+										normal_stress(1) = mean_pressure*qface_normals[qp](1);
+										if(threed)	{normal_stress(2) = mean_pressure*qface_normals[qp](2); }
+									}
+
+
+
+									for (unsigned int i=0; i<n_u_dofs; i++)
+									{
+							
+								    Fu(i) += -JxW_face[qp]*(dt*((normal_stress(0))*phi_face[i][qp]));
+								    Fv(i) += -JxW_face[qp]*(dt*((normal_stress(1))*phi_face[i][qp]));
+								    if(threed) { Fw(i) += -JxW_face[qp]*(dt*((normal_stress(2))*phi_face[i][qp])); }
+									}
+		
+
+									if(!convective_form || es->parameters.get<bool>("neumann_stabilised") || es->parameters.get<bool>("bertoglio_stabilisation"))
+									{
+										//let us calculate the inflow normal velocity
+										double normal_velocity = 0.0;
+										double previous_normal_velocity = 0.0;
+										double inflow_normal_velocity_bdy = 0.0;
+										double outflow_normal_velocity_bdy = 0.0;
+										double approx_inflow_normal_velocity_bdy = 0.0;	// either interpolation or from prev timestep
+										//double approx_outflow_normal_velocity_bdy = 0.0;
+										Number   u = 0., v = 0., w = 0.;
+										Number   previous_u = 0., previous_v = 0., previous_w = 0.;
+										Number   previous_previous_u = 0., previous_previous_v = 0., previous_previous_w = 0.;
+										Number   approx_u = 0., approx_v = 0., approx_w = 0.;
+										double approx_normal_velocity = 0.0;
+
+		    						Gradient grad_u, grad_v, grad_w;
+
+										for (unsigned int l=0; l<n_u_dofs; l++)
+										{
+											// From the previous Newton iterate:
+											u += phi_face[l][qp]*system->current_solution (dof_indices_u[l]);
+											v += phi_face[l][qp]*system->current_solution (dof_indices_v[l]);
+											if(threed) { w += phi_face[l][qp]*system->current_solution (dof_indices_w[l]); }
+
+
+											grad_u.add_scaled (dphi_face[l][qp],system->current_solution (dof_indices_u[l]));
+											grad_v.add_scaled (dphi_face[l][qp],system->current_solution (dof_indices_v[l]));
+											if(threed)
+												grad_w.add_scaled (dphi_face[l][qp],system->current_solution (dof_indices_w[l]));
+
+											// From the previous time_step:
+											previous_u += phi_face[l][qp]*system->old_solution (dof_indices_u[l]);
+											previous_v += phi_face[l][qp]*system->old_solution (dof_indices_v[l]);
+											if(threed) { previous_w += phi_face[l][qp]*system->old_solution (dof_indices_w[l]); }
+
+											// From the previous previous time_step:
+											previous_previous_u += phi_face[l][qp]*system->older_solution (dof_indices_u[l]);
+											previous_previous_v += phi_face[l][qp]*system->older_solution (dof_indices_v[l]);
+											if(threed) { previous_previous_w += phi_face[l][qp]*system->older_solution (dof_indices_w[l]); }
+			
+										}
+
+										// linearly interpolate
+										if(false)//es->parameters.get<bool>("neumann_stabilised_adjusted_interpolated"))
+										{
+											approx_u = previous_u + (previous_u - previous_previous_u)/dt * dt;
+											approx_v = previous_v + (previous_v - previous_previous_v)/dt * dt;
+											if(threed) { approx_w = previous_w + (previous_w - previous_previous_w)/dt * dt; }
+										}
+										else
+										{
+											approx_u = previous_u;
+											approx_v = previous_v;
+											if(threed) { approx_w = previous_w; }
+										}
+
+
+
+
+										normal_velocity += qface_normals[qp](0) * u;
+										normal_velocity += qface_normals[qp](1) * v;
+										if(threed) { normal_velocity += qface_normals[qp](2) * w; }
+
+
+										previous_normal_velocity += qface_normals[qp](0) * previous_u;
+										previous_normal_velocity += qface_normals[qp](1) * previous_v;
+										if(threed) { previous_normal_velocity += qface_normals[qp](2) * previous_w; }
+
+										approx_normal_velocity += qface_normals[qp](0) * approx_u;
+										approx_normal_velocity += qface_normals[qp](1) * approx_v;
+										if(threed) { approx_normal_velocity += qface_normals[qp](2) * approx_w; }
+										//std::cout << "normal = (" << qface_normals[qp](0) << "," << qface_normals[qp](1) << "," << qface_normals[qp](2) << ")" << std::endl;
+
+										inflow_normal_velocity_bdy = (normal_velocity - fabs(normal_velocity))/2.0;
+										outflow_normal_velocity_bdy = (normal_velocity + fabs(normal_velocity))/2.0;
+
+
+										approx_inflow_normal_velocity_bdy = (approx_normal_velocity - fabs(approx_normal_velocity))/2.0;
+										//approx_outflow_normal_velocity_bdy = (approx_normal_velocity + fabs(approx_normal_velocity))/2.0;
+
+										//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
+										int bdy_bool = 0;
+										if(fabs(normal_velocity) > 1e-10)
+										{											
+											if(convective_form)
+												bdy_bool = ((-inflow_normal_velocity_bdy/fabs(normal_velocity)) + 0.5);
+											else
+												bdy_bool = (outflow_normal_velocity_bdy/fabs(normal_velocity) + 0.5);
+										}
+
+										//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
+										int previous_bdy_bool = 0;
+										if(fabs(previous_normal_velocity) > 1e-10)
+										{											
+												previous_bdy_bool = ((-(previous_normal_velocity - fabs(previous_normal_velocity))/2.0/fabs(previous_normal_velocity)) + 0.5);
+										}
+
+										int approx_inflow_bdy_bool = 0;
+										if(fabs(approx_normal_velocity) > 1e-10)
+										{											
+											approx_inflow_bdy_bool = ((-approx_inflow_normal_velocity_bdy/fabs(approx_normal_velocity)) + 0.5);
+										}
+										//if conservative and not neumann stabilised then we always have the terms from int by parts
+										if(!convective_form && !es->parameters.get<bool>("neumann_stabilised"))
+										{
+											bdy_bool = 1;
+										}
+
+
+										double r = (*surface_boundaries)[boundary_id]->get_normalised_distance_from_centroid(qpoint_face[qp]);
+										//double r = 1.0;//
+										double normalisation_constant = (*surface_boundaries)[boundary_id]->get_unit_parabola_integral();
+										//double normalisation_constant = 1.0;//
+										double radius = 1.0;
+
+										//approx_u = 20.;
+										//approx_v = 0.;
+										//approx_w = 0.;
+										//approx_normal_velocity = 20.;
+
+										//std::cout << "approx normal velocity = " <<  approx_normal_velocity << std::endl;
+
+										
+										// hmmm small value changes appear to be making a difference
+										for (unsigned int i=0; i<n_u_dofs; i++)
+										{
+											if(convective_form)
+											{
+												// if in convective form we only add a term if doing the inflow stabilisation
+												if(es->parameters.get<bool>("neumann_stabilised"))
+												{										
+													for (unsigned int j=0; j<n_u_dofs; j++)
+													{
+														// - \int u_n^{in} * w * u
+														if(!es->parameters.get<bool>("neumann_stabilised_linear"))
+														{
+															Kuu(i,j) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+															Kvv(i,j) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+															if(threed) { Kww(i,j) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]); }
+														}
+														else
+														{
+															Kuu(i,j) += -backflow_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+															Kvv(i,j) += -backflow_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+															if(threed) { Kww(i,j) += -backflow_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(phi_face[i][qp]*phi_face[j][qp]); }
+														}
+
+														if(newton && !es->parameters.get<bool>("neumann_stabilised_linear"))
+														{
+															Kuu(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (u*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]);
+															Kuv(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (u*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]);                
+															if(threed) { Kuw(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (u*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }
+															Kvu(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (v*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]);
+															Kvv(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (v*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]);                
+															if(threed) { Kvw(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (v*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }             
+															if(threed) { Kwu(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (w*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]); }              
+															if(threed) { Kwv(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (w*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]); }
+															if(threed) { Kww(i,j) += -backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																					* (w*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }
+														}
+
+													}
+
+													// another newton term
+													if(newton && !es->parameters.get<bool>("neumann_stabilised_linear"))
+													{
+														// \int (u_old \cdot w) * (u_n^{in})
+														Fu(i) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*u*phi_face[i][qp];
+														Fv(i) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*v*phi_face[i][qp];
+														if(threed) { Fw(i) += -backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*w*phi_face[i][qp]; }
+													}
+
+													//we may also want to adjust the mean pressure boundary condition based on the normal velocity
+													//well, of the previous timestep to be easy and avoid issues
+													if((es->parameters.get<bool>("neumann_stabilised_adjusted") || 
+															es->parameters.get<bool>("neumann_stabilised_adjusted_interpolated")) &&  approx_inflow_bdy_bool > 0)
+													{
+
+														Fu(i) += -backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity* 
+																			(pow(radius,2)-pow(r,2))/normalisation_constant * interp_flow_bc_value[boundary_id] * qface_normals[qp](0)
+																		 *approx_inflow_bdy_bool*phi_face[i][qp];
+														Fv(i) += -backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity* 
+																			(pow(radius,2)-pow(r,2))/normalisation_constant * interp_flow_bc_value[boundary_id] * qface_normals[qp](1)
+																	 	 *approx_inflow_bdy_bool*phi_face[i][qp];
+														if(threed) { Fw(i) += -backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity* 
+																			(pow(radius,2)-pow(r,2))/normalisation_constant * interp_flow_bc_value[boundary_id] * qface_normals[qp](2)
+																		 *approx_inflow_bdy_bool*phi_face[i][qp]; }
+													}
+													//Fu(i) += -JxW_face[qp]*(dt*((phi_face[i][qp]*qface_normals[qp](0))*mean_pressure));
+													//Fv(i) += -JxW_face[qp]*(dt*((phi_face[i][qp]*qface_normals[qp](1))*mean_pressure));
+													//Fw(i) += -JxW_face[qp]*(dt*((phi_face[i][qp]*qface_normals[qp](2))*mean_pressure));
+												}
+												else if(es->parameters.get<bool>("bertoglio_stabilisation"))
+												{
+													//std::cout << "holla, num_tangents = " << qface_tangents[qp].size() << std::endl;
+													//std::cout << "tan 1 = " << qface_tangents[qp][0] << std::endl;
+													//std::cout << "tan 2 = " << qface_tangents[qp][1] << std::endl;
+													//std::cout << "bertoglio_stab_param = " << bertoglio_stab_param << std::endl;
+
+													// weird, in 2D there are still 2 tangents, but we only want the first one
+													unsigned int num_tangents = qface_tangents[qp].size();
+													if(!threed)
+														num_tangents = 1;
+													
+													for(unsigned int k=0; k<num_tangents; k++)
+													{
+														for (unsigned int j=0; j<n_u_dofs; j++)
+														{
+															// - \int u_n^{in} * w * u
+
+// gradients in tangential directions
+/*
+															Kuu(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															Kvv(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															if(threed) { Kww(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]); }
+*/
+
+// velocities in tangential directions
+															Kuu(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k](0)
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k](0));
+															Kvv(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k](1)
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k](1));
+															if(threed) { Kww(i,j) += -bertoglio_stab_param*JxW_face[qp]*dt*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k](2)
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k](2)); }
+
+
+
+/*
+															Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]); }
+*/
+
+/*
+															if(newton)
+															{
+																Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]);
+																Kuv(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]);                
+																if(threed) { Kuw(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
+																Kvu(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]);
+																Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]);                
+																if(threed) { Kvw(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]); }             
+																if(threed) { Kwu(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]); }              
+																if(threed) { Kwv(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
+																if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*dt*bdy_bool
+																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
+															}*/
+
+
+
+														}
+
+														// another newton term
+														if(newton)
+														{
+/*
+															// \int (u_old \cdot w) * (u_n^{in})
+															Fu(i) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool* grad_u*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k];
+															Fv(i) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool* grad_v*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k];
+															if(threed) { Fw(i) += bertoglio_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool* grad_w*qface_tangents[qp][k]
+																							* dphi_face[i][qp]*qface_tangents[qp][k]; }
+*/
+														}
+
+
+													}
+												}
+											}
+											else
+											{
+
+												//always add these terms stabilised or not - actually add 1.0 * stab terms if on bdy and (1.0 - stab_param) * stab terms if not
+												// fix this another time though
+												for (unsigned int j=0; j<n_u_dofs; j++)
+												{
+													// + \int u_n^{out} * w * u
+													Kuu(i,j) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+													Kvv(i,j) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]);
+													if(threed) { Kww(i,j) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*(phi_face[i][qp]*phi_face[j][qp]); }
+
+													if(newton)
+													{
+														Kuu(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (u*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]);
+														Kuv(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (u*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]);                
+														if(threed) { Kuw(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (u*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }
+														Kvu(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (v*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]);                
+														Kvv(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (v*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]);                
+														if(threed) { Kvw(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (v*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }           
+														if(threed) { Kwu(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (w*qface_normals[qp](0)*phi_face[i][qp]*phi_face[j][qp]); }             
+														if(threed) { Kwv(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (w*qface_normals[qp](1)*phi_face[i][qp]*phi_face[j][qp]); }
+														if(threed) { Kww(i,j) += backflow_stab_param*JxW_face[qp]*dt*bdy_bool
+																				* (w*qface_normals[qp](2)*phi_face[i][qp]*phi_face[j][qp]); }
+													}
+
+												}
+
+												// another newton term
+												if(newton)
+												{
+													// \int (u_old \cdot w) * (u_n^{in})
+													Fu(i) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*u*phi_face[i][qp];
+													Fv(i) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*v*phi_face[i][qp];
+													if(threed) { Fw(i) += backflow_stab_param*JxW_face[qp]*dt*normal_velocity*bdy_bool*w*phi_face[i][qp]; }
+												}
+
+												//we may also want to adjust the mean pressure boundary condition based on the normal velocity
+												//well, of the previous timestep to be easy and avoid issues
+												if(es->parameters.get<bool>("neumann_stabilised_adjusted"))
+												{
+													Fu(i) += backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity* approx_u
+																		*approx_inflow_bdy_bool*phi_face[i][qp];
+													Fv(i) += backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity*approx_v
+																		*approx_inflow_bdy_bool*phi_face[i][qp];
+													if(threed) { Fw(i) += backflow_stab_param*JxW_face[qp]*dt*approx_normal_velocity*approx_w
+																		*approx_inflow_bdy_bool*phi_face[i][qp]; }
+												}
+											}
+										}
+									}
+
+								}//end face quad loop
+
+
+
+							}//end if(bc_type[boundary_id].compare("pressure") == 0)
+
+							// mean-flow conditions/terms
+							else if(bc_type[boundary_id].compare("mean-flow") == 0)
+							{
+
+								//NOT IMPLEMENTED
+
+							}//end if(bc_type[boundary_id].compare("mean-flow") == 0)
+						}
+
+						//construct stuff to put into 1d matrix lines
+						else
+						{
+
+							// mean pressure conditions/terms
+							if(bc_type[boundary_id].compare("pressure") == 0)
+							{
+								//set the dof_index_0 to the correct node number
+								pressure_1d_index = primary_pressure_boundary_nodes_1d[boundary_id];
+								flux_1d_index = primary_flux_boundary_nodes_1d[boundary_id];
+
+								fe_vel_face->reinit(elem, s);
+								fe_pres_face->reinit(elem, s);
+
+								std::vector<Real> JxW_face = JxW_face_elem;
+								//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+								if(es->parameters.get<unsigned int> ("geometry_type") == 5)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+										JxW_face[qp] *= qpoint_face[qp](1);
+								}
+
+								// for the pressure term in the 3d equations
+								for (unsigned int qp=0; qp<qface.n_points(); qp++)
+								{
+									for (unsigned int i=0; i<n_u_dofs; i++)
+									{
+								    Fu_coupled_p(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](0);
+								    Fv_coupled_p(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](1);
+								    if(threed) { Fw_coupled_p(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](2); }
+									}
+
+								}//end face quad loop
+
+								// for the flux condition in the 1d equations
+
+								// for the pressure term in the 3d equations
+								// EQN IS + dt*Q_1d - dt*Q_3d = 0
+								for (unsigned int qp=0; qp<qface.n_points(); qp++)
+								{
+									for (unsigned int i=0; i<n_u_dofs; i++)
+									{
+								    Fu_coupled_u(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](0);
+								    Fv_coupled_u(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](1);
+								    if(threed) { Fw_coupled_u(i) += JxW_face[qp]*dt*phi_face[i][qp]*qface_normals[qp](2); }
+									}
+
+								}//end face quad loop
+							}
+						}
+					}
+
+				}//end side loop
+
+
+		    // Pin the pressure to zero at global node number "pressure_node".
+		    // This effectively removes the non-trivial null space of constant
+		    // pressure solutions.
+
+				// need to pin pressure for lid driven cavity
+		    if (pin_pressure)
+		    {
+		      const unsigned int pressure_node = 0;
+		      const Real p_value               = 0.0;
+		      for (unsigned int c=0; c<elem->n_nodes(); c++)
+					{
+		        if (elem->node(c) == pressure_node)
+		        {
+		          Kpp(c,c) += penalty;
+		          Fp(c)    += penalty*p_value;
+		        }
+					}
+		    }
+
+		  } // end boundary condition section
+
+			// if we are estimating the error then calcalate relative contributions
+			if(estimating_error)
+			{
+			}
+			else
+			{
+
+
+				// apply dirichlet conditions (e.g. wall and maybe inflow)
+				//hmm really not sure bout this last argument but it works
+				dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
+				//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);				
+
+				system->matrix->add_matrix (Ke, dof_indices);
+				system->rhs->add_vector (Fe, dof_indices);
+
+				// if we have pressure coupled, then we need and found a boundary
+				if(pressure_coupled && pressure_1d_index != 0)
+				{
+
+					for(unsigned int i=0; i< dof_indices.size(); i++)
+					{
+						system->matrix->add(dof_indices[i],pressure_1d_index,Fe_coupled_p(i));
+					}
+
+
+					//flux coupling - only in row corresponding to 1d dof is how it is defined
+					// this 1d dof is now pressure 0 so that getting towards symmetry
+					for(unsigned int i=0; i< dof_indices.size(); i++)
+					{
+						system->matrix->add(flux_1d_index,dof_indices[i],Fe_coupled_u(i));
+					}
+
+					pressure_1d_index = 0;
+					flux_1d_index = 0;
+				}
+			}
+
+
+
+
+		}
+
+  } // end of element loop
+
+
+		std::cout << "max_u = " << max_u << std::endl;
+		std::cout << "max_u_old = " << max_u_old << std::endl;
+
+
+
+
+	if(threed)
+		std::cout << "end 3D assembly" << std::endl;
+	else
+		std::cout << "end 2D assembly" << std::endl;
+
+	std::cout << "tau_sum = " << tau_sum << std::endl;
+
+
+  return;
+
+
+}
