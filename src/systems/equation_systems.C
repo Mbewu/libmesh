@@ -1101,6 +1101,7 @@ void EquationSystems::build_discontinuous_solution_vector (std::vector<Number>& 
             for (unsigned int var=0; var<nv_sys; var++)
               {
                 const FEType& fe_type    = system.variable_type(var);
+								const Variable &var_description = system.variable(var);
 
                 MeshBase::element_iterator       it       = _mesh.active_elements_begin();
                 const MeshBase::element_iterator end_elem = _mesh.active_elements_end();
@@ -1113,15 +1114,24 @@ void EquationSystems::build_discontinuous_solution_vector (std::vector<Number>& 
                     system.get_dof_map().dof_indices (elem, dof_indices, var);
 
                     elem_soln.resize(dof_indices.size());
+										nodal_soln.clear();
+										nodal_soln.resize(elem->n_nodes(),0.0);
+					
+										// JAMES EDIT: 
+										// changed so that even if not active on subdomain, still puts in soln vector
+										// or rather the quantity is not calculated if not on subdomain
+										if (var_description.active_on_subdomain((*it)->subdomain_id()))
+										{
+			
+		                  for (unsigned int i=0; i<dof_indices.size(); i++)
+		                    elem_soln[i] = sys_soln[dof_indices[i]];
 
-                    for (unsigned int i=0; i<dof_indices.size(); i++)
-                      elem_soln[i] = sys_soln[dof_indices[i]];
-
-                    FEInterface::nodal_soln (dim,
-                                             fe_type,
-                                             elem,
-                                             elem_soln,
-                                             nodal_soln);
+		                  FEInterface::nodal_soln (dim,
+		                                           fe_type,
+		                                           elem,
+		                                           elem_soln,
+		                                           nodal_soln);
+										}
 
 #ifdef LIBMESH_ENABLE_INFINITE_ELEMENTS
                     // infinite elements should be skipped...

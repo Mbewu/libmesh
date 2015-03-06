@@ -4,8 +4,11 @@
 #ifndef AUGMENT_SPARSITY_ON_INTERFACE_H
 #define AUGMENT_SPARSITY_ON_INTERFACE_H
 
+#include "libmesh/libmesh.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/equation_systems.h"
+
+using namespace libMesh;
 
 // Convenient typedef for a map for (element id,side id) --> element neighbor id
 typedef std::map< dof_id_type, dof_id_type> ElementIdMap;

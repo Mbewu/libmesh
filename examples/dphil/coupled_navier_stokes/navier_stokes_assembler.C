@@ -567,7 +567,9 @@ void NavierStokesAssembler::assemble_stokes_1D ()
   MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
-	std::cerr << " proc: " << libMesh::processor_id() << std::endl;
+	// libMesh::processor_id() doesn't exist in libmesh-0.9.4, looks like it does?
+	//std::cerr << " proc: " << libMesh::processor_id() << std::endl;
+	std::cerr << " proc: " << libMesh::global_processor_id() << std::endl;
 								
   for ( ; el != end_el; ++el)
   {				

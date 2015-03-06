@@ -60,7 +60,8 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
    * This is the constructor required to read a mesh.
    */
   explicit
-  ExodusII_IO_Extended (MeshBase& mesh);
+  ExodusII_IO_Extended (MeshBase& mesh,
+               bool single_precision=false);
 
   /**
    * Destructor.
@@ -109,18 +110,18 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
    * If we read in a nodal solution while reading in a mesh, we can attempt
    * to copy that nodal solution into an EquationSystems object.
    */
-  void copy_nodal_solution(System& es, std::string system_var_name, std::string exodus_var_name, unsigned int timestep=1);
+  void copy_nodal_solution(System& system, std::string system_var_name, std::string exodus_var_name, unsigned int timestep=1);
 
   /**
    * If we read in a elemental solution while reading in a mesh, we can attempt
    * to copy that elemental solution into an EquationSystems object.
    */
-  void copy_elemental_solution(System& es, std::string system_var_name, std::string exodus_var_name, unsigned int timestep=1);
+  void copy_elemental_solution(System& system, std::string system_var_name, std::string exodus_var_name, unsigned int timestep=1);
 
   /**
    * Writes a exodusII file with discontinuous data
    */
-  void write_discontinuous_exodusII (const std::string& name, const EquationSystems& es);
+  void write_discontinuous_exodusII (const std::string& name, const EquationSystems& es, const std::set<std::string>* system_names=NULL);
 
 	/**
 	 * Writes the time to file
@@ -207,6 +208,16 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
    * Obviously this will only work if the file already exists.
    */
   void append(bool val);
+
+  /**
+   * Return list of the elemental variable names
+   */
+  const std::vector<std::string> & get_elem_var_names();
+
+  /**
+   * Return list of the nodal variable names
+   */
+  const std::vector<std::string> & get_nodal_var_names();
 
 	void set_var_scalings(std::vector<double> scaling);
 

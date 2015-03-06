@@ -33,13 +33,21 @@
 #include <vector>
 #include <map>
 
-// Macro to simplify checking Exodus error codes
-#define EX_CHECK_ERR(code, msg) \
-  do { \
-    if ((code) < 0) { \
-      libMesh::err << (msg) << std::endl; \
-      libmesh_error(); \
+// Macros to simplify checking Exodus error codes
+#define EX_CHECK_ERR(code, msg)                 \
+  do {                                          \
+    if ((code) < 0) {                           \
+      libmesh_error_msg((msg));                 \
     } } while(0)
+
+
+#define EX_EXCEPTIONLESS_CHECK_ERR(code, msg)   \
+  do {                                          \
+    if ((code) < 0) {                           \
+      libMesh::err << (msg) << std::endl;       \
+      libmesh_exceptionless_error();            \
+    } } while(0)
+
 
 
 namespace libMesh
@@ -71,7 +79,8 @@ public:
    */
   ExodusII_IO_Helper_Extended(const ParallelObject &parent,
                      bool v=false,
-                     bool run_only_on_proc0=true);
+                     bool run_only_on_proc0=true,
+                     bool single_precision=false);
   /**
    * Destructor.
    */
@@ -235,34 +244,38 @@ public:
   /**
    * Initializes the Exodus file
    */
-  virtual void initialize(std::string title, const MeshBase & mesh);
+  virtual void initialize(std::string title, const MeshBase & mesh, bool use_discontinuous=false);
 
   /**
    * Initializes the Exodus file
    */
-  void initialize_discontinuous(std::string title, const MeshBase & mesh);
+
+	// JAMES EDIT: not in libmesh-0.9.4
+  //void initialize_discontinuous(std::string title, const MeshBase & mesh);
 
   /**
    * Writes the nodal coordinates contained in "mesh"
    */
-  virtual void write_nodal_coordinates(const MeshBase & mesh);
+  virtual void write_nodal_coordinates(const MeshBase & mesh, bool use_discontinuous=false);
 
   /**
    * Writes the nodal coordinates contained in "mesh"
    */
-  void write_nodal_coordinates_discontinuous(const MeshBase & mesh);
+	// JAMES EDIT: libmesh-0.9.4 doesn't use this
+  //void write_nodal_coordinates_discontinuous(const MeshBase & mesh);
 
   /**
    * Writes the elements contained in "mesh". FIXME: This only works
    * for Meshes having a single type of element!
    */
-  virtual void write_elements(const MeshBase & mesh);
+  virtual void write_elements(const MeshBase & mesh, bool use_discontinuous=false);
 
   /**
    * Writes the elements contained in "mesh". FIXME: This only works
    * for Meshes having a single type of element!
    */
-  void write_elements_discontinuous(const MeshBase & mesh);
+	// JAMES EDIT: doesn't work for 
+  //void write_elements_discontinuous(const MeshBase & mesh);
 
   /**
    * Writes the sidesets contained in "mesh"
@@ -297,12 +310,12 @@ public:
   /**
    * Writes the vector of values to the element variables.
    */
-  void write_element_values(const MeshBase & mesh, const std::vector<Number> & values, int timestep);
+  void write_element_values(const MeshBase & mesh, const std::vector<Real> & values, int timestep);
 
   /**
    * Writes the vector of values to a nodal variable.
    */
-  void write_nodal_values(int var_id, const std::vector<Number> & values, int timestep);
+  void write_nodal_values(int var_id, const std::vector<Real> & values, int timestep);
 
   /**
    * Writes the vector of information records.
@@ -312,7 +325,7 @@ public:
   /**
    * Writes the vector of global variables.
    */
-  void write_global_values(const std::vector<Number> & values, int timestep);
+  void write_global_values(const std::vector<Real> & values, int timestep);
 
   /**
    * Sets the underlying value of the boolean flag
@@ -338,6 +351,12 @@ public:
   class Conversion;
 
   /**
+   * Returns a vector with three copies of each element in the provided name vector,
+   * starting with r_, i_ and a_ respectively.
+   */
+  std::vector<std::string> get_complex_names(const std::vector<std::string>& names) const;
+
+  /**
    * This is the \p ExodusII_IO_Helper_Extended ElementMap class.
    * It contains constant maps between the \p ExodusII naming/numbering
    * schemes and the canonical schemes used in this code.  It's defined
@@ -356,14 +375,14 @@ public:
    * Prints the message defined in \p msg. Can be turned off if
    * verbosity is set to 0.
    */
-  void message(const std::string msg);
+  void message(const std::string& msg);
 
   /**
    * Prints the message defined in \p msg, and appends the number \p i
    * to the end of the message.  Useful for printing messages in
    * loops.  Can be turned off if verbosity is set to 0.
    */
-  void message(const std::string msg, int i);
+  void message(const std::string& msg, int i);
 
   // File identification flag
   int ex_id;
@@ -524,6 +543,18 @@ public:
   // different ExodusII_IO object for each one.
   std::string current_filename;
 
+  /**
+   * Wraps calls to exII::ex_get_var_names() and exII::ex_get_var_param().
+   * The enumeration controls whether nodal, elemental, or global
+   * variable names are read and which class members are filled in.
+   * NODAL:     num_nodal_vars  nodal_var_names
+   * ELEMENTAL: num_elem_vars   elem_var_names
+   * GLOBAL:    num_global_vars global_var_names
+   */
+  enum ExodusVarType {NODAL=0, ELEMENTAL=1, GLOBAL=2};
+  void read_var_names(ExodusVarType type);
+
+
 protected:
   // If true, whenever there is an I/O operation, only perform if if we are on processor 0.
   bool _run_only_on_proc0;
@@ -545,17 +576,10 @@ protected:
   // On output, shift every point by _coordinate_offset
   Point _coordinate_offset;
 
+  // If true, forces single precision I/O
+  bool _single_precision;
+
 private:
-  /**
-   * Wraps calls to exII::ex_get_var_names() and exII::ex_get_var_param().
-   * The enumeration controls whether nodal, elemental, or global
-   * variable names are read and which class members are filled in.
-   * NODAL:     num_nodal_vars  nodal_var_names
-   * ELEMENTAL: num_elem_vars   elem_var_names
-   * GLOBAL:    num_global_vars global_var_names
-   */
-  enum ExodusVarType {NODAL=0, ELEMENTAL=1, GLOBAL=2};
-  void read_var_names(ExodusVarType type);
 
   /**
    * Wraps calls to exII::ex_put_var_names() and exII::ex_put_var_param().
@@ -897,7 +921,13 @@ public:
   static const int prism18_node_map[18];
 
   /**
-   * The Pyramid5 node map.  Use this map for linear pyramid elements
+    * The Pyramid13 node map.  Use this map for "serendipity" pyramid elements
+   * in 3D.
+   */
+  static const int pyramid13_node_map[13];
+
+  /**
+   * The Pyramid14 node map.  Use this map for biquadratic pyramid elements
    * in 3D.
    */
   static const int pyramid5_node_map[5];

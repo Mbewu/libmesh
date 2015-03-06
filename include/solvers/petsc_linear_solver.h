@@ -252,6 +252,12 @@ public:
    */
   virtual LinearConvergenceReason get_converged_reason() const;
 
+	// JAMES EDIT:
+	// haha it looks like they have their version of this now anyway
+	int get_petsc_converged_reason() { return petsc_converged_reason;};
+	void set_prefix (std::string prefix) { _prefix = prefix;};
+
+
 private:
 
   /**
@@ -326,6 +332,13 @@ private:
    * what happens with the dofs outside the subset.
    */
   SubsetSolveMode _subset_solve_mode;
+
+
+	// JAMES EDIT:
+	// some stuffs i need
+	int petsc_converged_reason;
+
+	std::string _prefix;
 
 };
 

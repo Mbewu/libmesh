@@ -489,6 +489,16 @@ public:
   const std::map<boundary_id_type, std::string>& get_nodeset_name_map () const
   { return _ns_id_to_name; }
 
+	// JAMES EDIT:
+	// be able to remove a boundary_id
+	void remove_boundary_id(const boundary_id_type old_id)
+	{
+		_boundary_ids.erase(old_id);
+		_side_boundary_ids.erase(old_id);
+		_edge_boundary_ids.erase(old_id);
+		_node_boundary_ids.erase(old_id);
+	};
+
   /**
    * Number used for internal use. This is the return value
    * if a boundary condition is not specified.
