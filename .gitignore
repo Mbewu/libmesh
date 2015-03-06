@@ -233,3 +233,5 @@ examples/dphil/*/results
 # want to ignore some large mesh files
 examples/dphil/coupled_navier_stokes/meshes/fine_mesh_labelled.msh
 examples/dphil/coupled_navier_stokes/meshes/real-volume-mesh.msh
+#want to ignore ALL files in contrib
+contrib

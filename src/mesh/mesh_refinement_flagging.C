@@ -275,7 +275,12 @@ bool MeshRefinement::flag_elements_by_nelem_target (const ErrorVector& error_per
   this->clean_refinement_flags();
 
   // The target number of elements to add or remove
-  const std::ptrdiff_t n_elem_new = _nelem_target - n_active_elem;
+	// JAMES EDIT
+	// can't be cause want to be negative sometimes
+  //const std::ptrdiff_t n_elem_new = _nelem_target - n_active_elem;
+  const int n_elem_new = _nelem_target - n_active_elem;
+
+	std::cout << "JAMES EDIT: using edited source code in mesh_refinement_flagging.C" << std::endl;
 
   // Create an vector with active element errors and ids,
   // sorted by highest errors first
@@ -345,6 +350,28 @@ bool MeshRefinement::flag_elements_by_nelem_target (const ErrorVector& error_per
       refine_count =
         std::min(cast_int<dof_id_type>(n_elem_new / (twotodim-1)),
                  max_elem_refine);
+
+			// JAMES EDIT:
+			// not sure what the point of this edit is except it seems to be more to
+			// my idea what this function should do
+			//refine_count = max_elem_refine / ;
+
+			if(sorted_parent_error.size() > 0)
+			{
+				/*
+				while(coarsen_count < max_elem_coarsen &&
+				     refine_count > 0 &&
+				     coarsen_count < sorted_parent_error.size() &&
+				     sorted_error[refine_count].first <
+			 sorted_parent_error[coarsen_count].first * _coarsen_threshold
+							)
+				{
+					coarsen_count++;
+					refine_count--;
+				}
+				*/
+
+			}
     }
   else
     {
@@ -353,7 +380,46 @@ bool MeshRefinement::flag_elements_by_nelem_target (const ErrorVector& error_per
       coarsen_count =
         std::min(cast_int<dof_id_type>(-n_elem_new / (twotodim-1)),
                  max_elem_coarsen);
+
+			// JAMES EDIT:
+			// not sure what the point of this edit is except it seems to be more to
+			// my idea what this function should do
+			//coarsen_count = max_elem_coarsen;
+
+
+			if(sorted_parent_error.size() > 0)
+			{
+				/*
+				while(refine_count < max_elem_refine &&
+						   coarsen_count > 0 &&
+						   refine_count < sorted_error.size() &&
+						   sorted_error[refine_count].first >
+				 sorted_parent_error[coarsen_count].first * _coarsen_threshold
+								)
+					{
+						coarsen_count--;
+						refine_count++;
+					}
+
+					std::cout << "coarsen_count = " << coarsen_count << std::endl;
+					std::cout << "refine_count = " << refine_count << std::endl;
+					std::cout << "sorted_error[refine_count].first = " << sorted_error[refine_count].first << std::endl;
+					std::cout << "sorted_parent_error[coarsen_count].first = " << sorted_parent_error[coarsen_count].first << std::endl;
+				*/
+			}
     }
+
+	// JAMES EDIT: for some reason output is useful here
+	std::cout << "coarsen_count = " << coarsen_count << std::endl;
+	std::cout << "refine_count = " << refine_count << std::endl;
+	std::cout << "sorted_error[refine_count].first = " << sorted_error[refine_count].first << std::endl;
+
+	if(sorted_parent_error.size() > 0)
+	{
+			std::cout << "sorted_parent_error[coarsen_count].first = " << sorted_parent_error[coarsen_count].first << std::endl;
+	}
+	std::cout << "_coarsen_threshold = " << _coarsen_threshold << std::endl; 
+	
 
   // Next, let's see if we can trade any refinement for coarsening
   while (coarsen_count < max_elem_coarsen &&
@@ -438,6 +504,13 @@ bool MeshRefinement::flag_elements_by_nelem_target (const ErrorVector& error_per
             }
         }
     }
+
+	// JAMES EDIT: for some reason output here is useful
+	std::cout << "successful_refine_count = " << successful_refine_count << std::endl;
+	std::cout << "successful_coarsen_count = " << successful_coarsen_count << std::endl;
+	std::cout << "successful_refine_count * (twotodim-1) = " << successful_refine_count * (twotodim-1) << std::endl;
+	std::cout << "successful_coarsen_count * (twotodim-1) = " << successful_coarsen_count * (twotodim-1) << std::endl;
+
 
   // Return true if we've done all the AMR/C we can
   if (!successful_coarsen_count &&

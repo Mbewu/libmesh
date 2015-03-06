@@ -221,6 +221,11 @@ void PetscLinearSolver<T>::init (const char *name)
       //  KSPSetFromOptions() is called _after_ any other customization
       //  routines.
 
+			// JAMES EDIT:
+			// not sure this is necessary, think it is based on where it occurs in the 
+			// function
+			KSPSetOptionsPrefix(_ksp,_prefix.c_str());  
+
       ierr = KSPSetFromOptions (_ksp);
       LIBMESH_CHKERRABORT(ierr);
 
@@ -250,7 +255,13 @@ void PetscLinearSolver<T>::init (const char *name)
           ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_TRUE);
           LIBMESH_CHKERRABORT(ierr);
         }
-
+			// JAMES EDIT:
+			// not sure this is necessary but oh well
+			else
+			{
+        ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_FALSE);
+               LIBMESH_CHKERRABORT(ierr);
+			}
       // Notify PETSc of location to store residual history.
       // This needs to be called before any solves, since
       // it sets the residual history length to zero.  The default
@@ -379,6 +390,13 @@ void PetscLinearSolver<T>::init ( PetscMatrix<T>* matrix,
           ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_TRUE);
           LIBMESH_CHKERRABORT(ierr);
         }
+			// JAMES EDIT:
+			// not sure this is necessary but oh well
+			else
+			{
+        ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_FALSE);
+               LIBMESH_CHKERRABORT(ierr);
+			}
 
       // Notify PETSc of location to store residual history.
       // This needs to be called before any solves, since
@@ -679,15 +697,22 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
           ierr = LibMeshMatDestroy(&submat1);
           LIBMESH_CHKERRABORT(ierr);
         }
+
+			// JAMES EDIT:
+			// for some reason, KSPSetReusePreconditioner can't be found...
+
 #if PETSC_RELEASE_LESS_THAN(3,5,0)
       ierr = KSPSetOperators(_ksp, submat, subprecond,
                              this->same_preconditioner ? SAME_PRECONDITIONER : DIFFERENT_NONZERO_PATTERN);
+
 #else
+			
       ierr = KSPSetOperators(_ksp, submat, subprecond);
 
-      PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
-      ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+      //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+      //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
+
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
@@ -700,15 +725,21 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
     }
   else
     {
+
+			// JAMES EDIT:
+			// for some reason, KSPSetReusePreconditioner can't be found...
+
 #if PETSC_RELEASE_LESS_THAN(3,5,0)
       ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat(),
                              this->same_preconditioner ? SAME_PRECONDITIONER : DIFFERENT_NONZERO_PATTERN);
+
 #else
       ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat());
 
-      PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
-      ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+      //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+      //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
+
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
@@ -724,6 +755,56 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
                            PETSC_DEFAULT, max_its);
   LIBMESH_CHKERRABORT(ierr);
 
+
+	// JAMES EDIT:
+	// I think the point of this is to set the options at the correct point in 
+	// time..
+
+	// Set the options from user-input
+  // Set runtime options, e.g.,
+  //      -ksp_type <type> -pc_type <type> -ksp_monitor -ksp_rtol <rtol>
+  //  These options will override those specified above as long as
+  //  KSPSetFromOptions() is called _after_ any other customization
+  //  routines.
+
+	KSPSetOptionsPrefix(_ksp,_prefix.c_str());
+
+  ierr = KSPSetFromOptions (_ksp);
+  LIBMESH_CHKERRABORT(ierr);
+
+	// Not sure if this is necessary, or if it is already handled by KSPSetFromOptions?
+  // NOT NECESSARY!!!!
+  //ierr = PCSetFromOptions (_pc);
+  //LIBMESH_CHKERRABORT(ierr);
+
+
+  // Have the Krylov subspace method use our good initial guess
+  // rather than 0, unless the user requested a KSPType of
+  // preonly, which complains if asked to use initial guesses.
+#if PETSC_VERSION_LESS_THAN(3,0,0) || !PETSC_RELEASE_LESS_THAN(3,4,0)
+  // Pre-3.0 and petsc-dev (as of October 2012) use non-const versions
+  KSPType ksp_type;
+#else
+  const KSPType ksp_type;
+#endif
+
+  ierr = KSPGetType (_ksp, &ksp_type);
+         LIBMESH_CHKERRABORT(ierr);
+
+  if (strcmp(ksp_type, "preonly"))
+  {
+    ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_TRUE);
+           LIBMESH_CHKERRABORT(ierr);
+  }
+	else
+	{
+    ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_FALSE);
+           LIBMESH_CHKERRABORT(ierr);
+	}
+
+	// end JAMES EDIT
+
+
   // Solve the linear system
   if(_restrict_solve_to_is!=NULL)
     {
@@ -735,6 +816,13 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
       ierr = KSPSolve (_ksp, rhs->vec(), solution->vec());
       LIBMESH_CHKERRABORT(ierr);
     }
+
+	// JAMES EDIT:
+	// an actual useful thing where we can get the convergence reason
+	KSPConvergedReason reason;
+  ierr = KSPGetConvergedReason(_ksp,&reason);
+	petsc_converged_reason = reason;
+
 
   // Get the number of iterations required for convergence
   ierr = KSPGetIterationNumber (_ksp, &its);
@@ -1033,15 +1121,21 @@ PetscLinearSolver<T>::adjoint_solve (SparseMatrix<T>&  matrix_in,
           ierr = LibMeshMatDestroy(&submat1);
           LIBMESH_CHKERRABORT(ierr);
         }
+
+			// JAMES EDIT:
+			// for some reason, KSPSetReusePreconditioner can't be found..
+
 #if PETSC_RELEASE_LESS_THAN(3,5,0)
       ierr = KSPSetOperators(_ksp, submat, subprecond,
                              this->same_preconditioner ? SAME_PRECONDITIONER : DIFFERENT_NONZERO_PATTERN);
+
 #else
       ierr = KSPSetOperators(_ksp, submat, subprecond);
 
-      PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
-      ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+      //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+      //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
+
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
@@ -1054,15 +1148,21 @@ PetscLinearSolver<T>::adjoint_solve (SparseMatrix<T>&  matrix_in,
     }
   else
     {
+
+			// JAMES EDIT:
+			// for some reason, KSPSetReusePreconditioner can't be found...
+
 #if PETSC_RELEASE_LESS_THAN(3,5,0)
       ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat(),
                              this->same_preconditioner ? SAME_PRECONDITIONER : DIFFERENT_NONZERO_PATTERN);
+
 #else
       ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat());
 
-      PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
-      ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+      //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+      //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
+
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
