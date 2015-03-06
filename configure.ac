@@ -373,7 +373,6 @@ if (test "x$enableexamples" = "xyes"); then
                 examples/vector_fe/vector_fe_ex2/Makefile
                 examples/vector_fe/vector_fe_ex3/Makefile
                 examples/vector_fe/vector_fe_ex4/Makefile
-                examples/dphil/coupled_navier_stokes/Makefile
                 examples/Makefile
                 ])
 fi

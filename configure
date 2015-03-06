@@ -3729,7 +3729,7 @@ _ACEOF
 
 
 # require automake 1.11 - color tests
-am__api_version='1.13'
+am__api_version='1.12'
 
 # Find a good install program.  We prefer a C program (faster),
 # so one script is as good as another.  But avoid the broken or
@@ -3913,8 +3913,8 @@ if test x"${MISSING+set}" != xset; then
   esac
 fi
 # Use eval to expand $SHELL
-if eval "$MISSING --is-lightweight"; then
-  am_missing_run="$MISSING "
+if eval "$MISSING --run true"; then
+  am_missing_run="$MISSING --run "
 else
   am_missing_run=
   { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: 'missing' script is too old or missing" >&5
@@ -4153,45 +4153,6 @@ else
   am__leading_dot=_
 fi
 rmdir .tst 2>/dev/null
-
-# Check whether --enable-silent-rules was given.
-if test "${enable_silent_rules+set}" = set; then :
-  enableval=$enable_silent_rules;
-fi
-
-case $enable_silent_rules in # (((
-  yes) AM_DEFAULT_VERBOSITY=0;;
-   no) AM_DEFAULT_VERBOSITY=1;;
-    *) AM_DEFAULT_VERBOSITY=1;;
-esac
-am_make=${MAKE-make}
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether $am_make supports nested variables" >&5
-$as_echo_n "checking whether $am_make supports nested variables... " >&6; }
-if ${am_cv_make_support_nested_variables+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  if $as_echo 'TRUE=$(BAR$(V))
-BAR0=false
-BAR1=true
-V=1
-am__doit:
-	@$(TRUE)
-.PHONY: am__doit' | $am_make -f - >/dev/null 2>&1; then
-  am_cv_make_support_nested_variables=yes
-else
-  am_cv_make_support_nested_variables=no
-fi
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $am_cv_make_support_nested_variables" >&5
-$as_echo "$am_cv_make_support_nested_variables" >&6; }
-if test $am_cv_make_support_nested_variables = yes; then
-    AM_V='$(V)'
-  AM_DEFAULT_V='$(AM_DEFAULT_VERBOSITY)'
-else
-  AM_V=$AM_DEFAULT_VERBOSITY
-  AM_DEFAULT_V=$AM_DEFAULT_VERBOSITY
-fi
-AM_BACKSLASH='\'
 
 if test "`cd $srcdir && pwd`" != "`pwd`"; then
   # Use -I$(srcdir) only when $(srcdir) != ., so that make's output
@@ -9415,8 +9376,7 @@ else
     ;;
   *)
     lt_cv_sys_max_cmd_len=`(getconf ARG_MAX) 2> /dev/null`
-    if test -n "$lt_cv_sys_max_cmd_len" && \
-	test undefined != "$lt_cv_sys_max_cmd_len"; then
+    if test -n "$lt_cv_sys_max_cmd_len"; then
       lt_cv_sys_max_cmd_len=`expr $lt_cv_sys_max_cmd_len \/ 4`
       lt_cv_sys_max_cmd_len=`expr $lt_cv_sys_max_cmd_len \* 3`
     else
@@ -9817,6 +9777,10 @@ freebsd* | dragonfly*)
   fi
   ;;
 
+gnu*)
+  lt_cv_deplibs_check_method=pass_all
+  ;;
+
 haiku*)
   lt_cv_deplibs_check_method=pass_all
   ;;
@@ -9855,11 +9819,11 @@ irix5* | irix6* | nonstopux*)
   ;;
 
 # This must be glibc/ELF.
-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+linux* | k*bsd*-gnu | kopensolaris*-gnu)
   lt_cv_deplibs_check_method=pass_all
   ;;
 
-netbsd* | netbsdelf*-gnu)
+netbsd*)
   if echo __ELF__ | $CC -E - | $GREP __ELF__ > /dev/null; then
     lt_cv_deplibs_check_method='match_pattern /lib[^/]+(\.so\.[0-9]+\.[0-9]+|_pic\.a)$'
   else
@@ -10936,7 +10900,7 @@ ia64-*-hpux*)
   rm -rf conftest*
   ;;
 
-x86_64-*kfreebsd*-gnu|x86_64-*linux*|powerpc*-*linux*| \
+x86_64-*kfreebsd*-gnu|x86_64-*linux*|ppc*-*linux*|powerpc*-*linux*| \
 s390*-*linux*|s390*-*tpf*|sparc*-*linux*)
   # Find out which ABI we are using.
   echo 'int i;' > conftest.$ac_ext
@@ -10952,19 +10916,9 @@ s390*-*linux*|s390*-*tpf*|sparc*-*linux*)
 	    LD="${LD-ld} -m elf_i386_fbsd"
 	    ;;
 	  x86_64-*linux*)
-	    case `/usr/bin/file conftest.o` in
-	      *x86-64*)
-		LD="${LD-ld} -m elf32_x86_64"
-		;;
-	      *)
-		LD="${LD-ld} -m elf_i386"
-		;;
-	    esac
+	    LD="${LD-ld} -m elf_i386"
 	    ;;
-	  powerpc64le-*)
-	    LD="${LD-ld} -m elf32lppclinux"
-	    ;;
-	  powerpc64-*)
+	  ppc64-*linux*|powerpc64-*linux*)
 	    LD="${LD-ld} -m elf32ppclinux"
 	    ;;
 	  s390x-*linux*)
@@ -10983,10 +10937,7 @@ s390*-*linux*|s390*-*tpf*|sparc*-*linux*)
 	  x86_64-*linux*)
 	    LD="${LD-ld} -m elf_x86_64"
 	    ;;
-	  powerpcle-*)
-	    LD="${LD-ld} -m elf64lppc"
-	    ;;
-	  powerpc-*)
+	  ppc*-*linux*|powerpc*-*linux*)
 	    LD="${LD-ld} -m elf64ppc"
 	    ;;
 	  s390*-*linux*|s390*-*tpf*)
@@ -12804,7 +12755,7 @@ lt_prog_compiler_static=
       lt_prog_compiler_static='-non_shared'
       ;;
 
-    linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+    linux* | k*bsd*-gnu | kopensolaris*-gnu)
       case $cc_basename in
       # old Intel for x86_64 which still supported -KPIC.
       ecc*)
@@ -13282,9 +13233,6 @@ $as_echo_n "checking whether the $compiler linker ($LD) supports shared librarie
   openbsd*)
     with_gnu_ld=no
     ;;
-  linux* | k*bsd*-gnu | gnu*)
-    link_all_deplibs=no
-    ;;
   esac
 
   ld_shlibs=yes
@@ -13506,7 +13454,7 @@ _LT_EOF
       fi
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds='$LD -Bshareable $libobjs $deplibs $linker_flags -o $lib'
 	wlarc=
@@ -13683,7 +13631,6 @@ _LT_EOF
 	if test "$aix_use_runtimelinking" = yes; then
 	  shared_flag="$shared_flag "'${wl}-G'
 	fi
-	link_all_deplibs=no
       else
 	# not using gcc
 	if test "$host_cpu" = ia64; then
@@ -14137,7 +14084,7 @@ $as_echo "$lt_cv_irix_exported_symbol" >&6; }
       link_all_deplibs=yes
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds='$LD -Bshareable -o $lib $libobjs $deplibs $linker_flags'  # a.out
       else
@@ -14974,6 +14921,17 @@ freebsd* | dragonfly*)
   esac
   ;;
 
+gnu*)
+  version_type=linux # correct to gnu/linux during the next big refactor
+  need_lib_prefix=no
+  need_version=no
+  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
+  soname_spec='${libname}${release}${shared_ext}$major'
+  shlibpath_var=LD_LIBRARY_PATH
+  shlibpath_overrides_runpath=no
+  hardcode_into_libs=yes
+  ;;
+
 haiku*)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
@@ -15090,7 +15048,7 @@ linux*oldld* | linux*aout* | linux*coff*)
   ;;
 
 # This must be glibc/ELF.
-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+linux* | k*bsd*-gnu | kopensolaris*-gnu)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
   need_version=no
@@ -15152,18 +15110,6 @@ fi
   # people can always --disable-shared, the test was removed, and we
   # assume the GNU/Linux dynamic linker is in use.
   dynamic_linker='GNU/Linux ld.so'
-  ;;
-
-netbsdelf*-gnu)
-  version_type=linux
-  need_lib_prefix=no
-  need_version=no
-  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}$major ${libname}${shared_ext}'
-  soname_spec='${libname}${release}${shared_ext}$major'
-  shlibpath_var=LD_LIBRARY_PATH
-  shlibpath_overrides_runpath=no
-  hardcode_into_libs=yes
-  dynamic_linker='NetBSD ld.elf_so'
   ;;
 
 netbsd*)
@@ -16913,6 +16859,9 @@ fi
         ld_shlibs_CXX=yes
         ;;
 
+      gnu*)
+        ;;
+
       haiku*)
         archive_cmds_CXX='$CC -shared $libobjs $deplibs $compiler_flags ${wl}-soname $wl$soname -o $lib'
         link_all_deplibs_CXX=yes
@@ -17074,7 +17023,7 @@ fi
         inherit_rpath_CXX=yes
         ;;
 
-      linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+      linux* | k*bsd*-gnu | kopensolaris*-gnu)
         case $cc_basename in
           KCC*)
 	    # Kuck and Associates, Inc. (KAI) C++ Compiler
@@ -17934,7 +17883,7 @@ lt_prog_compiler_static_CXX=
 	    ;;
 	esac
 	;;
-      linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+      linux* | k*bsd*-gnu | kopensolaris*-gnu)
 	case $cc_basename in
 	  KCC*)
 	    # KAI C++ Compiler
@@ -17998,7 +17947,7 @@ lt_prog_compiler_static_CXX=
 	    ;;
 	esac
 	;;
-      netbsd* | netbsdelf*-gnu)
+      netbsd*)
 	;;
       *qnx* | *nto*)
         # QNX uses GNU C++, but need to define -shared option too, otherwise
@@ -18368,9 +18317,6 @@ $as_echo_n "checking whether the $compiler linker ($LD) supports shared librarie
       exclude_expsyms_CXX='[_]+GLOBAL_OFFSET_TABLE_|[_]+GLOBAL__[FID]_.*|[_]+head_[A-Za-z0-9_]+_dll|[A-Za-z0-9_]+_dll_iname'
       ;;
     esac
-    ;;
-  linux* | k*bsd*-gnu | gnu*)
-    link_all_deplibs_CXX=no
     ;;
   *)
     export_symbols_cmds_CXX='$NM $libobjs $convenience | $global_symbol_pipe | $SED '\''s/.* //'\'' | sort | uniq > $export_symbols'
@@ -18806,6 +18752,17 @@ freebsd* | dragonfly*)
   esac
   ;;
 
+gnu*)
+  version_type=linux # correct to gnu/linux during the next big refactor
+  need_lib_prefix=no
+  need_version=no
+  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
+  soname_spec='${libname}${release}${shared_ext}$major'
+  shlibpath_var=LD_LIBRARY_PATH
+  shlibpath_overrides_runpath=no
+  hardcode_into_libs=yes
+  ;;
+
 haiku*)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
@@ -18922,7 +18879,7 @@ linux*oldld* | linux*aout* | linux*coff*)
   ;;
 
 # This must be glibc/ELF.
-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+linux* | k*bsd*-gnu | kopensolaris*-gnu)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
   need_version=no
@@ -18984,18 +18941,6 @@ fi
   # people can always --disable-shared, the test was removed, and we
   # assume the GNU/Linux dynamic linker is in use.
   dynamic_linker='GNU/Linux ld.so'
-  ;;
-
-netbsdelf*-gnu)
-  version_type=linux
-  need_lib_prefix=no
-  need_version=no
-  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}$major ${libname}${shared_ext}'
-  soname_spec='${libname}${release}${shared_ext}$major'
-  shlibpath_var=LD_LIBRARY_PATH
-  shlibpath_overrides_runpath=no
-  hardcode_into_libs=yes
-  dynamic_linker='NetBSD ld.elf_so'
   ;;
 
 netbsd*)
@@ -19603,7 +19548,7 @@ lt_prog_compiler_static_F77=
       lt_prog_compiler_static_F77='-non_shared'
       ;;
 
-    linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+    linux* | k*bsd*-gnu | kopensolaris*-gnu)
       case $cc_basename in
       # old Intel for x86_64 which still supported -KPIC.
       ecc*)
@@ -20066,9 +20011,6 @@ $as_echo_n "checking whether the $compiler linker ($LD) supports shared librarie
   openbsd*)
     with_gnu_ld=no
     ;;
-  linux* | k*bsd*-gnu | gnu*)
-    link_all_deplibs_F77=no
-    ;;
   esac
 
   ld_shlibs_F77=yes
@@ -20290,7 +20232,7 @@ _LT_EOF
       fi
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds_F77='$LD -Bshareable $libobjs $deplibs $linker_flags -o $lib'
 	wlarc=
@@ -20467,7 +20409,6 @@ _LT_EOF
 	if test "$aix_use_runtimelinking" = yes; then
 	  shared_flag="$shared_flag "'${wl}-G'
 	fi
-	link_all_deplibs_F77=no
       else
 	# not using gcc
 	if test "$host_cpu" = ia64; then
@@ -20871,7 +20812,7 @@ $as_echo "$lt_cv_irix_exported_symbol" >&6; }
       link_all_deplibs_F77=yes
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds_F77='$LD -Bshareable -o $lib $libobjs $deplibs $linker_flags'  # a.out
       else
@@ -21543,6 +21484,17 @@ freebsd* | dragonfly*)
   esac
   ;;
 
+gnu*)
+  version_type=linux # correct to gnu/linux during the next big refactor
+  need_lib_prefix=no
+  need_version=no
+  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
+  soname_spec='${libname}${release}${shared_ext}$major'
+  shlibpath_var=LD_LIBRARY_PATH
+  shlibpath_overrides_runpath=no
+  hardcode_into_libs=yes
+  ;;
+
 haiku*)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
@@ -21659,7 +21611,7 @@ linux*oldld* | linux*aout* | linux*coff*)
   ;;
 
 # This must be glibc/ELF.
-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+linux* | k*bsd*-gnu | kopensolaris*-gnu)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
   need_version=no
@@ -21715,18 +21667,6 @@ fi
   # people can always --disable-shared, the test was removed, and we
   # assume the GNU/Linux dynamic linker is in use.
   dynamic_linker='GNU/Linux ld.so'
-  ;;
-
-netbsdelf*-gnu)
-  version_type=linux
-  need_lib_prefix=no
-  need_version=no
-  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}$major ${libname}${shared_ext}'
-  soname_spec='${libname}${release}${shared_ext}$major'
-  shlibpath_var=LD_LIBRARY_PATH
-  shlibpath_overrides_runpath=no
-  hardcode_into_libs=yes
-  dynamic_linker='NetBSD ld.elf_so'
   ;;
 
 netbsd*)
@@ -22475,7 +22415,7 @@ lt_prog_compiler_static_FC=
       lt_prog_compiler_static_FC='-non_shared'
       ;;
 
-    linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+    linux* | k*bsd*-gnu | kopensolaris*-gnu)
       case $cc_basename in
       # old Intel for x86_64 which still supported -KPIC.
       ecc*)
@@ -22938,9 +22878,6 @@ $as_echo_n "checking whether the $compiler linker ($LD) supports shared librarie
   openbsd*)
     with_gnu_ld=no
     ;;
-  linux* | k*bsd*-gnu | gnu*)
-    link_all_deplibs_FC=no
-    ;;
   esac
 
   ld_shlibs_FC=yes
@@ -23162,7 +23099,7 @@ _LT_EOF
       fi
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds_FC='$LD -Bshareable $libobjs $deplibs $linker_flags -o $lib'
 	wlarc=
@@ -23339,7 +23276,6 @@ _LT_EOF
 	if test "$aix_use_runtimelinking" = yes; then
 	  shared_flag="$shared_flag "'${wl}-G'
 	fi
-	link_all_deplibs_FC=no
       else
 	# not using gcc
 	if test "$host_cpu" = ia64; then
@@ -23743,7 +23679,7 @@ $as_echo "$lt_cv_irix_exported_symbol" >&6; }
       link_all_deplibs_FC=yes
       ;;
 
-    netbsd* | netbsdelf*-gnu)
+    netbsd*)
       if echo __ELF__ | $CC -E - | $GREP __ELF__ >/dev/null; then
 	archive_cmds_FC='$LD -Bshareable -o $lib $libobjs $deplibs $linker_flags'  # a.out
       else
@@ -24415,6 +24351,17 @@ freebsd* | dragonfly*)
   esac
   ;;
 
+gnu*)
+  version_type=linux # correct to gnu/linux during the next big refactor
+  need_lib_prefix=no
+  need_version=no
+  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}${major} ${libname}${shared_ext}'
+  soname_spec='${libname}${release}${shared_ext}$major'
+  shlibpath_var=LD_LIBRARY_PATH
+  shlibpath_overrides_runpath=no
+  hardcode_into_libs=yes
+  ;;
+
 haiku*)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
@@ -24531,7 +24478,7 @@ linux*oldld* | linux*aout* | linux*coff*)
   ;;
 
 # This must be glibc/ELF.
-linux* | k*bsd*-gnu | kopensolaris*-gnu | gnu*)
+linux* | k*bsd*-gnu | kopensolaris*-gnu)
   version_type=linux # correct to gnu/linux during the next big refactor
   need_lib_prefix=no
   need_version=no
@@ -24587,18 +24534,6 @@ fi
   # people can always --disable-shared, the test was removed, and we
   # assume the GNU/Linux dynamic linker is in use.
   dynamic_linker='GNU/Linux ld.so'
-  ;;
-
-netbsdelf*-gnu)
-  version_type=linux
-  need_lib_prefix=no
-  need_version=no
-  library_names_spec='${libname}${release}${shared_ext}$versuffix ${libname}${release}${shared_ext}$major ${libname}${shared_ext}'
-  soname_spec='${libname}${release}${shared_ext}$major'
-  shlibpath_var=LD_LIBRARY_PATH
-  shlibpath_overrides_runpath=no
-  hardcode_into_libs=yes
-  dynamic_linker='NetBSD ld.elf_so'
   ;;
 
 netbsd*)
@@ -35925,7 +35860,7 @@ $as_echo "#define BUILD_DATE __DATE__ \" \" __TIME__" >>confdefs.h
 
 # Each example gets a makefile
 if (test "x$enableexamples" = "xyes"); then
-   ac_config_files="$ac_config_files examples/introduction/introduction_ex1/Makefile examples/introduction/introduction_ex2/Makefile examples/introduction/introduction_ex3/Makefile examples/introduction/introduction_ex4/Makefile examples/introduction/introduction_ex5/Makefile examples/adaptivity/adaptivity_ex1/Makefile examples/adaptivity/adaptivity_ex2/Makefile examples/adaptivity/adaptivity_ex3/Makefile examples/adaptivity/adaptivity_ex4/Makefile examples/adaptivity/adaptivity_ex5/Makefile examples/adjoints/adjoints_ex1/Makefile examples/adjoints/adjoints_ex2/Makefile examples/adjoints/adjoints_ex3/Makefile examples/adjoints/adjoints_ex4/Makefile examples/adjoints/adjoints_ex5/Makefile examples/eigenproblems/eigenproblems_ex1/Makefile examples/eigenproblems/eigenproblems_ex2/Makefile examples/eigenproblems/eigenproblems_ex3/Makefile examples/fem_system/fem_system_ex1/Makefile examples/fem_system/fem_system_ex2/Makefile examples/solution_transfer/solution_transfer_ex1/Makefile examples/miscellaneous/miscellaneous_ex1/Makefile examples/miscellaneous/miscellaneous_ex2/Makefile examples/miscellaneous/miscellaneous_ex3/Makefile examples/miscellaneous/miscellaneous_ex4/Makefile examples/miscellaneous/miscellaneous_ex5/Makefile examples/miscellaneous/miscellaneous_ex6/Makefile examples/miscellaneous/miscellaneous_ex7/Makefile examples/miscellaneous/miscellaneous_ex8/Makefile examples/miscellaneous/miscellaneous_ex9/Makefile examples/miscellaneous/miscellaneous_ex10/Makefile examples/miscellaneous/miscellaneous_ex11/Makefile examples/subdomains/subdomains_ex1/Makefile examples/subdomains/subdomains_ex2/Makefile examples/subdomains/subdomains_ex3/Makefile examples/systems_of_equations/systems_of_equations_ex1/Makefile examples/systems_of_equations/systems_of_equations_ex2/Makefile examples/systems_of_equations/systems_of_equations_ex3/Makefile examples/systems_of_equations/systems_of_equations_ex4/Makefile examples/systems_of_equations/systems_of_equations_ex5/Makefile examples/systems_of_equations/systems_of_equations_ex6/Makefile examples/systems_of_equations/systems_of_equations_ex7/Makefile examples/reduced_basis/reduced_basis_ex1/Makefile examples/reduced_basis/reduced_basis_ex2/Makefile examples/reduced_basis/reduced_basis_ex3/Makefile examples/reduced_basis/reduced_basis_ex4/Makefile examples/reduced_basis/reduced_basis_ex5/Makefile examples/reduced_basis/reduced_basis_ex6/Makefile examples/reduced_basis/reduced_basis_ex7/Makefile examples/transient/transient_ex1/Makefile examples/transient/transient_ex2/Makefile examples/vector_fe/vector_fe_ex1/Makefile examples/vector_fe/vector_fe_ex2/Makefile examples/vector_fe/vector_fe_ex3/Makefile examples/vector_fe/vector_fe_ex4/Makefile examples/dphil/coupled_navier_stokes/Makefile examples/Makefile"
+   ac_config_files="$ac_config_files examples/introduction/introduction_ex1/Makefile examples/introduction/introduction_ex2/Makefile examples/introduction/introduction_ex3/Makefile examples/introduction/introduction_ex4/Makefile examples/introduction/introduction_ex5/Makefile examples/adaptivity/adaptivity_ex1/Makefile examples/adaptivity/adaptivity_ex2/Makefile examples/adaptivity/adaptivity_ex3/Makefile examples/adaptivity/adaptivity_ex4/Makefile examples/adaptivity/adaptivity_ex5/Makefile examples/adjoints/adjoints_ex1/Makefile examples/adjoints/adjoints_ex2/Makefile examples/adjoints/adjoints_ex3/Makefile examples/adjoints/adjoints_ex4/Makefile examples/adjoints/adjoints_ex5/Makefile examples/eigenproblems/eigenproblems_ex1/Makefile examples/eigenproblems/eigenproblems_ex2/Makefile examples/eigenproblems/eigenproblems_ex3/Makefile examples/fem_system/fem_system_ex1/Makefile examples/fem_system/fem_system_ex2/Makefile examples/solution_transfer/solution_transfer_ex1/Makefile examples/miscellaneous/miscellaneous_ex1/Makefile examples/miscellaneous/miscellaneous_ex2/Makefile examples/miscellaneous/miscellaneous_ex3/Makefile examples/miscellaneous/miscellaneous_ex4/Makefile examples/miscellaneous/miscellaneous_ex5/Makefile examples/miscellaneous/miscellaneous_ex6/Makefile examples/miscellaneous/miscellaneous_ex7/Makefile examples/miscellaneous/miscellaneous_ex8/Makefile examples/miscellaneous/miscellaneous_ex9/Makefile examples/miscellaneous/miscellaneous_ex10/Makefile examples/miscellaneous/miscellaneous_ex11/Makefile examples/subdomains/subdomains_ex1/Makefile examples/subdomains/subdomains_ex2/Makefile examples/subdomains/subdomains_ex3/Makefile examples/systems_of_equations/systems_of_equations_ex1/Makefile examples/systems_of_equations/systems_of_equations_ex2/Makefile examples/systems_of_equations/systems_of_equations_ex3/Makefile examples/systems_of_equations/systems_of_equations_ex4/Makefile examples/systems_of_equations/systems_of_equations_ex5/Makefile examples/systems_of_equations/systems_of_equations_ex6/Makefile examples/systems_of_equations/systems_of_equations_ex7/Makefile examples/reduced_basis/reduced_basis_ex1/Makefile examples/reduced_basis/reduced_basis_ex2/Makefile examples/reduced_basis/reduced_basis_ex3/Makefile examples/reduced_basis/reduced_basis_ex4/Makefile examples/reduced_basis/reduced_basis_ex5/Makefile examples/reduced_basis/reduced_basis_ex6/Makefile examples/reduced_basis/reduced_basis_ex7/Makefile examples/transient/transient_ex1/Makefile examples/transient/transient_ex2/Makefile examples/vector_fe/vector_fe_ex1/Makefile examples/vector_fe/vector_fe_ex2/Makefile examples/vector_fe/vector_fe_ex3/Makefile examples/vector_fe/vector_fe_ex4/Makefile examples/Makefile"
 
 fi
 
@@ -37560,7 +37495,6 @@ do
     "examples/vector_fe/vector_fe_ex2/Makefile") CONFIG_FILES="$CONFIG_FILES examples/vector_fe/vector_fe_ex2/Makefile" ;;
     "examples/vector_fe/vector_fe_ex3/Makefile") CONFIG_FILES="$CONFIG_FILES examples/vector_fe/vector_fe_ex3/Makefile" ;;
     "examples/vector_fe/vector_fe_ex4/Makefile") CONFIG_FILES="$CONFIG_FILES examples/vector_fe/vector_fe_ex4/Makefile" ;;
-    "examples/dphil/coupled_navier_stokes/Makefile") CONFIG_FILES="$CONFIG_FILES examples/dphil/coupled_navier_stokes/Makefile" ;;
     "examples/Makefile") CONFIG_FILES="$CONFIG_FILES examples/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
@@ -38252,7 +38186,7 @@ $as_echo X"$ac_prefix_conf_OUT" |
 fi
  ;;
     "depfiles":C) test x"$AMDEP_TRUE" != x"" || {
-  # Older Autoconf quotes --file arguments for eval, but not when files
+  # Autoconf 2.62 quotes --file arguments for eval, but not when files
   # are listed without --file.  Let's play safe and only enable the eval
   # if we detect the quoting.
   case $CONFIG_FILES in

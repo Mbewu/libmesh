@@ -66,7 +66,6 @@ ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/m4/ac_cxx_rtti.m4 \
 	$(top_srcdir)/m4/all_static.m4 \
 	$(top_srcdir)/m4/ax_boost_base.m4 \
-	$(top_srcdir)/m4/ax_cxx_compile_stdcxx_11.m4 \
 	$(top_srcdir)/m4/ax_openmp.m4 $(top_srcdir)/m4/ax_pthread.m4 \
 	$(top_srcdir)/m4/ax_split_version.m4 \
 	$(top_srcdir)/m4/ax_tls.m4 $(top_srcdir)/m4/backtrace.m4 \
@@ -74,12 +73,12 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_cxx_rtti.m4 \
 	$(top_srcdir)/m4/config_environment.m4 \
 	$(top_srcdir)/m4/config_summary.m4 \
 	$(top_srcdir)/m4/coverage.m4 $(top_srcdir)/m4/cppunit.m4 \
-	$(top_srcdir)/m4/cxx11.m4 $(top_srcdir)/m4/demangle.m4 \
-	$(top_srcdir)/m4/eigen.m4 $(top_srcdir)/m4/exodus.m4 \
-	$(top_srcdir)/m4/feexcept.m4 $(top_srcdir)/m4/fparser.m4 \
-	$(top_srcdir)/m4/glpk.m4 $(top_srcdir)/m4/gmv.m4 \
-	$(top_srcdir)/m4/gz.m4 $(top_srcdir)/m4/hdf5.m4 \
-	$(top_srcdir)/m4/laspack.m4 $(top_srcdir)/m4/libhilbert.m4 \
+	$(top_srcdir)/m4/demangle.m4 $(top_srcdir)/m4/eigen.m4 \
+	$(top_srcdir)/m4/exodus.m4 $(top_srcdir)/m4/feexcept.m4 \
+	$(top_srcdir)/m4/fparser.m4 $(top_srcdir)/m4/glpk.m4 \
+	$(top_srcdir)/m4/gmv.m4 $(top_srcdir)/m4/gz.m4 \
+	$(top_srcdir)/m4/hdf5.m4 $(top_srcdir)/m4/laspack.m4 \
+	$(top_srcdir)/m4/libhilbert.m4 \
 	$(top_srcdir)/m4/libmesh_compiler_features.m4 \
 	$(top_srcdir)/m4/libmesh_core_features.m4 \
 	$(top_srcdir)/m4/libmesh_method.m4 \
@@ -92,8 +91,7 @@ am__aclocal_m4_deps = $(top_srcdir)/m4/ac_cxx_rtti.m4 \
 	$(top_srcdir)/m4/nemesis.m4 $(top_srcdir)/m4/netcdf.m4 \
 	$(top_srcdir)/m4/parmetis.m4 $(top_srcdir)/m4/petsc.m4 \
 	$(top_srcdir)/m4/precision.m4 \
-	$(top_srcdir)/m4/prefix_config.m4 $(top_srcdir)/m4/qhull.m4 \
-	$(top_srcdir)/m4/sanitize.m4 $(top_srcdir)/m4/sfc.m4 \
+	$(top_srcdir)/m4/prefix_config.m4 $(top_srcdir)/m4/sfc.m4 \
 	$(top_srcdir)/m4/slepc.m4 $(top_srcdir)/m4/sstream.m4 \
 	$(top_srcdir)/m4/strstream.m4 $(top_srcdir)/m4/tbb.m4 \
 	$(top_srcdir)/m4/tecio.m4 $(top_srcdir)/m4/tecplot.m4 \
@@ -672,7 +670,6 @@ GREP = @GREP@
 GXX_VERSION = @GXX_VERSION@
 GZSTREAM_INCLUDE = @GZSTREAM_INCLUDE@
 GZSTREAM_LIB = @GZSTREAM_LIB@
-HAVE_CXX11 = @HAVE_CXX11@
 HAVE_DOT = @HAVE_DOT@
 HAVE_GCOV_TOOLS = @HAVE_GCOV_TOOLS@
 HDF5_CFLAGS = @HDF5_CFLAGS@
@@ -759,7 +756,6 @@ PTHREAD_CC = @PTHREAD_CC@
 PTHREAD_CFLAGS = @PTHREAD_CFLAGS@
 PTHREAD_LIBS = @PTHREAD_LIBS@
 PWD = @PWD@
-QHULL_LIBS = @QHULL_LIBS@
 RANLIB = @RANLIB@
 RPATHFLAG = @RPATHFLAG@
 SED = @SED@
@@ -915,17 +911,17 @@ sources = $(data) run.sh
 #
 # how to make documentation
 #
-CLEANFILES = out_*.e $(example_name).html stdout.log
+CLEANFILES = out_*.e $(example_name).php stdout.log
 
 ######################################################################
 #
 # Common environment for all examples
-#
+# 
 # This file is included by *every* example.  If we are careful, common
-# rules like 'make doc' or 'make run' can be defined here, once and
+# rules like 'make doc' or 'make run' can be defined here, once and 
 # for all.
-#
-AUTOMAKE_OPTIONS = subdir-objects
+# 
+AUTOMAKE_OPTIONS = subdir-objects 
 AM_CPPFLAGS = $(libmesh_optional_INCLUDES) -I$(top_builddir)/include
 AM_CFLAGS = $(libmesh_CFLAGS)
 AM_CXXFLAGS = $(libmesh_CXXFLAGS)
@@ -2370,9 +2366,9 @@ uninstall-am: uninstall-dataDATA
 # Convenience method: 'make run'
 run: $(check_PROGRAMS)
 	LIBMESH_DIR=$(abs_top_srcdir) METHODS="$(METHODS)" $(srcdir)/$(check_SCRIPTS)
-doc: $(example_name).html
-html: $(example_name).html
-$(example_name).html: $(DOC_PROGRAM) \
+doc: $(example_name).php
+html: $(example_name).php
+$(example_name).php: $(DOC_PROGRAM) \
                         $(top_srcdir)/contrib/bin/ex2html.sh \
                        Makefile
 	$(MAKE) METHODS=$(DOC_METHOD) -s run > stdout.log
