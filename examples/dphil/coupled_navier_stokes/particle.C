@@ -12,7 +12,7 @@ Particle::Particle (EquationSystems& es_in,Point& p, const Elem* element, unsign
 
 	TransientLinearImplicitSystem * system;
 	system =
-  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
 	position = p;
 
@@ -127,7 +127,7 @@ NumberVectorValue Particle::compute_velocity ()
   // Get a reference to the Stokes system object.
 	TransientLinearImplicitSystem * system;
 	system =
-  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
 	// Get variable numbers
   const unsigned int u_var = system->variable_number ("u");
@@ -298,7 +298,7 @@ void Particle::move ()
 
 	TransientLinearImplicitSystem * system;
 	system =
-  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
 	const MeshBase& mesh = es->get_mesh();
 
@@ -405,7 +405,7 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 
 	TransientLinearImplicitSystem * system;
 	system =
-  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
 	const MeshBase& mesh = es->get_mesh();
 

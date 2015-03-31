@@ -19,12 +19,12 @@ void OptimisedStabilisedAssembler3D::assemble(ErrorVector&)// error_vector)
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	if(es->parameters.get<bool> ("discontinuous_linear_neumann"))

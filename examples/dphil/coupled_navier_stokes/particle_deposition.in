@@ -13,14 +13,14 @@ particle_deposition_surface = 0		#surface on which particles are deposited
 brownian_motion_magnitude = 0.;	#adds random vector of sqrt(3)*mag to the velocity at each time step
 
 #some parameters
-particle_diameter = 10.e-6			#2.5-30 um
+particle_diameter = 10.0e-6			#2.5-30 um
 particle_density = 1200.
 particle_air_density = 1.2
 particle_air_viscosity = 2.04e-5
 mean_free_path = 68.0e-9
 gravity = 9.81
 # 0 is normal gravity in -z direction or -y direction, 1 - user defined gravity, 2 - in the direction of surface deposition boundary/trachea
-gravity_type = 2		
+gravity_type = 1		
 gravity_x = 1.0
 gravity_y = 0.
 gravity_z = 0.

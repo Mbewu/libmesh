@@ -213,7 +213,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 	}
 	
 
-	//now should be sorted by generation
+	//now should be sorted by generation, this is so that it is easier computationally to find parents etc
 	//now we need vector with the starting positions of each generation
 	std::vector<int> generation_start;
 	int current_gen = -1;
@@ -230,7 +230,13 @@ void NavierStokesCoupled::read_1d_mesh ()
 	std::cout << "kkkkkk" << std::endl;	
 	//set the number of generations, num generations is NOT max generation number.
 	es->parameters.set<unsigned int> ("num_generations_1") = generation_start.size();
-	num_generations.push_back(generation_start.size());
+
+	// this is needed for the particle deposition
+	if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+		num_generations.push_back(generation_start.size() + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+	else
+		num_generations.push_back(generation_start.size());
+	
 
 	//need a dummy generation denoting the end
 	generation_start.push_back(edge_1d_data.size());
@@ -239,7 +245,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 	//now we need to create the element_data vector
 	// we now add an extra bit to the element data vector with the flow and current efficiency
-	element_data.resize(edge_1d_data.size(),std::vector<double>(11,-1));
+	element_data.resize(edge_1d_data.size(),std::vector<double>(12,-1));
 	for(unsigned int i=0; i<edge_1d_data.size(); i++)
 	{
 		unsigned int elem_number = edge_1d_data[i][0];
@@ -331,7 +337,14 @@ void NavierStokesCoupled::read_1d_mesh ()
 		element_data[elem_number][9] = 0;	//the flow rate in this tube for the current time step
 		element_data[elem_number][10] = 0;	//the efficiency in this tube for the current time step
 
+		//num alveolar generations
+		element_data[elem_number][11] = 0;	//number of alveolar generations emanating from this branch
+
+
 	}
+
+	calculate_num_alveloar_generations_for_tree();
+
 
 	std::cout << "kkkkkkkk" << std::endl;	
 	//for(unsigned int i=0; i<element_data.size();i++)
@@ -362,6 +375,16 @@ void NavierStokesCoupled::read_1d_mesh ()
 	
 	std::cout << " finished setting up 1d mesh from file" << std::endl;
 }
+
+
+
+void NavierStokesCoupled::calculate_num_alveloar_generations_for_tree()
+{
+	for(unsigned int i=0; i<element_data.size(); i++)
+		if((int)element_data[i][1] == -1 && (int)element_data[i][2] == -1)
+			element_data[i][11] = es->parameters.get<unsigned int> ("num_alveolar_generations");
+}
+
 
 
 
@@ -432,7 +455,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			// for each element/segment, assuming same numbering convention
 			// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 			// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
-			element_data.push_back(std::vector<double>(11,-1));
+			element_data.push_back(std::vector<double>(12,-1));
 			element_data[element_data.size() - 1][0] = -1;
 			element_data[element_data.size() - 1][5] = initial_segment_length;
 			element_data[element_data.size() - 1][6] = element_data[element_data.size() - 1][5]/length_diam_ratio/2.0;	//this is the radius no diameter
@@ -441,15 +464,27 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			//particle deposition stuff
 			element_data[element_data.size() - 1][9] = 0;	//the flow rate in this tube for the current time step
 			element_data[element_data.size() - 1][10] = 0;	//the efficiency in this tube for the current time step
+			element_data[element_data.size() - 1][11] = 0;	//num alveolar generations
 
 			create_1d_tree(vertices,cell_vertices,num_generations_1);
 			num_generations.push_back(num_generations_1);
 
+			// this is needed for the particle deposition in alveoli
+			if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+				num_generations.push_back(num_generations_1 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+			else
+				num_generations.push_back(num_generations_1);
+
+	
 			add_1d_tree_to_mesh(vertices,cell_vertices, i);
 
 			subdomains_1d.push_back(i);
 			
 		}
+
+		// only need to do this once
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			calculate_num_alveloar_generations_for_tree();
 		
 	}
 	else if(es->parameters.get<unsigned int> ("num_1d_trees") == 2)
@@ -478,7 +513,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		// for each element/segment, assuming same numbering convention
 		// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 		// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
-		element_data.push_back(std::vector<double>(11,-1));
+		element_data.push_back(std::vector<double>(12,-1));
 		element_data[0][0] = -1;
 		element_data[0][5] = initial_segment_length;
 		element_data[0][6] = element_data[0][5]/length_diam_ratio/2.0;	//this is the radius no diameter
@@ -487,13 +522,19 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		//particle deposition stuff
 		element_data[0][9] = 0;	//the flow rate in this tube for the current time step
 		element_data[0][10] = 0;	//the efficiency in this tube for the current time step
+		element_data[0][11] = 0;	//num alveolar generations
 
 	
 	
 		
 		create_1d_tree(vertices,cell_vertices,num_generations_1);
-		num_generations.push_back(num_generations_1);
 
+		// this is needed for alveolar deposition
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			num_generations.push_back(num_generations_1 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+		else
+			num_generations.push_back(num_generations_1);
+	
 		unsigned int subdomain_id_a = 1;
 
 		add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id_a);
@@ -528,7 +569,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		// for each element/segment, assuming same numbering convention
 		// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 		// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
-		element_data.push_back(std::vector<double>(11,-1));
+		element_data.push_back(std::vector<double>(12,-1));
 		element_data[element_data.size() - 1][0] = -1;
 		element_data[element_data.size() - 1][5] = initial_segment_length;
 		element_data[element_data.size() - 1][6] = element_data[element_data.size() - 1][5]/length_diam_ratio/2.0;	// radius not diam
@@ -537,9 +578,20 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		//particle deposition stuff
 		element_data[element_data.size() - 1][9] = 0;	//the flow rate in this tube for the current time step
 		element_data[element_data.size() - 1][10] = 0;	//the efficiency in this tube for the current time step
+		element_data[element_data.size() - 1][11] = 0;	//num_alveolar_generations
 
 		create_1d_tree(vertices,cell_vertices,num_generations_2);
-		num_generations.push_back(num_generations_2);
+
+		// this is needed for alveolar deposition
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			num_generations.push_back(num_generations_2 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+		else
+			num_generations.push_back(num_generations_2);
+	
+
+		// only need to do this once
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			calculate_num_alveloar_generations_for_tree();
 
 		unsigned int subdomain_id_b = 2;
 		add_1d_tree_to_mesh(vertices,cell_vertices,subdomain_id_b);
@@ -573,7 +625,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		// for each element/segment, assuming same numbering convention
 		// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 		// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
-		element_data.push_back(std::vector<double>(11,-1));
+		element_data.push_back(std::vector<double>(12,-1));
 		element_data[0][0] = -1;
 		element_data[0][5] = initial_segment_length;
 		element_data[0][6] = element_data[0][5]/length_diam_ratio/2.0;	//this is the radius no diameter
@@ -582,9 +634,20 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		//particle deposition stuff
 		element_data[0][9] = 0;	//the flow rate in this tube for the current time step
 		element_data[0][10] = 0;	//the efficiency in this tube for the current time step
+		element_data[0][11] = 0;	//num_alveolar_generations
 
 		create_1d_tree(vertices,cell_vertices,num_generations_1);
-		num_generations.push_back(num_generations_1);
+
+		// this is needed for alveolar deposition
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			num_generations.push_back(num_generations_1 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+		else
+			num_generations.push_back(num_generations_1);
+
+		// only need to do this once
+		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
+			calculate_num_alveloar_generations_for_tree();
+
 
 		unsigned int subdomain_id_a = 1;
 
@@ -673,7 +736,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 
 			//update the data
 			element_data[parent_segment + j + element_offset][1] = cell_vertices.size() - 1 + element_offset;
-			element_data.push_back(std::vector<double>(11,-1));
+			element_data.push_back(std::vector<double>(12,-1));
 			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][4] = 1;
@@ -684,6 +747,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			//particle deposition stuff
 			element_data[cell_vertices.size() - 1 + element_offset][9] = 0;	//the flow rate in this tube for the current time step
 			element_data[cell_vertices.size() - 1 + element_offset][10] = 0;	//the efficiency in this tube for the current time step
+			element_data[cell_vertices.size() - 1 + element_offset][11] = 0;	//num_alveolar_generations
 
 			vertices.push_back(p1);
 			segment[0] = parent_start_node + j;
@@ -692,7 +756,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 
 			//update the data
 			element_data[parent_segment + j + element_offset][2] = cell_vertices.size() - 1 + element_offset;
-			element_data.push_back(std::vector<double>(11,-1));
+			element_data.push_back(std::vector<double>(12,-1));
 			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() - 2 + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][4] = 0;
@@ -703,6 +767,8 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			//particle deposition stuff
 			element_data[cell_vertices.size() - 1 + element_offset][9] = 0;	//the flow rate in this tube for the current time step
 			element_data[cell_vertices.size() - 1 + element_offset][10] = 0;	//the efficiency in this tube for the current time step
+			element_data[cell_vertices.size() - 1 + element_offset][11] = 0;	//num_alveolar_generations
+
 		}
 	
 		parent_start_node += pow(2,i-1);
@@ -1035,12 +1101,12 @@ void NavierStokesCoupled::write_1d_solution()
 	if(sim_type == 5)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 	
 	
@@ -1115,11 +1181,12 @@ void NavierStokesCoupled::solve_1d_system()
 
 	std::string prefix_1d = "ns1d_";
 	system_linear_solver->set_prefix(prefix_1d);
+	system_linear_solver->init();	// set the name
 
 
 	// Assemble & solve the linear system.
 	perf_log.push("Linear 1D solve");
-	es->get_system("Navier-Stokes-1D").solve();
+	es->get_system("ns1d").solve();
 	perf_log.pop("Linear 1D solve");
 
 
@@ -1190,12 +1257,12 @@ void NavierStokesCoupled::convert_1d_monomial_to_nodal(NumericVector<Number>& ve
 	if(sim_type == 5)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -1247,12 +1314,12 @@ void NavierStokesCoupled::convert_1d_nodal_to_monomial(NumericVector<Number>& ve
 	if(sim_type == 5)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -1309,12 +1376,12 @@ void NavierStokesCoupled::scale_1d_solution_vector(double flux_scaling=1.0,doubl
 	if(sim_type == 5)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -1372,12 +1439,12 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	if(sim_type == 5)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
 
@@ -1599,6 +1666,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	{
 		std::cout << "WARNING: no 1d trees so no need to output num trees per generation/order" << std::endl;
 	}
+
+	std::cout << "end outputing"<< std::endl;
 }
 
 

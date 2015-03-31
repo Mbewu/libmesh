@@ -42,6 +42,9 @@
 
 #include "ns_assembler_3d.h"
 
+// include for preconditioner getting pressure dofs on side
+#include "libmesh/fe_interface.h"
+
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
 

@@ -179,12 +179,12 @@ void NSAssembler3D::find_1d_boundary_nodes()
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   const unsigned int p_var = system->variable_number ("P");
@@ -252,12 +252,12 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	// clear the rhs before adding things in for flux
@@ -395,12 +395,12 @@ double NSAssembler3D::calculate_pressure(const int boundary_id)
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	// clear the rhs before adding things in for flux
@@ -551,12 +551,12 @@ void NSAssembler3D::calculate_peclet_number(ErrorVector& error_vector)
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	// Problem parameters
@@ -684,12 +684,12 @@ double NSAssembler3D::calculate_l2_norm(const unsigned int var_to_calc, bool ref
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	// clear the rhs before adding things in for flux
@@ -867,24 +867,19 @@ void NSAssembler3D::assemble_preconditioner ()
 	if(pressure_coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-	  	&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-3D");
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 	//here we just copy the matrix
-	if(es->parameters.get<unsigned int>("preconditioner_type"))
+	// the stokes pressure mass matrix preconditioner
+	if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
 	{
-		SparseMatrix<Number>* preconditioner = system->request_matrix("Preconditioner");
-		SparseMatrix<Number>* system_matrix = system->request_matrix("System Matrix");
-		std::cout << "here" << std::endl;
-		preconditioner->zero();
-		std::cout << "here" << std::endl;
-		preconditioner->add(1.0,*system_matrix);
-		std::cout << "here" << std::endl;
-		preconditioner->close();
+		system->get_matrix("Preconditioner").close();
 	}
 }
+

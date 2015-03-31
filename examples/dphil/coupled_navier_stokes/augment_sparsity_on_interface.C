@@ -19,12 +19,13 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 	if(coupled)
 	{
 		system =
-			&es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+			&es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
+
 	else
 	{
 		system =
-			&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+			&es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
 
@@ -136,12 +137,12 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		if(coupled)
 		{
 			system =
-				&es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+				&es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 		}
 		else
 		{
 			system =
-				&es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+				&es->get_system<TransientLinearImplicitSystem> ("ns1d");
 		}
 
 

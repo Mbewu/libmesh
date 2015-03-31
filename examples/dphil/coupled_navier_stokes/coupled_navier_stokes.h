@@ -142,12 +142,57 @@
 #include "hofmann_particle_deposition.h"
 
 
+// Needed for cast to petsc matrix
+#include "libmesh/petsc_matrix.h"
+
+
 
 #include "libmesh/point_locator_base.h"
 
 #include <boost/bind.hpp>
 
-//
+// *** stuff for shell pc
+
+/* Define context for user-provided preconditioner */
+typedef struct {
+  Mat pressure_mass_matrix;
+  Mat pressure_laplacian_matrix;
+  Mat pressure_laplacian_preconditioner;
+  Mat pressure_convection_diffusion_matrix;
+  KSP inner_mass_ksp;
+  KSP inner_lap_ksp;
+	Vec temp_vec;
+	Vec temp_vec_2;
+} NSShellPC;
+
+/* Define context for user-provided matrix A_p = BQ^-1Bt */
+
+typedef struct {
+  //Mat velocity_diag;
+  Mat velocity_mass_matrix;
+  Mat pressure_laplacian_matrix;
+  //Mat b_matrix;
+  //Mat bt_matrix;
+	KSP schur_ksp;
+	PetscInt m;
+	PetscInt n;
+} PCD2ShellMatrixCtx;
+
+
+
+/* Declare routines for user-provided preconditioner */
+extern PetscErrorCode ShellPCCreate(NSShellPC**);
+extern PetscErrorCode PressureShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode PressureShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode PCDShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
+extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
+extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode ShellPCDestroy(PC);
+
+/* Declare routines for user-provided A_p = BQ^-1Bt */
+extern PetscErrorCode MatShellMultFull(Mat,Vec,Vec);
+//extern PetscErrorCode MatShellMultDiag(Mat,Vec,Vec);
 
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
@@ -234,6 +279,8 @@ public:
 
 	void create_1d_tree(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int num_generations);
 
+	void calculate_num_alveloar_generations_for_tree();
+
 	// convert the 1d part of a vector from monomial to nodal
 	void convert_1d_monomial_to_nodal(NumericVector<Number>& vector);
 
@@ -276,6 +323,10 @@ public:
 	void setup_variable_scalings();
 
 	void add_to_variable_scalings(unsigned int var, double scaling);
+
+	//PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
+
+	void construct_petsc_options_string();
 
 
 private:
@@ -375,7 +426,25 @@ private:
 	std::vector<double> var_scalings;
 	std::vector<double> total_efficiency;
 
+	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
+	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation
+	int total_particles_inhaled;
+	int total_gmres_iterations;
+	int max_gmres_iterations;
+	int stokes_gmres_iterations;
+
+	// preconditioner stuff
+	PetscMatrix<Number>* pressure_mass_matrix;
+	PetscMatrix<Number>* scaled_pressure_mass_matrix;
+	PetscMatrix<Number>* pressure_laplacian_matrix;
+	PetscMatrix<Number>* pressure_convection_diffusion_matrix;
+	PetscMatrix<Number>* schur_complement_approx;
+	PetscMatrix<Number>* velocity_mass_matrix;
+	NSShellPC  *shell;    /* user-defined preconditioner context */
+
+	PCD2ShellMatrixCtx mat_ctx;
 
 };
 
 // **************************************************************** //
+

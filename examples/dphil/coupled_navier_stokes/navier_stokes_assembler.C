@@ -42,12 +42,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 	if(coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -203,11 +203,6 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			if(es->parameters.get<bool> ("reynolds_number_calculation"))
 				reynolds_number = es->parameters.get<double> ("reynolds_number");
 
-			if(generation < 0)
-			{
-				std::cout << "fuck, a generation is not set" << std::endl;
-				std::exit(0);
-			}
 
 			//1d resistance types
 			if(resistance_type_1d == 0)
@@ -239,7 +234,9 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			else if(resistance_type_1d == 2)
 			{
 				double gamma = 0;
-				if(generation < 8)
+				if(generation < 0)		//alveolar
+					gamma = ertbruggen_gamma[8];
+				else if(generation < 8)
 					gamma = ertbruggen_gamma[generation];
 				else
 					gamma = ertbruggen_gamma[8];
@@ -254,7 +251,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			{
 				double constant = 0;
 				//lobar bronchi defined as generation less than equal 2, but doesn't quite get it, oops
-				if(generation > 2)
+				if(generation > 2 || generation < 0)
 					constant = 1.0;
 				else
 					constant = 3.4;
@@ -385,13 +382,13 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					if(es->parameters.get<unsigned int> ("bc_type_1d") == 0)
 					{
 						// now there is no zero on the 3rd equation
-						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn
+						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn - not anymore it isn't
 				  	system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0*dt);
 						//std::cout << "dt = " << dt << std::endl;
 						std::cout << "flux_values[" << subdomain_id <<"] = " << flux_values[subdomain_id] << std::endl;
 						if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
 						{
-					  	system->rhs->add (eqn_3_dof,-flux_values[subdomain_id]*dt);
+					  	system->rhs->add (eqn_3_dof,-flux_values[subdomain_id]);
 						}
 					}
 					// pressure
@@ -472,12 +469,12 @@ void NavierStokesAssembler::assemble_stokes_1D ()
 	if(coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -766,12 +763,12 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
 	if(coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system
@@ -852,12 +849,12 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
 	if(coupled)
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Coupled-Navier-Stokes");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
-		  &es->get_system<TransientLinearImplicitSystem> ("Navier-Stokes-1D");
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
 	}
 
   // Numeric ids corresponding to each variable in the system

@@ -53,9 +53,19 @@ public:
 		if(threed)
 		{
 			if(!es->parameters.get<bool>("flat_lid_driven_cavity"))
-				return (1.0 - z) * z * (1 - x) * x / (0.5*0.5*0.5*0.5)*es->parameters.get<double>("time_scaling");
+			{
+				if(p(1) > es->parameters.get<double>("cube_width")-1e-8)
+					return (es->parameters.get<double>("cube_width") - z) * z * (es->parameters.get<double>("cube_width") - x) * x / pow(0.5*es->parameters.get<double>("cube_width"),3.0)*es->parameters.get<double>("time_scaling");
+				else
+					return 0.;
+			}
 			else
-				return es->parameters.get<double>("time_scaling");
+			{
+				if(p(1) > es->parameters.get<double>("cube_width")-1e-8)
+					return es->parameters.get<double>("time_scaling");
+				else
+					return 0.;
+			}
 		}
 		else
 		{

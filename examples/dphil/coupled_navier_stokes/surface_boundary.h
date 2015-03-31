@@ -580,21 +580,37 @@ public:
 				double angle = 0.;
 				double correct_radius = 0.;
 				// do separately for each region
-				if(transformed_p(0) * transformed_p(1) >= 0)
+				if(fabs(transformed_p(0)) < 1e-10 || fabs(transformed_p(1)) < 1e-10)
+				{
+					correct_radius = 0.5;
+				}
+				else if(transformed_p(0) * transformed_p(1) > 0)
 				{
 					angle = atan(transformed_p(1)/transformed_p(0));
 					if(angle < M_PI/4.)
-						correct_radius = 0.5 * sin(angle);
+					{
+						//correct_radius = 0.5 * sin(angle);
+						correct_radius = 0.5 / cos(angle);
+					}
 					else
-						correct_radius = 0.5 * sin(M_PI - angle);						
+					{
+						//correct_radius = 0.5 * sin(M_PI - angle);
+						correct_radius = 0.5 / cos(M_PI/2. - angle);												
+					}
 				}
 				else if(transformed_p(0)*transformed_p(1) < 0)
 				{
 					angle = atan(-transformed_p(1)/transformed_p(0));
 					if(angle < M_PI/4.)
-						correct_radius = 0.5 * sin(angle);
+					{
+						//correct_radius = 0.5 * sin(angle);
+						correct_radius = 0.5 / cos(angle);
+					}
 					else
-						correct_radius = 0.5 * sin(M_PI - angle);						
+					{
+						//correct_radius = 0.5 * sin(M_PI - angle);
+						correct_radius = 0.5 / cos(M_PI/2. - angle);												
+					}
 				}
 				else
 				{
