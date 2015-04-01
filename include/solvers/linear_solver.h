@@ -158,6 +158,8 @@ public:
                                                const double,      // Stopping tolerance
                                                const unsigned int) = 0; // N. Iterations
 
+
+
   /**
    * Function to solve the adjoint system. Note that this method
    * will compute the preconditioner from the system matrix. This is not a pure virtual
@@ -180,6 +182,7 @@ public:
                                                NumericVector<T>&, // RHS vector
                                                const double,      // Stopping tolerance
                                                const unsigned int) = 0; // N. Iterations
+
 
   /**
    * This function calls the solver "_solver_type" preconditioned with

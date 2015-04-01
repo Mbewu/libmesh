@@ -175,6 +175,7 @@ void LinearSolver<T>::print_converged_reason() const
   libMesh::out << "Linear solver convergence/divergence reason: " << Utility::enum_to_string(reason) << std::endl;
 }
 
+
 //------------------------------------------------------------------
 // Explicit instantiations
 template class LinearSolver<Number>;

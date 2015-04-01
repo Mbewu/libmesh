@@ -2061,14 +2061,16 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 			std::cout << "k" << std::endl;
 			Mat Amat, Pmat;
-			MatStructure mat_structure;
+			//MatStructure mat_structure;
 
 			std::cout << "k" << std::endl;
 			//MatView(scaled_pressure_mass_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-			ierr = KSPGetOperators(subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+			//ierr = KSPGetOperators(subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+			ierr = KSPGetOperators(subksp[1],&Amat,&Pmat); CHKERRQ(ierr);
 			ierr = PetscObjectReference((PetscObject)Amat); CHKERRQ(ierr);
-			ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
-			ierr = KSPSetOperators(subksp[1],scaled_pressure_mass_matrix->mat(),scaled_pressure_mass_matrix->mat(),mat_structure); CHKERRQ(ierr);
+			//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+			//ierr = KSPSetOperators(subksp[1],scaled_pressure_mass_matrix->mat(),scaled_pressure_mass_matrix->mat(),mat_structure); CHKERRQ(ierr);
+			ierr = KSPSetOperators(subksp[1],scaled_pressure_mass_matrix->mat(),scaled_pressure_mass_matrix->mat()); CHKERRQ(ierr);
 			
 			std::cout << "k" << std::endl;
 			
@@ -2179,8 +2181,9 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			
 			//get operators from the outer pcshell solver
 			Mat Amat, Pmat;
-			MatStructure mat_structure;
-			ierr = KSPGetOperators(subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+			//MatStructure mat_structure;
+			//ierr = KSPGetOperators(subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+			ierr = KSPGetOperators(subksp[1],&Amat,&Pmat); CHKERRQ(ierr);
 
 			// set ksp to preonly because we are defining the inverse
 			ierr = KSPSetType(subksp[1], KSPPREONLY); CHKERRQ(ierr);
@@ -2331,7 +2334,8 @@ PetscErrorCode ShellPCCreate(NSShellPC **shell)
   NSShellPC  *newctx;
   PetscErrorCode ierr;
 
-  ierr         = PetscNew(NSShellPC,&newctx);CHKERRQ(ierr);
+  //ierr         = PetscNew(NSShellPC,&newctx);CHKERRQ(ierr);
+	ierr         = PetscNew(&newctx);CHKERRQ(ierr);
   newctx->pressure_mass_matrix = 0;
   newctx->pressure_laplacian_matrix = 0;
 	newctx->pressure_laplacian_preconditioner = 0;
@@ -2379,15 +2383,17 @@ PetscErrorCode PressureShellPCSetUp(PC pc,Mat pressure_mass_matrix, KSP schur_ks
 
 	//get operators from the outer pcshell solver
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
-	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//MatStructure mat_structure;
+	//ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
 	ierr = PetscObjectReference((PetscObject)Pmat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// will sort out the preconditioner matrix later on cause it will change
-	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
 
   shell->pressure_mass_matrix = pressure_mass_matrix;
 	shell->inner_mass_ksp = inner_mass_ksp;
@@ -2418,16 +2424,19 @@ PetscErrorCode PCDShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapla
 
 	//get operators from the outer pcshell solver
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
-	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//MatStructure mat_structure;
+	//ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
 	ierr = PetscObjectReference((PetscObject)Pmat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// will sort out the preconditioner matrix later on cause it will change
-	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat); CHKERRQ(ierr);
 
 
   // create some vectors for temporary pc applying
@@ -2476,16 +2485,19 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
 
 	//get operators from the outer pcshell solver
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
-	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//MatStructure mat_structure;
+	//ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
 	ierr = PetscObjectReference((PetscObject)Pmat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// will sort out the preconditioner matrix later on cause it will change
-	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(inner_lap_ksp,Amat,Pmat); CHKERRQ(ierr);
 
 
   // create some vectors for temporary pc applying
@@ -2557,16 +2569,18 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 
 	// setup up the operators for the first inner solve
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
+	//MatStructure mat_structure;
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// for some reason, the Amat is not set for this inner yet, i think it is 
 	// okay to just define my own since it is just a preconditioner
-	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
 
 	ierr = PCApply(local_mass_pc,x,y); CHKERRQ(ierr);
 	PetscInt num_mass_its = 0;
@@ -2613,20 +2627,22 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 
 	// setup up the operators for the first inner solve
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
+	//MatStructure mat_structure;
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	// ********** Apply A_p^-1 *********** //
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// for some reason, the Amat is not set for this inner yet, i think it is 
 	// okay to just define my own since it is just a preconditioner
 	//KSPSetOperators(local_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix,mat_structure);
 	//ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_preconditioner,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix); CHKERRQ(ierr);
 
 	
 	ierr = PCApply(local_lap_pc,x,shell->temp_vec);CHKERRQ(ierr);
@@ -2671,18 +2687,20 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// for some reason, the Amat is not set for this inner yet, i think it is 
 	// okay to just define my own since it is just a preconditioner
 	//ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
 
 	ierr = PCApply(local_mass_pc,shell->temp_vec_2,y); CHKERRQ(ierr);
 	//PCApply(local_mass_pc,x,y);
@@ -2730,20 +2748,22 @@ PetscErrorCode PCD2ShellPCApply(PC pc,Vec x,Vec y)
 
 	// setup up the operators for the first inner solve
 	Mat Amat, Pmat;
-	MatStructure mat_structure;
+	//MatStructure mat_structure;
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(shell->inner_mass_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	// ********** Apply M_p^-1 *********** //
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// for some reason, the Amat is not set for this inner yet, i think it is 
 	// okay to just define my own since it is just a preconditioner
 	//KSPSetOperators(local_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix,mat_structure);
 	//ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_preconditioner,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
 
 	
 	ierr = PCApply(local_mass_pc,x,shell->temp_vec);CHKERRQ(ierr);
@@ -2788,18 +2808,20 @@ PetscErrorCode PCD2ShellPCApply(PC pc,Vec x,Vec y)
 	
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
+	ierr = KSPGetOperators(shell->inner_lap_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 
 	ierr = PetscObjectReference((PetscObject)Amat);  CHKERRQ(ierr);
-	ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
+	//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
 
 	// for some reason, the Amat is not set for this inner yet, i think it is 
 	// okay to just define my own since it is just a preconditioner
 	//ierr = KSPSetOperators(local_lap_ksp,shell->pressure_lap_matrix,shell->pressure_lap_matrix,mat_structure); CHKERRQ(ierr);
-	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_preconditioner,mat_structure); CHKERRQ(ierr);
+	//ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_preconditioner,mat_structure); CHKERRQ(ierr);
+	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_preconditioner); CHKERRQ(ierr);
 
 	ierr = PCApply(local_lap_pc,shell->temp_vec_2,y); CHKERRQ(ierr);
 	//PCApply(local_lap_pc,x,y);
@@ -2860,16 +2882,18 @@ PetscErrorCode MatShellMultFull(Mat A, Vec vx, Vec vy)
 
 	// setup up the operators for the first inner solve
 	Mat S, Pmat;
-	MatStructure mat_structure;
+	//MatStructure mat_structure;
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	ierr = KSPGetOperators(schur_ksp,&S,NULL,NULL); CHKERRQ(ierr);
+	//ierr = KSPGetOperators(schur_ksp,&S,NULL,NULL); CHKERRQ(ierr);
+	ierr = KSPGetOperators(schur_ksp,&S,NULL); CHKERRQ(ierr);
 
 	Mat A00;
 	Mat Bt;
 	Mat B;
 
-	ierr = MatSchurComplementGetSubmatrices(S,&A00,NULL,&Bt,&B,NULL);
+	//ierr = MatSchurComplementGetSubmatrices(S,&A00,NULL,&Bt,&B,NULL);
+	ierr = MatSchurComplementGetSubMatrices(S,&A00,NULL,&Bt,&B,NULL);
 
 	//MatView(S,PETSC_VIEWER_STDOUT_SELF);
 	//MatView(B,PETSC_VIEWER_STDOUT_SELF);

@@ -160,6 +160,35 @@ public:
     return this->solve(matrix_in, matrix_in, solution_in, rhs_in, tol, m_its);
   }
 
+  /**
+   * Call the Petsc solver.  It calls the method below, using the
+   * same matrix for the system and preconditioner matrices.
+   */
+  std::pair<unsigned int, Real>
+  solve_simple (SparseMatrix<T>  &matrix_in,
+         NumericVector<T> &solution_in,
+         NumericVector<T> &rhs_in,
+         const double tol,
+         const unsigned int m_its)
+  {
+    return this->solve_simple(matrix_in, matrix_in, solution_in, rhs_in, tol, m_its);
+  }
+
+
+  /**
+   * Call the Petsc solver.  It calls the method below, using the
+   * same matrix for the system and preconditioner matrices.
+   */
+  std::pair<unsigned int, Real>
+  solve_simple_setup (SparseMatrix<T>  &matrix_in,
+         NumericVector<T> &solution_in,
+         NumericVector<T> &rhs_in,
+         const double tol,
+         const unsigned int m_its)
+  {
+    return this->solve_simple_setup(matrix_in, matrix_in, solution_in, rhs_in, tol, m_its);
+  }
+
 
   /**
    * Call the Petsc solver.  It calls the method below, using the
@@ -195,6 +224,31 @@ public:
          NumericVector<T> &rhs,
          const double tol,
          const unsigned int m_its);
+
+	
+  /** JAMES EDIT
+   * This function sets up the operators for a solve with no restrict option
+   */
+  std::pair<unsigned int, Real>
+  solve_simple_setup (SparseMatrix<T>  &matrix,
+         SparseMatrix<T>  &preconditioner,
+         NumericVector<T> &solution,
+         NumericVector<T> &rhs,
+         const double tol,
+         const unsigned int m_its);
+
+
+  /** JAMES EDIT
+   * This function sets up the operators for a solve with no restrict option
+   */
+  std::pair<unsigned int, Real>
+  solve_simple (SparseMatrix<T>  &matrix,
+         SparseMatrix<T>  &preconditioner,
+         NumericVector<T> &solution,
+         NumericVector<T> &rhs,
+         const double tol,
+         const unsigned int m_its);
+
 
   /**
    * This function solves a system whose matrix is a shell matrix.

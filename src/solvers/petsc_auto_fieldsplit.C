@@ -39,9 +39,13 @@ void indices_to_fieldsplit (const Parallel::Communicator& comm,
                             PC my_pc,
                             const std::string& field_name)
 {
+
+	std::cout << "giving the indices to fieldsplit" << std::endl;
   const PetscInt *idx = PETSC_NULL;
   if (!indices.empty())
     idx = reinterpret_cast<const PetscInt*>(&indices[0]);
+
+	std::cout << "fieldname = " << field_name << std::endl;
 
   IS is;
   int ierr = ISCreateLibMesh(comm.get(), indices.size(),
@@ -50,6 +54,13 @@ void indices_to_fieldsplit (const Parallel::Communicator& comm,
 
   ierr = PCFieldSplitSetIS(my_pc, field_name.c_str(), is);
   CHKERRABORT(comm.get(), ierr);
+
+	PCType type;
+	ierr = PCGetType(my_pc,&type);
+  CHKERRABORT(comm.get(), ierr);
+
+	std::cout << "pc type = " << type << std::endl;
+
 }
 
 }
@@ -60,6 +71,9 @@ namespace libMesh
 void petsc_auto_fieldsplit (PC my_pc,
                             const System &sys)
 {
+
+	std::cout << "doing the autofieldsplit" << std::endl;
+
   std::string sys_prefix = "--solver_group_";
 
   if (libMesh::on_command_line("--solver_system_names"))
@@ -83,11 +97,14 @@ void petsc_auto_fieldsplit (PC my_pc,
 
           const std::string empty_string;
 
-          std::string group_name = libMesh::command_line_value
+					// JAMES EDIT:
+					// changed so that actually gets the command line bit
+          std::string group_name = libMesh::command_line_next
             (group_command, empty_string);
 
           if (group_name != empty_string)
             {
+							std::cout << "yeah doing " << var_name << " u figuring out now" << std::endl; 
               std::vector<dof_id_type> &indices =
                 group_indices[group_name];
               const bool prior_indices = !indices.empty();
@@ -98,16 +115,23 @@ void petsc_auto_fieldsplit (PC my_pc,
             }
           else
             {
+							std::cout << "yeah doing p now" << std::endl; 
               indices_to_fieldsplit (sys.comm(), var_idx, my_pc, var_name);
             }
         }
     }
-
+	
+	// want to do groups first
   for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
          i = group_indices.begin(); i != group_indices.end(); ++i)
     {
+			std::cout << "k doing U" << std::endl;
       indices_to_fieldsplit(sys.comm(), i->second, my_pc, i->first);
     }
+
+
+	//int ierr = PCSetDiagonalScale(my_pc,sys.solution->vec());
+  //CHKERRABORT(sys.comm().get(), ierr);
 }
 
 } // namespace libMesh

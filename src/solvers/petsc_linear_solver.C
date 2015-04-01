@@ -161,6 +161,7 @@ void PetscLinearSolver<T>::clear ()
 template <typename T>
 void PetscLinearSolver<T>::init (const char *name)
 {
+
   // Initialize the data structures if not done so already.
   if (!this->initialized())
     {
@@ -201,18 +202,35 @@ void PetscLinearSolver<T>::init (const char *name)
       ierr = KSPCreate (this->comm().get(), &_ksp);
       LIBMESH_CHKERRABORT(ierr);
 
+			// this option is usually not natively called so we add in our own prefix parameter
       if (name)
         {
+					std::cout << "hi" << std::endl;
           ierr = KSPSetOptionsPrefix(_ksp, name);
           LIBMESH_CHKERRABORT(ierr);
         }
+	
+			if(_prefix.c_str())
+				{
+					std::cout << "hi again" << std::endl;
+					ierr = KSPSetOptionsPrefix(_ksp,_prefix.c_str()); 
+          LIBMESH_CHKERRABORT(ierr);
+        }
+
+			
 
       // Create the preconditioner context
       ierr = KSPGetPC        (_ksp, &_pc);
       LIBMESH_CHKERRABORT(ierr);
 
+			//std::cout << "prefix = " << _prefix << std::endl;
       // Set user-specified  solver and preconditioner types
       this->set_petsc_solver_type();
+
+			//PCType type2;
+			//ierr = PCGetType(_pc,&type2);
+			//LIBMESH_CHKERRABORT(ierr);
+			//std::cout << "huh..pc type (in petsc init) = " << type2 << std::endl;
 
       // Set the options from user-input
       // Set runtime options, e.g.,
@@ -223,8 +241,7 @@ void PetscLinearSolver<T>::init (const char *name)
 
 			// JAMES EDIT:
 			// not sure this is necessary, think it is based on where it occurs in the 
-			// function
-			KSPSetOptionsPrefix(_ksp,_prefix.c_str());  
+			// function 
 
       ierr = KSPSetFromOptions (_ksp);
       LIBMESH_CHKERRABORT(ierr);
@@ -233,7 +250,6 @@ void PetscLinearSolver<T>::init (const char *name)
       // NOT NECESSARY!!!!
       //ierr = PCSetFromOptions (_pc);
       //LIBMESH_CHKERRABORT(ierr);
-
 
 #endif
 
@@ -488,12 +504,18 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
   PetscInt its=0, max_its = static_cast<PetscInt>(m_its);
   PetscReal final_resid=0.;
 
+	PCType type2;
+	ierr = PCGetType(_pc,&type2);
+	LIBMESH_CHKERRABORT(ierr);
+	std::cout << "pc type (in petsc solve beginning) = " << type2 << std::endl;
+
   // Close the matrices and vectors in case this wasn't already done.
   matrix->close ();
   precond->close ();
   solution->close ();
   rhs->close ();
 
+	std::cout << "k" << std::endl;
   //   // If matrix != precond, then this means we have specified a
   //   // special preconditioner, so reset preconditioner type to PCMAT.
   //   if (matrix != precond)
@@ -558,6 +580,8 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
                            PETSC_DEFAULT, // dtol   = divergence tolerance           (1.e+5)
                            max_its);
   LIBMESH_CHKERRABORT(ierr);
+
+
 
 
   // Set the solution vector to use
@@ -740,6 +764,8 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
       //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
 
+			KSPSetUp(_ksp);
+		std::cout << "after set operators" << std::endl;
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
@@ -757,50 +783,7 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
 
 
 	// JAMES EDIT:
-	// I think the point of this is to set the options at the correct point in 
-	// time..
-
-	// Set the options from user-input
-  // Set runtime options, e.g.,
-  //      -ksp_type <type> -pc_type <type> -ksp_monitor -ksp_rtol <rtol>
-  //  These options will override those specified above as long as
-  //  KSPSetFromOptions() is called _after_ any other customization
-  //  routines.
-
-	KSPSetOptionsPrefix(_ksp,_prefix.c_str());
-
-  ierr = KSPSetFromOptions (_ksp);
-  LIBMESH_CHKERRABORT(ierr);
-
-	// Not sure if this is necessary, or if it is already handled by KSPSetFromOptions?
-  // NOT NECESSARY!!!!
-  //ierr = PCSetFromOptions (_pc);
-  //LIBMESH_CHKERRABORT(ierr);
-
-
-  // Have the Krylov subspace method use our good initial guess
-  // rather than 0, unless the user requested a KSPType of
-  // preonly, which complains if asked to use initial guesses.
-#if PETSC_VERSION_LESS_THAN(3,0,0) || !PETSC_RELEASE_LESS_THAN(3,4,0)
-  // Pre-3.0 and petsc-dev (as of October 2012) use non-const versions
-  KSPType ksp_type;
-#else
-  const KSPType ksp_type;
-#endif
-
-  ierr = KSPGetType (_ksp, &ksp_type);
-         LIBMESH_CHKERRABORT(ierr);
-
-  if (strcmp(ksp_type, "preonly"))
-  {
-    ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_TRUE);
-           LIBMESH_CHKERRABORT(ierr);
-  }
-	else
-	{
-    ierr = KSPSetInitialGuessNonzero (_ksp, PETSC_FALSE);
-           LIBMESH_CHKERRABORT(ierr);
-	}
+	// do some stuff after operators have been set
 
 	// end JAMES EDIT
 
@@ -882,6 +865,140 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
     }
 
 #endif
+
+  STOP_LOG("solve()", "PetscLinearSolver");
+  // return the # of its. and the final residual norm.
+  return std::make_pair(its, final_resid);
+}
+
+
+template <typename T>
+std::pair<unsigned int, Real>
+PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,
+                             SparseMatrix<T>&  precond_in,
+                             NumericVector<T>& solution_in,
+                             NumericVector<T>& rhs_in,
+                             const double tol,
+                             const unsigned int m_its)
+{
+  START_LOG("solve()", "PetscLinearSolver");
+
+  // Make sure the data passed in are really of Petsc types
+  PetscMatrix<T>* matrix   = cast_ptr<PetscMatrix<T>*>(&matrix_in);
+  PetscMatrix<T>* precond  = cast_ptr<PetscMatrix<T>*>(&precond_in);
+  PetscVector<T>* solution = cast_ptr<PetscVector<T>*>(&solution_in);
+  PetscVector<T>* rhs      = cast_ptr<PetscVector<T>*>(&rhs_in);
+
+  this->init (matrix);
+
+  PetscErrorCode ierr=0;
+  PetscInt its=0, max_its = static_cast<PetscInt>(m_its);
+  PetscReal final_resid=0.;
+
+	PCType type2;
+	ierr = PCGetType(_pc,&type2);
+	LIBMESH_CHKERRABORT(ierr);
+	std::cout << "pc type (in petsc solve beginning) = " << type2 << std::endl;
+
+  // Close the matrices and vectors in case this wasn't already done.
+  matrix->close ();
+  precond->close ();
+  solution->close ();
+  rhs->close ();
+
+	std::cout << "k" << std::endl;
+  //   // If matrix != precond, then this means we have specified a
+  //   // special preconditioner, so reset preconditioner type to PCMAT.
+  //   if (matrix != precond)
+  //     {
+  //       this->_preconditioner_type = USER_PRECOND;
+  //       this->set_petsc_preconditioner_type ();
+  //     }
+
+
+	// JAMES EDIT:
+	// for some reason, KSPSetReusePreconditioner can't be found...
+
+#if PETSC_RELEASE_LESS_THAN(3,5,0)
+  ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat(),
+                         this->same_preconditioner ? SAME_PRECONDITIONER : DIFFERENT_NONZERO_PATTERN);
+
+#else
+  ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat());
+
+  //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+  //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+#endif
+
+	//KSPSetUp(_ksp);
+std::cout << "after set operators" << std::endl;
+  LIBMESH_CHKERRABORT(ierr);
+
+  if(this->_preconditioner)
+    {
+      this->_preconditioner->set_matrix(matrix_in);
+      this->_preconditioner->init();
+    }
+
+  // Set the tolerances for the iterative solver.  Use the user-supplied
+  // tolerance for the relative residual & leave the others at default values.
+	// don't want to use this, want to only set via command line
+  //ierr = KSPSetTolerances (_ksp, tol, PETSC_DEFAULT,
+  //                         PETSC_DEFAULT, max_its);
+  //LIBMESH_CHKERRABORT(ierr);
+
+
+
+  STOP_LOG("solve()", "PetscLinearSolver");
+  // return the # of its. and the final residual norm.
+  return std::make_pair(its, final_resid);
+}
+
+
+template <typename T>
+std::pair<unsigned int, Real>
+PetscLinearSolver<T>::solve_simple (SparseMatrix<T>&  matrix_in,
+                             SparseMatrix<T>&  precond_in,
+                             NumericVector<T>& solution_in,
+                             NumericVector<T>& rhs_in,
+                             const double tol,
+                             const unsigned int m_its)
+{
+  START_LOG("solve()", "PetscLinearSolver");
+
+  // Make sure the data passed in are really of Petsc types
+  PetscMatrix<T>* matrix   = cast_ptr<PetscMatrix<T>*>(&matrix_in);
+  PetscMatrix<T>* precond  = cast_ptr<PetscMatrix<T>*>(&precond_in);
+  PetscVector<T>* solution = cast_ptr<PetscVector<T>*>(&solution_in);
+  PetscVector<T>* rhs      = cast_ptr<PetscVector<T>*>(&rhs_in);
+
+  this->init (matrix);
+
+  PetscErrorCode ierr=0;
+  PetscInt its=0, max_its = static_cast<PetscInt>(m_its);
+  PetscReal final_resid=0.;
+
+	std::cout << "k" << std::endl;
+
+
+  // Solve the linear system
+  ierr = KSPSolve (_ksp, rhs->vec(), solution->vec());
+  LIBMESH_CHKERRABORT(ierr);
+
+	// JAMES EDIT:
+	// an actual useful thing where we can get the convergence reason
+	KSPConvergedReason reason;
+  ierr = KSPGetConvergedReason(_ksp,&reason);
+	petsc_converged_reason = reason;
+
+
+  // Get the number of iterations required for convergence
+  ierr = KSPGetIterationNumber (_ksp, &its);
+  LIBMESH_CHKERRABORT(ierr);
+
+  // Get the norm of the final residual to return to the user.
+  ierr = KSPGetResidualNorm (_ksp, &final_resid);
+  LIBMESH_CHKERRABORT(ierr);
 
   STOP_LOG("solve()", "PetscLinearSolver");
   // return the # of its. and the final residual norm.
