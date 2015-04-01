@@ -149,7 +149,7 @@
 
 #include "libmesh/point_locator_base.h"
 
-#include <boost/bind.hpp>
+//#include <boost/bind.hpp>
 
 // *** stuff for shell pc
 
