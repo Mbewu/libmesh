@@ -148,6 +148,48 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(particle_deposition == 1)
 		read_timesteps();
 
+
+  // Create a mesh, with dimension to be overridden later, distributed
+  // across the default MPI communicator.
+  Mesh mesh2(init.comm());
+  // Use the MeshTools::Generation mesh generator to create a uniform
+  // 2D grid on the square [-1,1]^2.  We instruct the mesh generator
+  // to build a mesh of 15x15 QUAD9 elements.  Building QUAD9
+  // elements instead of the default QUAD4's we used in example 2
+  // allow us to use higher-order approximation.
+  MeshTools::Generation::build_square (mesh2,
+                                       15, 15,
+                                       -1., 1.,
+                                       -1., 1.,
+                                       QUAD9);
+
+  // Print information about the mesh to the screen.
+  // Note that 5x5 QUAD9 elements actually has 11x11 nodes,
+  // so this mesh is significantly larger than the one in example 2.
+  mesh2.print_info();
+
+  // Create an equation systems object.
+  EquationSystems equation_systems (mesh2);
+
+  // Declare the Poisson system and its variables.
+  // The Poisson system is another example of a steady system.
+  equation_systems.add_system<LinearImplicitSystem> ("Poisson");
+
+  // Adds the variable "u" to "Poisson".  "u"
+  // will be approximated using second-order approximation.
+  equation_systems.get_system("Poisson").add_variable("u", SECOND);
+
+  // Give the system a pointer to the matrix assembly
+  // function.  This will be called when needed by the
+  // library.
+  //equation_systems.get_system("Poisson").attach_assemble_function (assemble_poisson);
+
+  // Initialize the data structures for the equation system.
+  equation_systems.init();
+
+
+
+
 /*
 	//set from input
 	if(_viscosity != 0.0)
@@ -187,7 +229,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	
 
 
-	//************ SETUP SYSTEM CRAP ************//
+	// ************ SETUP SYSTEM CRAP ************ //
 
 	if(sim_3d && sim_type != 5)
 	{
@@ -214,7 +256,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	std::cout << "time = " << time << std::endl;
 
-	//************** SET UP 3D STUFF ****************//
+	// ************** SET UP 3D STUFF **************** //
 	if(sim_3d)
 	{
 		setup_3d_mesh(&*es,mesh);
@@ -245,7 +287,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	std::cout << "time = " << time << std::endl;
 	std::cout << "sigh" << std::endl;
 
-	//******************** SETUP 1D STUFFS *********************//
+	// ******************** SETUP 1D STUFFS ********************* //
 	if(sim_1d)
 	{
 
@@ -314,7 +356,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	std::cout << "time = " << time << std::endl;
 	std::cout << "dawg" << std::endl;
 
-	//*************	INITIALISE SOME STUFF BEFORE THE LOOP *******//
+	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
 	{
 		//dimensionalise the variables if not doing reynolds number simulation
@@ -373,7 +415,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 	std::cout << "dawg2" << std::endl;
-	//************* OUTPUT INFO TO SCREEN AND TO FILE **********//
+	// ************* OUTPUT INFO TO SCREEN AND TO FILE ********** //
 	mesh.print_info();
 	mesh.boundary_info->print_summary();
 	es->print_info();
@@ -383,7 +425,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	perf_log.pop("setup");
 
- 	//************ TIME AND NONLINEAR LOOPS *****************************//
+ 	// ************ TIME AND NONLINEAR LOOPS ***************************** //
 	
 	std::cout << "es->parameters.get<bool>(compare_results) = " << es->parameters.get<bool>("compare_results") << std::endl;
 	std::cout << "particle_deposition = " << particle_deposition << std::endl;
@@ -594,11 +636,15 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				             ", time = " << time << " (" << time*time_scale_factor <<
 										 "s) ***" << std::endl;
 
+				perf_log.push("output");
 				if(particle_deposition)
 				{
 					move_particles();
+
+					perf_log.push("output");
 					output_particle_data(false);
 					write_particles();
+					perf_log.pop("output");
 					
 					//intialise new particles for next time step
 					if(particle_deposition && fabs(time - es->parameters.get<Real> ("end_time")) > 1e-10
@@ -1770,6 +1816,17 @@ void NavierStokesCoupled::read_parameters()
 		es->parameters.set<double>("end_time") = es->parameters.get<unsigned int>("num_refinement_steps") + 2;
 	*/
 
+
+
+	// ************ SETUP STAGE NUMBERS FOR PETSC PROFILING *************** //
+	PetscErrorCode ierr;
+	PetscLogStage stage_num;
+	if(es->parameters.get<unsigned int> ("preconditioner_type") == 3)
+		ierr = PetscLogStageRegister("Pressure Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type") == 4)
+		ierr = PetscLogStageRegister("PCD Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type") == 5)
+		ierr = PetscLogStageRegister("PCD2 Preconditioner",&stage_num);
 
 
 
