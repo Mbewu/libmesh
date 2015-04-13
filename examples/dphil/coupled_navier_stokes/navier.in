@@ -141,7 +141,7 @@ compare_results = false
 particle_deposition = 0		# 0 - no particle deposition, 1 - 3D, 2 - hofmann
 fine_ref_solution = true		# in this case we need to have the system set up with the fine mesh and stuffs
 output_linear_iteration_count = true
-viscosity_controlled = false
+viscosity_controlled = true
 compliance_1d = false
 inertance_1d = false
 
@@ -159,7 +159,7 @@ quads = true #else tris
 stab = false
 alpha = 0.1
 p2p1_stabilisation = false
-numerical_continuation_scaling_factor = 5.0
+numerical_continuation_scaling_factor = 10.0
 
 
 ## optimised problem parameters
@@ -322,14 +322,16 @@ ksp_view = false
 
 
 ##### 3D outer solver options #####
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary' # -ns3d_ksp_view'
+petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_ksp_view'
+#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
 
 ##### 3D inner velocity solver options #####
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
 petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w -ns3d_fieldsplit_0_pc_ml_EnergyMinimization 2 -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.67 -mat_no_inode -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 
 #### 3D inner pressure solver options #####
 petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_monitor'
@@ -338,12 +340,12 @@ petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -n
 
 
 #### 3D preconditioner options #####
-#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns3d_fieldsplit_1_pc_mass_pc_type hypre -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_mass_ksp_monitor'
+petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns3d_fieldsplit_1_pc_mass_pc_type ml -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_mass_ksp_monitor'
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type jacobi -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6'
-petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
+#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 
-petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type gmres -ns3d_fieldsplit_1_pc_lap_pc_type hypre -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
+petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type cg -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 #petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package umfpack'
 #petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package superlu_dist'
 
@@ -351,15 +353,15 @@ petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type gmres -n
 petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns1d_ksp_view'
 
 # 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner
-preconditioner_type = 3
+preconditioner_type = 4
 fieldsplit = true
 direct = false
 ksp_view = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
-reynolds_number = 10.0
+reynolds_number = 1000.0
 streamline_diffusion = true
-stokes = true
+stokes = false
 cube_length = 1.
 cube_length_N = 4 #100
 cube_width = 1.
@@ -376,8 +378,8 @@ quads = true
 pin_pressure = false
 mesh_input_scaling_3d = 1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement = 2
-output_no_refinement = 2		#okay this only works for going to coarser mesh
+no_refinement = 0
+output_no_refinement = 0		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original, 2 - robin, 3 - ave of f_p
 dt = 500.0
 geometry_type = 4

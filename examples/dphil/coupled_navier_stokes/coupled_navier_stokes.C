@@ -440,6 +440,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		{
 
 		 	es->parameters.set<Real> ("reynolds_number")   = re_vec[k];
+		 	es->parameters.set<unsigned int> ("num_continuation_iteration")   = k;
 
 			// *************** WRITE OUTPUT ******************** //
 			std::cout << "CALCULATING FOR Re = " <<
@@ -1727,6 +1728,8 @@ void NavierStokesCoupled::read_parameters()
 		}
 		re_vec.push_back(reynolds_number);
 		std::cout  << reynolds_number << std::endl;
+	
+	  es->parameters.set<unsigned int> ("num_continuation_iteration")   = 0;
 	}
 
   es->parameters.set<Real> ("reynolds_number")   = re_vec[0];

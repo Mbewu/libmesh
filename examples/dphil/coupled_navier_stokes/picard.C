@@ -63,7 +63,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		lsic = false;
 	}
 
-	if(es->parameters.get<unsigned int> ("t_step") == 1 && es->parameters.set<unsigned int> ("nonlinear_iteration") == 1)
+	if(es->parameters.get<unsigned int> ("t_step") == 1 && es->parameters.get<unsigned int> ("nonlinear_iteration") == 1 
+			&& es->parameters.get<unsigned int> ("num_continuation_iteration") == 0)
 	{
 		std::cout << "using stokes for first iteration" << std::endl;
 		stokes = true;
