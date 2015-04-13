@@ -159,7 +159,11 @@ quads = true #else tris
 stab = false
 alpha = 0.1
 p2p1_stabilisation = false
+<<<<<<< HEAD
 numerical_continuation_scaling_factor = 2.0
+=======
+numerical_continuation_scaling_factor = 10.0
+>>>>>>> a52bb48f5ed56b580c72d674265e72ac5862ddac
 
 
 ## optimised problem parameters
@@ -322,14 +326,16 @@ ksp_view = false
 
 
 ##### 3D outer solver options #####
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary' # -ns3d_ksp_view'
+petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_ksp_view'
+#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
 
 ##### 3D inner velocity solver options #####
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
 petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w -ns3d_fieldsplit_0_pc_ml_EnergyMinimization 2 -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.67 -mat_no_inode -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 
 #### 3D inner pressure solver options #####
 petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_monitor'
@@ -343,7 +349,8 @@ petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 
-petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type gmres -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
+
+petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type cg -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 #petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package umfpack'
 #petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package superlu_dist'
 
@@ -357,7 +364,7 @@ direct = false
 ksp_view = false
 nonzero_initial_guess = false
 outer_solver_rtol = 1.e-6
-reynolds_number = 5000.0
+reynolds_number = 1000.0
 streamline_diffusion = true
 stokes = false
 cube_length = 1.
