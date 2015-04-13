@@ -74,22 +74,18 @@ Real exact_solution (const Real x,
                      const Real y,
                      const Real z = 0.);
 
-int main (int argc, char** argv)
+
+
+class TestClass
 {
-  // Initialize libraries, like in example 2.
-  LibMeshInit init (argc, argv);
 
-  // Brief message to the user regarding the program name
-  // and command line arguments.
-  std::cout << "Running " << argv[0];
+public:
+	TestClass(LibMeshInit & init);
+};
 
-  for (int i=1; i<argc; i++)
-    std::cout << " " << argv[i];
-
-  std::cout << std::endl << std::endl;
-
-  // Skip this 2D example if libMesh was compiled as 1D-only.
-  libmesh_example_requires(2 <= LIBMESH_DIM, "2D support");
+TestClass::TestClass(LibMeshInit & init)
+{
+	std::cout << "doing stuff" << std::endl;
 
   // Create a mesh, with dimension to be overridden later, distributed
   // across the default MPI communicator.
@@ -148,6 +144,7 @@ int main (int argc, char** argv)
   //
   // if you linked against the appropriate X libraries when you
   // built PETSc.
+
   equation_systems.get_system("Poisson").solve();
 
 #if defined(LIBMESH_HAVE_VTK) && !defined(LIBMESH_ENABLE_PARMESH)
@@ -159,6 +156,28 @@ int main (int argc, char** argv)
 #endif // #ifdef LIBMESH_HAVE_VTK
 
   // All done.
+}
+
+
+int main (int argc, char** argv)
+{
+  // Initialize libraries, like in example 2.
+  LibMeshInit init (argc, argv);
+
+  // Brief message to the user regarding the program name
+  // and command line arguments.
+  std::cout << "Running " << argv[0];
+
+  for (int i=1; i<argc; i++)
+    std::cout << " " << argv[i];
+
+  std::cout << std::endl << std::endl;
+
+  // Skip this 2D example if libMesh was compiled as 1D-only.
+  libmesh_example_requires(2 <= LIBMESH_DIM, "2D support");
+
+	TestClass tester(init);
+
   return 0;
 }
 
