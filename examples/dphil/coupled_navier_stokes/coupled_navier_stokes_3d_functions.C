@@ -144,7 +144,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		}
 
 		_mesh.read(file_name_mesh.str());
-		_es->read(file_name_es.str(), libMeshEnums::READ);
+		//_es->read(file_name_es.str(), libMeshEnums::READ);
 
 		// after reading we need to rescale, but only after dof_variable_type_3d has been set
 		
@@ -1107,11 +1107,13 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 		system->get_dof_map().add_dirichlet_boundary(dirichlet_bc_velocity);
 	}
 
+	std::cout << "hey" << std::endl;
 
 	if(restart)
 	{
-		system->update();
+		//system->update();
 	}
+	std::cout << "yeah" << std::endl;
 	/*
 std::cout << "lakka" << std::endl;
 	// okay this is just to test the exact solution crap
@@ -1637,6 +1639,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
         		<< current_nonlinear_residual
         		<< std::endl;
 
+	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
 	total_linear_iterations += system->n_linear_iterations();
 
@@ -2136,7 +2139,10 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 			/* (Optional) Create a context for the user-defined preconditioner; this
 				context can be used to contain any application-specific data. */
-			ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
+			if(es->parameters.get<unsigned int>("nonlinear_iteration") == 0)
+			{
+				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
+			}
 
 			/* (Required) Set the user-defined routine for applying the preconditioner */
 			ierr = PCShellSetApply(schur_pc,PCDShellPCApply); CHKERRQ(ierr);
@@ -2150,7 +2156,10 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 			/* (Optional) Do any setup required for the preconditioner */
 			/* Note: This function could be set with PCShellSetSetUp and it would be called when necessary */
-			ierr = PCDShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),subksp[1]); CHKERRQ(ierr);
+			if(es->parameters.get<unsigned int>("nonlinear_iteration") == 0)
+			{
+				ierr = PCDShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),subksp[1]); CHKERRQ(ierr);
+			}
 
 		}
 
@@ -2390,10 +2399,16 @@ PetscErrorCode PressureShellPCSetUp(PC pc,Mat pressure_mass_matrix, KSP schur_ks
 
   //Vec            diag;
 
+	//ierr = KSPDestroy(&shell->inner_lap_ksp);CHKERRQ(ierr);
+	//ierr = VecDestroy(&shell->temp_vec);CHKERRQ(ierr);
+	//ierr = VecDestroy(&shell->temp_vec_2);CHKERRQ(ierr);
+
+
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
 	//create a KSP that can do the solving we require
 
+	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
 	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_mass_ksp); CHKERRQ(ierr);
 
 	//get operators from the outer pcshell solver
@@ -2527,7 +2542,7 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 
 	ierr = PetscLogStagePush(1);
 
-	printf ("in pressure preconditioner");
+	printf ("in Pressure preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
@@ -2557,7 +2572,8 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 	//ierr = MatMult(shell->pressure_mass_matrix,x,y);
 	PetscInt num_mass_its = 0;
   ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its);
-	std::cout << "num_mass_its = " << num_mass_its << std::endl;
+	//std::cout << "num_mass_its = " << num_mass_its << std::endl;
+	printf ("num_mass_its = %d\n",num_mass_its);
 
 	//VecView(y,PETSC_VIEWER_STDOUT_SELF);
 
@@ -2574,7 +2590,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscLogStage pcd_stage;
 	ierr = PetscLogStagePush(1);
 
-	printf ("in PCD preconditioner");
+	printf ("in PCD preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
@@ -2606,13 +2622,12 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	ierr = PCApply(local_lap_pc,x,shell->temp_vec);CHKERRQ(ierr);
 	PetscInt num_lap_its = 0;
   ierr = KSPGetIterationNumber (local_lap_ksp, &num_lap_its); CHKERRQ(ierr);
-	std::cout << "num_lap_its = " << num_lap_its << std::endl;
+	//std::cout << "num_lap_its = " << num_lap_its << std::endl;
+	printf ("num_lap_its = %d\n",num_lap_its);
 
 	PetscInt rows;
 	PetscInt cols;
 	ierr = MatGetSize(shell->pressure_laplacian_matrix,&rows,&cols);
-	std::cout << "num_rows = " << rows << std::endl;
-	std::cout << "num_cols = " << cols << std::endl;
 
 
 
@@ -2643,8 +2658,8 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	ierr = PCApply(local_mass_pc,shell->temp_vec_2,y); CHKERRQ(ierr);
 	PetscInt num_mass_its = 0;
   ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its); CHKERRQ(ierr);
-	std::cout << "num_mass_its = " << num_mass_its << std::endl;
-	
+	//std::cout << "num_mass_its = " << num_mass_its << std::endl;
+	printf ("num_mass_its = %d\n",num_mass_its);
 
 	ierr = PetscLogStagePop();
 
@@ -2659,7 +2674,7 @@ PetscErrorCode PCD2ShellPCApply(PC pc,Vec x,Vec y)
 	PetscLogStage pcd2_stage;
 	ierr = PetscLogStagePush(1);
 
-	printf ("in PCD preconditioner");
+	printf ("in PCD preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 

@@ -339,19 +339,25 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	//init the equation systems
 
 	std::cout << "yes" << std::endl;
-	if(!restart)
-	{
-		std::cout << "hello?" << std::endl;
-		es->init ();
-		std::cout << "k" << std::endl;
-		init_dof_variable_vectors();
-	}
-	else
-	{
-		es->update ();
-		init_dof_variable_vectors();
-	}
 
+	es->init ();
+	init_dof_variable_vectors();
+
+	std::cout << "k" << std::endl;
+	if(restart)
+	{
+		std::ostringstream file_name;
+		std::ostringstream file_name_es;
+		std::ostringstream file_name_mesh;
+
+		file_name << output_folder.str() << "out_3D";
+ 
+		file_name_es << file_name.str() << "_es_" << std::setw(4) 
+			<< std::setfill('0') << es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
+
+		unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
+		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
+	}
 
 	std::cout << "time = " << time << std::endl;
 	std::cout << "dawg" << std::endl;
@@ -1470,6 +1476,7 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"gravemeier_element_length",false);
 	set_unsigned_int_parameter(infile,"pcd_boundary_condition_type",0);
 	
+	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
 	
 
 
