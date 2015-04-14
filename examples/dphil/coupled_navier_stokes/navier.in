@@ -82,7 +82,7 @@ impaction_type = 1	#0 - schum, 1 - zhang 1997 (a bit better but not great)
 
 
 ## some IO data
-output_folder = results/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files can't have names longer than 80 expanding_pipe/straight_pipe_stab_expand_v50.0_working_small_stretch/
+output_folder = results/re400ref1/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files can't have names longer than 80 expanding_pipe/straight_pipe_stab_expand_v50.0_working_small_stretch/
 results_folder_1 = results/supgpspg_convergence/4_norm/		# this is the reference folder
 results_folder_2 = results/supgpspg_convergence/4_comp/
 
@@ -159,11 +159,8 @@ quads = true #else tris
 stab = false
 alpha = 0.1
 p2p1_stabilisation = false
-<<<<<<< HEAD
 numerical_continuation_scaling_factor = 2.0
-=======
-numerical_continuation_scaling_factor = 10.0
->>>>>>> a52bb48f5ed56b580c72d674265e72ac5862ddac
+numerical_continuation_starting_reynolds_number = 400.0
 
 
 ## optimised problem parameters
@@ -200,8 +197,8 @@ write_interval = 0.002
 num_refinement_steps = 0
 random_seed = 0	# so that can recreate simulations exactly
 
-restart_time = 0.
-restart_time_step = 0
+restart_time = 1.
+restart_time_step = 1
 
 ###############################################################################
 ################ SIMULATION BOUNDARY and INITIAL CONDITIONS ###################
@@ -326,7 +323,7 @@ ksp_view = false
 
 
 ##### 3D outer solver options #####
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
+petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 200 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
@@ -334,8 +331,8 @@ petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns
 ##### 3D inner velocity solver options #####
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
-petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w -ns3d_fieldsplit_0_pc_ml_EnergyMinimization 2 -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.67 -mat_no_inode -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w -ns3d_fieldsplit_0_pc_ml_EnergyMinimization 2 -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.5 -mat_no_inode -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 
 #### 3D inner pressure solver options #####
 petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_monitor'
@@ -364,7 +361,7 @@ direct = false
 ksp_view = false
 nonzero_initial_guess = false
 outer_solver_rtol = 1.e-6
-reynolds_number = 1000.0
+reynolds_number = 5000.0
 streamline_diffusion = true
 stokes = false
 cube_length = 1.
