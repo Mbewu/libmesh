@@ -9,9 +9,9 @@ void Picard::assemble(ErrorVector&)// error_vector)
 {
 
 	if(threed)
-		std::cout << "Begin 3D assembly... ";
+		std::cout << "Begin 3D assembly... " << std::endl;
 	else
-		std::cout << "Begin 2D assembly... ";
+		std::cout << "Begin 2D assembly... " << std::endl;
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -35,7 +35,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
   bool stab    = es->parameters.get<bool>("stab");
   Real alpha    = es->parameters.get<Real>("alpha");
 	//const Real period	= es->parameters.get<Real>("period");
-	const bool newton	= es->parameters.get<bool>("newton");
+	bool newton	= es->parameters.get<bool>("newton");
 	//const double density	= es->parameters.get<double>("density");
 	const bool convective_form	= es->parameters.get<bool>("convective_form");
 	const double backflow_stab_param	= es->parameters.get<double>("backflow_stab_param");
@@ -49,6 +49,14 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 	if(!es->parameters.get<bool> ("mesh_dependent_stab_param") && (stab  || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg)))
 		alpha *= Re;
+
+	//
+	if(es->parameters.get<unsigned int> ("nonlinear_iteration") == 1
+		|| (es->parameters.get<unsigned int> ("nonlinear_iteration") > 1 && es->parameters.get<double> ("last_nonlinear_iterate") > 0.1) )
+	{
+		std::cout << "Using Picard iteration because early in nonlinear iteration." << std::endl;
+		newton = false;
+	}
 	
 	std::cout << "newton = " << newton << std::endl;
 
