@@ -432,6 +432,7 @@ private:
 	int total_gmres_iterations;
 	int max_gmres_iterations;
 	int stokes_gmres_iterations;
+	bool shell_pc_created;
 
 	// preconditioner stuff
 	PetscMatrix<Number>* pressure_mass_matrix;
