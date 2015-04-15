@@ -135,7 +135,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		total_linear_iterations(0),
 
 
-		particle_deposition(false)
+		particle_deposition(false),
+		shell_pc_created(false)
 {
 
 	std::cout << "hi... :$" << std::endl;
@@ -617,6 +618,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					dt = es->parameters.get<Real> ("end_time") - time;
 				}
 				time += dt;
+				shell_pc_created = false;
 				update_times();
 
 				if(!particle_deposition)

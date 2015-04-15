@@ -2096,8 +2096,16 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			ierr = KSPGetPC(subksp[1],&schur_pc); CHKERRQ(ierr);
 
 
+
 			// (Required) Indicate to PETSc that we're using a "shell" preconditioner 
 			ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
+
+			// destroy old shell before it is created
+			if(shell_pc_created)
+			{
+				std::cout << "destroying old contents of shell pc" << std::endl;
+				ierr = ShellPCDestroy(schur_pc);
+			}
 
 			// (Optional) Create a context for the user-defined preconditioner; this
 			//	context can be used to contain any application-specific data. 
@@ -2118,6 +2126,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			ierr = PressureShellPCSetUp(schur_pc,scaled_pressure_mass_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 
 			std::cout << "finished setting up shell preconditioner" << std::endl;
+			shell_pc_created = true;
 		}
 		else if(es->parameters.get<unsigned int>("preconditioner_type") == 4)	// shell pc..
 		{
@@ -2137,6 +2146,12 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 			ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
+			if(shell_pc_created)
+			{
+				std::cout << "destroying old contents of shell pc" << std::endl;
+				ierr = ShellPCDestroy(schur_pc);
+			}
+
 			/* (Optional) Create a context for the user-defined preconditioner; this
 				context can be used to contain any application-specific data. */
 			ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
@@ -2155,6 +2170,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			/* Note: This function could be set with PCShellSetSetUp and it would be called when necessary */
 			ierr = PCDShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 
+			shell_pc_created = true;
 		}
 
 		else if(es->parameters.get<unsigned int>("preconditioner_type") == 5)	// shell pc..+ shel matrix pcd2.0
@@ -2199,6 +2215,13 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 			ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
+
+			if(shell_pc_created)
+			{
+				std::cout << "destroying old contents of shell pc" << std::endl;
+				ierr = ShellPCDestroy(schur_pc);
+			}
+
 			/* (Optional) Create a context for the user-defined preconditioner; this
 				context can be used to contain any application-specific data. */
 			ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
@@ -2219,6 +2242,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			std::cout << "ya" << std::endl;
 			ierr = PCD2ShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),B,pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 
+			shell_pc_created = true;
 		}
 	}
 
@@ -2391,6 +2415,7 @@ PetscErrorCode PressureShellPCSetUp(PC pc,Mat pressure_mass_matrix, KSP schur_ks
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
+	ierr = PetscLogStagePush(1);
   //Vec            diag;
 
 	//ierr = KSPDestroy(&shell->inner_lap_ksp);CHKERRQ(ierr);
@@ -2400,9 +2425,13 @@ PetscErrorCode PressureShellPCSetUp(PC pc,Mat pressure_mass_matrix, KSP schur_ks
 
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
-	//create a KSP that can do the solving we require
+	// ********* SET MASS MATRIX ******************* //
 
-	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
+  shell->pressure_mass_matrix = pressure_mass_matrix;
+
+	// ********* SETUP MASS MATRIX KSP **************** //
+
+	//ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
 	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_mass_ksp); CHKERRQ(ierr);
 
 	//get operators from the outer pcshell solver
@@ -2410,7 +2439,27 @@ PetscErrorCode PressureShellPCSetUp(PC pc,Mat pressure_mass_matrix, KSP schur_ks
 	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat); CHKERRQ(ierr);
 	ierr = KSPSetOperators(shell->inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
 
-  shell->pressure_mass_matrix = pressure_mass_matrix;
+	// setup up the operators for the first inner solve
+
+	PC local_mass_pc;
+	ierr = KSPGetPC(shell->inner_mass_ksp,&local_mass_pc); CHKERRQ(ierr);
+
+	// set the pc to be a ksp
+	// should probably use gmres by default okay
+	ierr = PCSetType(local_mass_pc,PCKSP); CHKERRQ(ierr);
+	KSP local_mass_ksp;
+
+	ierr = PCKSPGetKSP(local_mass_pc,&local_mass_ksp); CHKERRQ(ierr);
+
+	ierr = KSPSetOptionsPrefix(local_mass_ksp,"ns3d_fieldsplit_1_pc_mass_"); CHKERRQ(ierr);
+	// setup up the operators for the first inner solve
+	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
+	ierr = PCSetOperators(local_mass_pc,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (local_mass_ksp); CHKERRQ(ierr);
+
+	
+
+	ierr = PetscLogStagePop();
 
 //	printf ("inside shell pc setup");
   return 0;
@@ -2421,6 +2470,7 @@ PetscErrorCode PCDShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapla
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
+	ierr = PetscLogStagePush(1);
 
 
 	std::cout << "hi" << std::endl;
@@ -2428,20 +2478,67 @@ PetscErrorCode PCDShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapla
 
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
-	//create a KSP that can do the solving we require
-	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_mass_ksp); CHKERRQ(ierr);
+	// ********* SETUP MATRICES ****************** //
+
+	shell->pressure_mass_matrix = pressure_mass_matrix;
+  shell->pressure_laplacian_matrix = pressure_laplacian_matrix;
+	shell->pressure_laplacian_preconditioner = pressure_laplacian_preconditioner;
+  shell->pressure_convection_diffusion_matrix = pressure_convection_diffusion_matrix;
+
+
+	// ********* SETUP LAPLACIAN KSP ****************** //
 	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_lap_ksp); CHKERRQ(ierr);
 
 	//get operators from the outer pcshell solver
 	Mat Amat, Pmat;
-	//MatStructure mat_structure;
-	// need to get Amat so that we know what size to make the vectors (could perhaps use pressure matrices)
 	ierr = KSPGetOperators(schur_ksp,&Amat,&Pmat); CHKERRQ(ierr);
-	ierr = KSPSetOperators(shell->inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
 	ierr = KSPSetOperators(shell->inner_lap_ksp,Amat,Pmat); CHKERRQ(ierr);
 
 
-  // create some vectors for temporary pc applying
+	PC local_lap_pc;
+	ierr = KSPGetPC(shell->inner_lap_ksp,&local_lap_pc); CHKERRQ(ierr);
+
+	// set the pc to be a ksp
+	// should probably use gmres by default okay
+	ierr = PCSetType(local_lap_pc,PCKSP); CHKERRQ(ierr);
+
+
+	KSP local_lap_ksp;
+	ierr = PCKSPGetKSP(local_lap_pc,&local_lap_ksp); CHKERRQ(ierr);
+
+
+	ierr = KSPSetOptionsPrefix(local_lap_ksp,"ns3d_fieldsplit_1_pc_lap_"); CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (local_lap_ksp); CHKERRQ(ierr);
+	
+
+	// setup up the operators for the first inner solve
+	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix); CHKERRQ(ierr);
+	ierr = PCSetOperators(local_lap_pc,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix); CHKERRQ(ierr);
+
+	
+
+
+	// ********* SETUP MASS KSP ****************** //
+	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_mass_ksp); CHKERRQ(ierr);
+	ierr = KSPSetOperators(shell->inner_mass_ksp,Amat,Pmat); CHKERRQ(ierr);
+
+	PC local_mass_pc;
+	ierr = KSPGetPC(shell->inner_mass_ksp,&local_mass_pc); CHKERRQ(ierr);
+	ierr = PCSetType(local_mass_pc,PCKSP); CHKERRQ(ierr);
+	KSP local_mass_ksp;
+	ierr = PCKSPGetKSP(local_mass_pc,&local_mass_ksp); CHKERRQ(ierr);
+
+	
+	ierr = KSPSetOptionsPrefix(local_mass_ksp,"ns3d_fieldsplit_1_pc_mass_"); CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (local_mass_ksp); CHKERRQ(ierr);
+	
+	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
+	ierr = PCSetOperators(local_mass_pc,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
+
+
+
+
+  // ******************** SETUP VECTORS ***************************** //
 	PetscInt n_col;
 	PetscInt n_col_local;
 	ierr = MatGetSize(Amat,NULL,&n_col); CHKERRQ(ierr);
@@ -2454,12 +2551,10 @@ PetscErrorCode PCDShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapla
 	ierr = VecSetFromOptions(shell->temp_vec); CHKERRQ(ierr);
 	ierr = VecSetFromOptions(shell->temp_vec_2); CHKERRQ(ierr);
 
-	shell->pressure_mass_matrix = pressure_mass_matrix;
-  shell->pressure_laplacian_matrix = pressure_laplacian_matrix;
-	shell->pressure_laplacian_preconditioner = pressure_laplacian_preconditioner;
-  shell->pressure_convection_diffusion_matrix = pressure_convection_diffusion_matrix;
 
 //	printf ("inside shell pc setup");
+
+	ierr = PetscLogStagePop();
   return 0;
 }
 
@@ -2469,6 +2564,7 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
+	ierr = PetscLogStagePush(1);
 
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -2506,6 +2602,7 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
   shell->pressure_convection_diffusion_matrix = pressure_convection_diffusion_matrix;
 
 //	printf ("inside shell pc setup");
+	ierr = PetscLogStagePop();
   return 0;
 }
 /* ------------------------------------------------------------------- */
@@ -2546,28 +2643,17 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 
 	PC local_mass_pc;
 	ierr = KSPGetPC(shell->inner_mass_ksp,&local_mass_pc); CHKERRQ(ierr);
-
-	// set the pc to be a ksp
-	// should probably use gmres by default okay
-	ierr = PCSetType(local_mass_pc,PCKSP); CHKERRQ(ierr);
 	KSP local_mass_ksp;
-
 	ierr = PCKSPGetKSP(local_mass_pc,&local_mass_ksp); CHKERRQ(ierr);
 
-	ierr = KSPSetOptionsPrefix(local_mass_ksp,"ns3d_fieldsplit_1_pc_mass_"); CHKERRQ(ierr);
-	// setup up the operators for the first inner solve
-	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
-	ierr = PCSetOperators(local_mass_pc,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
-	ierr = KSPSetFromOptions (local_mass_ksp); CHKERRQ(ierr);
 
 	ierr = PCApply(local_mass_pc,x,y); CHKERRQ(ierr);
+	PetscInt num_mass_its = 0;
+  ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its);
+	printf ("num_mass_its = %d\n",num_mass_its);
 
 
 	//ierr = MatMult(shell->pressure_mass_matrix,x,y);
-	PetscInt num_mass_its = 0;
-  ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its);
-	//std::cout << "num_mass_its = " << num_mass_its << std::endl;
-	printf ("num_mass_its = %d\n",num_mass_its);
 
 	//VecView(y,PETSC_VIEWER_STDOUT_SELF);
 
@@ -2590,28 +2676,12 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 
 	//MatView(pressure_mass_matrix,PETSC_VIEWER_STDOUT_SELF);
 
-	// setup up the operators for the first inner solve
+	// get the operators for the first inner solve
 
 	PC local_lap_pc;
 	ierr = KSPGetPC(shell->inner_lap_ksp,&local_lap_pc); CHKERRQ(ierr);
-
-	// set the pc to be a ksp
-	// should probably use gmres by default okay
-	ierr = PCSetType(local_lap_pc,PCKSP); CHKERRQ(ierr);
-
-
 	KSP local_lap_ksp;
 	ierr = PCKSPGetKSP(local_lap_pc,&local_lap_ksp); CHKERRQ(ierr);
-
-
-	ierr = KSPSetOptionsPrefix(local_lap_ksp,"ns3d_fieldsplit_1_pc_lap_"); CHKERRQ(ierr);
-	ierr = KSPSetFromOptions (local_lap_ksp); CHKERRQ(ierr);
-	
-
-	// setup up the operators for the first inner solve
-	ierr = KSPSetOperators(local_lap_ksp,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix); CHKERRQ(ierr);
-	ierr = PCSetOperators(local_lap_pc,shell->pressure_laplacian_matrix,shell->pressure_laplacian_matrix); CHKERRQ(ierr);
-
 	
 	ierr = PCApply(local_lap_pc,x,shell->temp_vec);CHKERRQ(ierr);
 	PetscInt num_lap_its = 0;
@@ -2638,16 +2708,8 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 
 	PC local_mass_pc;
 	ierr = KSPGetPC(shell->inner_mass_ksp,&local_mass_pc); CHKERRQ(ierr);
-	ierr = PCSetType(local_mass_pc,PCKSP); CHKERRQ(ierr);
 	KSP local_mass_ksp;
 	ierr = PCKSPGetKSP(local_mass_pc,&local_mass_ksp); CHKERRQ(ierr);
-
-	
-	ierr = KSPSetOptionsPrefix(local_mass_ksp,"ns3d_fieldsplit_1_pc_mass_"); CHKERRQ(ierr);
-	ierr = KSPSetFromOptions (local_mass_ksp); CHKERRQ(ierr);
-	
-	ierr = KSPSetOperators(local_mass_ksp,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
-	ierr = PCSetOperators(local_mass_pc,shell->pressure_mass_matrix,shell->pressure_mass_matrix); CHKERRQ(ierr);
 
 	ierr = PCApply(local_mass_pc,shell->temp_vec_2,y); CHKERRQ(ierr);
 	PetscInt num_mass_its = 0;
@@ -2766,6 +2828,7 @@ PetscErrorCode ShellPCDestroy(PC pc)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
+	ierr = PetscLogStagePush(1);
   std::cout << "in shell destroy" << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -2775,6 +2838,7 @@ PetscErrorCode ShellPCDestroy(PC pc)
 	ierr = VecDestroy(&shell->temp_vec_2);CHKERRQ(ierr);
   ierr = PetscFree(shell);CHKERRQ(ierr);
 	
+	ierr = PetscLogStagePop();
 
   return 0;
 }

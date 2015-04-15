@@ -198,7 +198,7 @@ num_refinement_steps = 0
 random_seed = 0	# so that can recreate simulations exactly
 
 restart_time = 0.
-restart_time_step = 1
+restart_time_step = 0
 
 ###############################################################################
 ################ SIMULATION BOUNDARY and INITIAL CONDITIONS ###################
@@ -323,7 +323,7 @@ ksp_view = false
 
 
 ##### 3D outer solver options #####
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 200 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
+petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 100 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary' # -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
@@ -332,7 +332,7 @@ petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type euclid -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
-petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type boomeramg --ns3d_fieldsplit_0_pc_hypre_boomeramg_cycle_type W -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_down 1 -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_up 4 -ns3d_fieldsplit_0_pc_hypre_boomeramg_relax_weight_all 0.67 -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w  -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.5 -mat_no_inode -ns3d_fieldsplit_0_pc_ml_EnergyMinimization 2 -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 
@@ -362,7 +362,7 @@ direct = false
 ksp_view = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
-reynolds_number = 5000.0
+reynolds_number = 100.0
 streamline_diffusion = true
 stokes = false
 cube_length = 1.
@@ -381,8 +381,8 @@ quads = true
 pin_pressure = false
 mesh_input_scaling_3d = 1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement = 2
-output_no_refinement = 2		#okay this only works for going to coarser mesh
+no_refinement = 0
+output_no_refinement = 0		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original, 2 - robin, 3 - ave of f_p
 dt = 500.0
 geometry_type = 4
@@ -395,13 +395,15 @@ mesh_dependent_stab_param = false
 #mesh_file = meshes/fine_mesh_labelled.msh
 mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
 old_geometry = 2	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
-unsteady = 0
+unsteady = 1
+period = 9000
+dt = 300
+end_time = 2250
 ramp_duration = 1000.0
-end_time = 1000.0
-period = 1000.0
 newton = false
-viscosity_controlled = true
+viscosity_controlled = false
 restart_time = 0.
-restart_time_step = 2
+restart_time_step = 0
 numerical_continuation_scaling_factor = 1.1
 numerical_continuation_starting_reynolds_number = 600.0
+max_newton_iterations = 30
