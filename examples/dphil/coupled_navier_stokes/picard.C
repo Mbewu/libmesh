@@ -1536,7 +1536,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							if(boundary_id == 0)
 							{
 
-								if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3)
+								if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
 								{
 									std::vector<unsigned int> pressure_dofs_on_side;
 									FEInterface::dofs_on_side(elem,dim,fe_pres_type,s,pressure_dofs_on_side);
@@ -2248,7 +2248,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				if((es->parameters.get<unsigned int>("preconditioner_type") == 4 || es->parameters.get<unsigned int>("preconditioner_type") == 5)
 					 && es->parameters.get<unsigned int>("problem_type") != 4)
 				{
-					if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3)
+					if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
 					{
 						for(unsigned int i=0; i<pressure_dofs_on_inflow_boundary.size(); i++)
 						{
@@ -2300,6 +2300,10 @@ void Picard::assemble(ErrorVector&)// error_vector)
 																																					-Ke_pre_convection_diffusion(local_pressure_dof,local_pressure_dof));
 																		
 
+								}
+								else if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
+								{
+									// do nothing because laplacian and convection diffusion operators will already have correct diagonal
 								}
 
 							}

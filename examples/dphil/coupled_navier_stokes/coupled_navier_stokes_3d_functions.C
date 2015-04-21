@@ -2633,7 +2633,7 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 
 	ierr = PetscLogStagePush(1);
 
-	printf ("in Pressure preconditioner\n");
+	//printf ("in Pressure preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
@@ -2650,7 +2650,7 @@ PetscErrorCode PressureShellPCApply(PC pc,Vec x,Vec y)
 	ierr = PCApply(local_mass_pc,x,y); CHKERRQ(ierr);
 	PetscInt num_mass_its = 0;
   ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its);
-	printf ("num_mass_its = %d\n",num_mass_its);
+	//printf ("num_mass_its = %d\n",num_mass_its);
 
 
 	//ierr = MatMult(shell->pressure_mass_matrix,x,y);
@@ -2670,7 +2670,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscLogStage pcd_stage;
 	ierr = PetscLogStagePush(1);
 
-	printf ("in PCD preconditioner\n");
+	//printf ("in PCD preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
@@ -2687,7 +2687,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscInt num_lap_its = 0;
   ierr = KSPGetIterationNumber (local_lap_ksp, &num_lap_its); CHKERRQ(ierr);
 	//std::cout << "num_lap_its = " << num_lap_its << std::endl;
-	printf ("num_lap_its = %d\n",num_lap_its);
+	//printf ("num_lap_its = %d\n",num_lap_its);
 
 	PetscInt rows;
 	PetscInt cols;
@@ -2715,7 +2715,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscInt num_mass_its = 0;
   ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its); CHKERRQ(ierr);
 	//std::cout << "num_mass_its = " << num_mass_its << std::endl;
-	printf ("num_mass_its = %d\n",num_mass_its);
+	//printf ("num_mass_its = %d\n",num_mass_its);
 
 	ierr = PetscLogStagePop();
 
