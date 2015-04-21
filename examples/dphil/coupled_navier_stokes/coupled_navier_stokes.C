@@ -139,8 +139,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		shell_pc_created(false)
 {
 
-	std::cout << "hi... :$" << std::endl;
-
 	perf_log.push("total");
 	perf_log.push("setup");
 	//************* GET PARAMETERS *************//
@@ -148,45 +146,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// if 3D particle deposition then read in the velocity timesteps
 	if(particle_deposition == 1)
 		read_timesteps();
-
-
-  // Create a mesh, with dimension to be overridden later, distributed
-  // across the default MPI communicator.
-  Mesh mesh2(init.comm());
-  // Use the MeshTools::Generation mesh generator to create a uniform
-  // 2D grid on the square [-1,1]^2.  We instruct the mesh generator
-  // to build a mesh of 15x15 QUAD9 elements.  Building QUAD9
-  // elements instead of the default QUAD4's we used in example 2
-  // allow us to use higher-order approximation.
-  MeshTools::Generation::build_square (mesh2,
-                                       15, 15,
-                                       -1., 1.,
-                                       -1., 1.,
-                                       QUAD9);
-
-  // Print information about the mesh to the screen.
-  // Note that 5x5 QUAD9 elements actually has 11x11 nodes,
-  // so this mesh is significantly larger than the one in example 2.
-  mesh2.print_info();
-
-  // Create an equation systems object.
-  EquationSystems equation_systems (mesh2);
-
-  // Declare the Poisson system and its variables.
-  // The Poisson system is another example of a steady system.
-  equation_systems.add_system<LinearImplicitSystem> ("Poisson");
-
-  // Adds the variable "u" to "Poisson".  "u"
-  // will be approximated using second-order approximation.
-  equation_systems.get_system("Poisson").add_variable("u", SECOND);
-
-  // Give the system a pointer to the matrix assembly
-  // function.  This will be called when needed by the
-  // library.
-  //equation_systems.get_system("Poisson").attach_assemble_function (assemble_poisson);
-
-  // Initialize the data structures for the equation system.
-  equation_systems.init();
 
 
 
@@ -255,20 +214,17 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		radius_system = &es->add_system<ExplicitSystem> ("Radius");
 	}
 
-	std::cout << "time = " << time << std::endl;
 
 	// ************** SET UP 3D STUFF **************** //
 	if(sim_3d)
 	{
 		setup_3d_mesh(&*es,mesh);
 
-		std::cout << "flip" << std::endl;
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
 			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries));
 		else
 			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries));
 
-		std::cout<< "grrr" << std::endl;
 		if(sim_type == 5)
 		{
 			setup_3d_system(system_coupled);
@@ -285,8 +241,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	}
 	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
-	std::cout << "time = " << time << std::endl;
-	std::cout << "sigh" << std::endl;
 
 	// ******************** SETUP 1D STUFFS ********************* //
 	if(sim_1d)
@@ -331,22 +285,16 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	// after things have been setup let us set up the variable scalings for output
 	setup_variable_scalings();
-
-
-	std::cout << "hey just bout to init" << std::endl;
-
-	mesh.print_info();
+	std::cout << std::endl;
 	
 	//init the equation systems
-
-	std::cout << "yes" << std::endl;
-
+	std::cout << "Init equation systems." << std::endl;
 	es->init ();
 	init_dof_variable_vectors();
 
-	std::cout << "k" << std::endl;
 	if(restart)
 	{
+		std::cout << "Reading in data for restart." << std::endl;
 		std::ostringstream file_name;
 		std::ostringstream file_name_es;
 		std::ostringstream file_name_mesh;
@@ -360,8 +308,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
 	}
 
-	std::cout << "time = " << time << std::endl;
-	std::cout << "dawg" << std::endl;
 
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
@@ -391,10 +337,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		}
 	}
 
-	std::cout << "time = " << time << std::endl;
-	
-
-	std::cout << "lol" << std::endl;
 	if(sim_1d)
 	{
 		set_radii();
@@ -421,23 +363,19 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	}
 
 
-	std::cout << "dawg2" << std::endl;
 	// ************* OUTPUT INFO TO SCREEN AND TO FILE ********** //
 	mesh.print_info();
 	mesh.boundary_info->print_summary();
 	es->print_info();
 
-	std::cout << "hello?" << std::endl;
 
 
 	perf_log.pop("setup");
 
  	// ************ TIME AND NONLINEAR LOOPS ***************************** //
-	
-	std::cout << "es->parameters.get<bool>(compare_results) = " << es->parameters.get<bool>("compare_results") << std::endl;
-	std::cout << "particle_deposition = " << particle_deposition << std::endl;
 
-	std::cout << "time = " << time << std::endl;
+	es->parameters.set<unsigned int> ("t_step") = 
+		es->parameters.get<unsigned int>("restart_time_step");
 
 	if(!es->parameters.get<bool>("compare_results") && !(particle_deposition == 2))
 	{
@@ -453,9 +391,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			std::cout << "CALCULATING FOR Re = " <<
 				es->parameters.get<Real> ("reynolds_number") << std::endl;
 
-			std::cout << "sumptuous" << std::endl;
-
-			std::cout << "first deposition" << std::endl;
 
 			//intialise the particles
 			if(particle_deposition)
@@ -473,11 +408,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			if(!restart)
 			{
-				std::cout << "hey FUCKER" << std::endl;
 				output_sim_data(true);
 			}
 
-			std::cout << "sumptuous" << std::endl;
 
 			//parameters
 			std::ostringstream parameter_output_data_file_name;
@@ -489,7 +422,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			es->parameters.print(parameter_output_file);
 			parameter_output_file.close();
 
-			std::cout << "sumptuous" << std::endl;
 			if(particle_deposition == 1)
 			{
 				
@@ -508,7 +440,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				}
 			}
 
-			std::cout << "sumptuous" << std::endl;
 
 			if(es->parameters.get<bool> ("output_linear_iteration_count") && !particle_deposition)
 			{
@@ -523,7 +454,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}
 
-			std::cout << "sumptuous" << std::endl;
 
 			// only do this when on the first step of num continuation
 			if(k==0)
@@ -543,7 +473,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							p_inflow = new InflowBoundaryFunction<>(*es);
 							system_3d->project_solution(p_inflow);
 						}
-						std::cout << "hey?" << std::endl;
 						system_3d->update();
 					}
 					else if(!restart)
@@ -555,7 +484,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				}
 			}
 
-			std::cout << "yes" << std::endl;
 
 			if(sim_3d && sim_type != 5)
 			{
@@ -578,8 +506,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			//******* reset all the time stuff
 			time = es->parameters.get<Real>("restart_time");
 
-			es->parameters.set<unsigned int> ("t_step") = 
-				es->parameters.get<unsigned int>("restart_time_step");
 			t_step = es->parameters.get<unsigned int> ("t_step");
 			
 
@@ -605,8 +531,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			{
 
 
-			std::cout << "yes" << std::endl;
-							
 
 				// INCREMENT TIME
 				++t_step;
@@ -623,9 +547,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 				if(!particle_deposition)
 				{
-					std::cout << "k?" << std::endl;
 					es->reinit ();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS
-					std::cout << "oops" << std::endl;
 					if(sim_3d)
 					{
 						if(sim_type != 5)
@@ -636,8 +558,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					}
 				}
 
-				std::cout << "beforebefore_norm = " << beforebefore_norm << std::endl;
-				std::cout << "old_beforebefore_norm = " << beforebefore_norm << std::endl;
+				std::cout << "l2_norm = " << beforebefore_norm << std::endl;
 				
 				//write_3d_solution(true);
 
@@ -663,7 +584,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				}
 				else
 				{
-				std::cout << "k"<< std::endl;
 					// ************** SOLVE 3D SYSTEM ********************* //
 					if(sim_3d && sim_type != 5)
 					{
@@ -689,7 +609,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 								//in the loosely coupled case sim_type 4 use 1d pressure vals
 							
 								picard->init_bc(boundary_ids,input_pressure_values_3d,previous_flux_values_3d,previous_previous_flux_values_3d); 
-								std::cout << "k"<< std::endl;
 								if(solve_3d_system_iteration(system_3d))
 									break;
 							}
@@ -1891,11 +1810,10 @@ void NavierStokesCoupled::read_parameters()
 // read in parameters from file and give them to the parameters object.
 void NavierStokesCoupled::read_particle_parameters()
 {
-	std::cout << "yo wasup" << std::endl;
+	std::cout << "Reading particle parameters." << std::endl;
 	set_double_parameter(infileparticle,"particle_deposition_start_time",0.0);
 	t_step = set_unsigned_int_parameter(infileparticle,"particle_deposition_start_time_step",0);
 	es->parameters.set<unsigned int> ("t_step")   = t_step;
-	std::cout << "k" << std::endl;
 
 	set_bool_parameter(infileparticle,"unsteady_from_steady",false);
 	if(es->parameters.get<bool> ("unsteady_from_steady"))
@@ -3094,7 +3012,7 @@ void NavierStokesCoupled::write_particles()
 void NavierStokesCoupled::setup_variable_scalings()
 {
 
-	std::cout << "hmmm" << std::endl;
+	std::cout << "Setting up variable scalings." << std::endl;
 
 	TransientLinearImplicitSystem * system_3d;
 	TransientLinearImplicitSystem * system_1d;
@@ -3202,7 +3120,7 @@ void NavierStokesCoupled::setup_variable_scalings()
 		else if(system_1d->number() == 1)
 			var_offset = vars_per_system[0];
 
-		std::cout << "system_1d->number() = " << system_1d->number() << std::endl;
+		//std::cout << "system_1d->number() = " << system_1d->number() << std::endl;
 
 		add_to_variable_scalings(system_1d->variable_number ("P") + var_offset,mean_pressure_scale);
 		add_to_variable_scalings(system_1d->variable_number ("Q") + var_offset,flow_scale);
@@ -3214,13 +3132,12 @@ void NavierStokesCoupled::setup_variable_scalings()
 		else if(system_radius->number() == 2)
 			var_offset = vars_per_system[0] + vars_per_system[1];
 
-		std::cout << "radius system no = " << system_radius->number() << std::endl;
-		std::cout << "radius var no = " << system_radius->variable_number ("radius") << std::endl;
+		//std::cout << "radius system no = " << system_radius->number() << std::endl;
+		//std::cout << "radius var no = " << system_radius->variable_number ("radius") << std::endl;
 
 		add_to_variable_scalings(system_radius->variable_number ("radius") + var_offset,1.0);
 	}
 
-	std::cout << "yeah" << std::endl;
 
 
 
@@ -3236,10 +3153,9 @@ void NavierStokesCoupled::add_to_variable_scalings(unsigned int var, double scal
 
 	var_scalings[var] = scaling;
 
-	std::cout << "hey" << std::endl;
 
-	for(unsigned int i=0; i<var_scalings.size(); i++)
-		std::cout << "var_scalings[i] = " << var_scalings[i] << std::endl;
+	//for(unsigned int i=0; i<var_scalings.size(); i++)
+	//	std::cout << "var_scalings[i] = " << var_scalings[i] << std::endl;
 
 }
 

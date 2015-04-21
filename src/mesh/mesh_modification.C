@@ -1550,7 +1550,7 @@ void MeshTools::Modification::change_boundary_id (MeshBase& mesh,
 		// now we want to remove the ids from the lists
 		if(old_id != new_id)
 			mesh.get_boundary_info().remove_boundary_id(old_id);
-		std::cout << "JAMES EDIT: using edited source code in mesh_modification.C" << std::endl;
+		//std::cout << "JAMES EDIT: using edited source code in mesh_modification.C" << std::endl;
 		
 }
 

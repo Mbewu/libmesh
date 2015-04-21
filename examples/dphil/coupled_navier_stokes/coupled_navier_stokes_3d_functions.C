@@ -22,8 +22,8 @@
 // # 0 is cylindrical pipe, 1 is single bifurcating pipe, 2 is cuboid, 3 is closed cuboid
 void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 {
-
-	std::cout << "WHAT THE FUCK" << std::endl;
+	std::cout << std::endl;
+	std::cout << "Setting up 2D/3D mesh." << std::endl;
 	
 	// need to scale the mesh by the length scale and/or the incoming scaling
 	if(!restart)
@@ -32,16 +32,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		if(!_es->parameters.get<bool> ("threed"))
 			_mesh.set_mesh_dimension(2);
 
-	std::cout << " _es->parameters.get<bool> (bool) = " << _es->parameters.get<bool> ("threed") << std::endl;
-	std::cout << "_mesh.mesh_dimension() = " << _mesh.mesh_dimension() << std::endl;
-
 		// both the cylindrical pipe and bifurcating pipe require input mesh as well as bifurcating pipe
 		if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<unsigned int> ("geometry_type") == 1 
 				|| _es->parameters.get<unsigned int> ("geometry_type") == 4  || _es->parameters.get<bool> ("expanding_pipe"))
 		{
+			std::cout << "Reading mesh." << std::endl;
 			_mesh.read(_es->parameters.get<std::string> ("mesh_file"));
 
-			std::cout << "file read" << std::endl;
 			//scale the mesh to make SI units
 
 
@@ -49,8 +46,11 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 			if(!_es->parameters.get<bool>("linear_shape_functions"))
 					_mesh.all_second_order();
+
+			std::cout << "Refining mesh." << std::endl;
 			mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
 
+			std::cout << "Scaling mesh." << std::endl;
 			double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
 			MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
 		}
@@ -58,7 +58,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		else if(es->parameters.get<unsigned int> ("geometry_type") == 2 || es->parameters.get<unsigned int> ("geometry_type") == 3
 						|| _es->parameters.get<unsigned int> ("geometry_type") == 5)
 		{
-			std::cout << "hmmm" << std::endl;
 
 			if(threed){
 				if(_es->parameters.get<bool>("quads"))
@@ -75,7 +74,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 					MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
 																								0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),TRI3);
 			}
-			std::cout << "yeah" << std::endl;
 
 
 
@@ -151,11 +149,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		
 	}
 
-	std::cout << "WHAT THE FUCK" << std::endl;
-
-
-	std::cout << " _es->parameters.get<bool> (bool) = " << _es->parameters.get<bool> ("threed") << std::endl;
-	std::cout << "_mesh.mesh_dimension() = " << _mesh.mesh_dimension() << std::endl;
 	//********* RENAME THE BOUNDARIES AND SUBDOMAINS FOR ALL DIFF PROBLEMS *****//
   //
 	// we always read in the 3d mesh first so we can set all subdomain ids to 0
@@ -166,7 +159,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	// 1d subdomains have ids 1-n corresponding to interfaces
 	//
 
-	
+	std::cout << "Setting up boundaries." << std::endl;
 	// the pipe geometry or the expanding_pipe geometry
 	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<bool> ("expanding_pipe"))
 	{
@@ -207,8 +200,12 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			else
 				surface_boundaries[i]->init(_mesh,i,true);
 
-			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
+			std::cout << "surface " << i << ":" << std::endl;
+			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+			std::cout << std::endl;
 		}
 
 		//hard coded
@@ -321,7 +318,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
 		}
 
-		std::cout << "voodoo" << std::endl;
 
 		//hard coded
 		// not important to preset these 3d values because they will be reset 
@@ -344,7 +340,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		for(unsigned int i=1; i <  boundary_ids.size(); i++)
 			input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
 //		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_2_pressure_mag"));
-		std::cout << "hey" << std::endl;
+
 	}
 	// the cuboid geometry
 	else if(_es->parameters.get<unsigned int> ("geometry_type") == 2)
@@ -575,7 +571,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		//MeshTools::Modification::scale(_mesh,5.6);
 	}
 
-	std::cout << "WHAT THE FUCK" << std::endl;
 	//populate subdomains_3d
 	subdomains_3d.push_back(0);
 
@@ -595,6 +590,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 {
+	std::cout << "Setting up 2D/3D system." << std::endl;
 
 	//some parameters we need
 	bool linear_shape_functions = es->parameters.get<bool>("linear_shape_functions");
@@ -681,6 +677,7 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 
 	//******* NOW WE NEED TO TAKE CARE OF THE BOUNDARY CONDITION STUFF *****//
 
+	std::cout << "Setting up boundary conditions." << std::endl;
 	// note depending on the geometry input we may use a dirichlet boundary object
 	// or not... thing is sometimes we can't label the boundaries...
 
@@ -946,7 +943,6 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 	else if(problem_type == 4)
 	{
 
-	std::cout << "fooey" << std::endl;
 
 		if(!es->parameters.get<bool>("pearson_example"))
 		{
@@ -1088,7 +1084,6 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 	else if(problem_type == 5)
 	{
 
-	std::cout << "yeah we doin some xact solutions" << std::endl;
 
 
 		//velocity exact solution
@@ -1107,13 +1102,7 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 		system->get_dof_map().add_dirichlet_boundary(dirichlet_bc_velocity);
 	}
 
-	std::cout << "hey" << std::endl;
 
-	if(restart)
-	{
-		//system->update();
-	}
-	std::cout << "yeah" << std::endl;
 	/*
 std::cout << "lakka" << std::endl;
 	// okay this is just to test the exact solution crap
@@ -1147,7 +1136,7 @@ std::cout << "lakka" << std::endl;
 void NavierStokesCoupled::prerefine_3d_mesh()
 {
 
- 	std::cout << "  Refining the mesh..." << std::endl;
+ 	std::cout << "Prerefining the mesh." << std::endl;
 
 	bool uniform_refinement = false;
 	//kelly error estimator
@@ -1308,7 +1297,7 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 void NavierStokesCoupled::write_3d_solution(bool backup)
 {
 
-	std::cout << "writing 3D solution" << std::endl;
+	std::cout << "Writing 2D/3D solution" << std::endl;
 
 /*
 	const char dir_path[] = "/home/james/libmesh-0.9.3/examples/dphil/coupled_navier_stokes/results";
@@ -1359,7 +1348,6 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	std::ostringstream file_name_es;
 	std::ostringstream file_name_mesh;
 
-	std::cout <<"ja" << std::endl;
 //	file_name << "results/out_3D_viscosity"
 //	  	<< es->parameters.get<Real> ("viscosity");
 
@@ -1382,6 +1370,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	system->update();
 	if(refinement_level_difference > 0 )
 	{
+		std::cout << "Refining mesh for output." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)refinement_level_difference; i++)
 		{
 			mesh_refinement.uniformly_refine(1);
@@ -1394,7 +1383,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	}
 	else if(refinement_level_difference < 0 )
 	{
-
+		std::cout << "Coarsening mesh for output." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)(-refinement_level_difference); i++)
 		{
 			mesh_refinement.uniformly_coarsen(1);
@@ -1402,13 +1391,13 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 		}
 	}		
 
-	std::cout <<"ja" << std::endl;
 	//system->update();
 	
 
 
 	//the time step variable needs to reflect the position in the file_name
 	// since we want one file per time step we just put 1 here
+	std::cout << "Actually writing file." << std::endl;
 	exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
 
 
@@ -1440,6 +1429,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 
 	if(backup)
 	{
+		std::cout << "Writing backup files." << std::endl;
 		file_name_es << file_name.str();
 		file_name_es << "_es_";
 		file_name_es << std::setw(4) << std::setfill('0') << t_step;
@@ -1460,6 +1450,8 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	// now do the opposite
 	if(refinement_level_difference > 0 )
 	{
+		
+		std::cout << "Coarsening mesh to return to simulation." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)refinement_level_difference; i++)
 		{
 			mesh_refinement.uniformly_coarsen(1);
@@ -1469,6 +1461,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	else if(refinement_level_difference < 0 )
 	{
 
+		std::cout << "Refining mesh to return to simulation." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)(-refinement_level_difference); i++)
 		{
 			mesh_refinement.uniformly_refine(1);
@@ -1543,12 +1536,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 	}
 
-	//std::cout << "fuck this" << std::endl;
-
-	//std::cout << "prefix = " << prefix_2 <<std::endl;
-
-
-	
 	// need to recollect the ksp because perhaps some shit changed in restrict_solve_to
 	system_linear_solver =
 			libmesh_cast_ptr<PetscLinearSolver<Number>* >
@@ -1576,17 +1563,17 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		ierr = KSPGetIterationNumber(subksp[0],&num_inner_velocity_its); CHKERRQ(ierr);
 		ierr = KSPGetIterationNumber(subksp[1],&num_inner_pressure_its); CHKERRQ(ierr);
 
-		std::cout << "num outer its = " << num_outer_its << std::endl;
-		std::cout << "num inner velocity its = " << num_inner_velocity_its << std::endl;
-		std::cout << "num inner pressure (schur) its = " << num_inner_pressure_its << std::endl;
+		//std::cout << "num outer its = " << num_outer_its << std::endl;
+		//std::cout << "num inner velocity its = " << num_inner_velocity_its << std::endl;
+		//std::cout << "num inner pressure (schur) its = " << num_inner_pressure_its << std::endl;
 
 		KSPConvergedReason velocity_converged_reason;
 		ierr = KSPGetConvergedReason(subksp[0],&velocity_converged_reason); CHKERRQ(ierr);
 		KSPConvergedReason pressure_converged_reason;
 		ierr = KSPGetConvergedReason(subksp[1],&pressure_converged_reason); CHKERRQ(ierr);
 
-		std::cout << "velocity converged reason = " << velocity_converged_reason << std::endl;
-		std::cout << "pressure converged reason = " << pressure_converged_reason << std::endl;
+		//std::cout << "velocity converged reason = " << velocity_converged_reason << std::endl;
+		//std::cout << "pressure converged reason = " << pressure_converged_reason << std::endl;
 	}
 	PetscInt outer_maxits = 0;
 	ierr = KSPGetTolerances(system_ksp,NULL,NULL,NULL,&outer_maxits); CHKERRQ(ierr);
@@ -1633,11 +1620,14 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	std::cout << "Lin Solver converged ("
 						<< converged_reason << ") at step: "
         		<< num_outer_its
-        		<< ", Solver res: "
+        		<< ",\n\tSolver res: "
         		<< final_linear_residual
-        		<< ",  Nonlinear res: "
+        		<< ",\n\tNonlinear res: "
         		<< current_nonlinear_residual
         		<< std::endl;
+	std::cout << "Nonlinear iteration: " << nonlinear_iteration << std::endl;
+	std::cout << "Time: " << time << std::endl;
+	std::cout << "Time step: " << t_step << std::endl << std::endl;;
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
@@ -1820,7 +1810,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	perf_log.push("solve_pre_setup");
 
-	std::cout << "hi" << std::endl;
 
 	// ******************* SOME SETTINGS
 	es->parameters.set<Real> ("linear solver tolerance") =
@@ -1840,7 +1829,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	system_linear_solver->set_prefix (prefix_3d);
 	KSP system_ksp = system_linear_solver->ksp();
 
-				std::cout << "ksolve"<< std::endl;
 	// all tolerances set at command line
 	//ierr = KSPSetTolerances(system_ksp,es->parameters.get<double>("outer_solver_rtol"),es->parameters.get<double>("outer_solver_atol"),1e38,es->parameters.get<int>("outer_solver_maxits")); CHKERRQ(ierr);
 
@@ -1848,12 +1836,10 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	//if (libMesh::on_command_line("--solver_system_names"))
 	//	system->linear_solver->init((system->name()+"_").c_str());
 	//else
-				std::cout << "hmm"<< std::endl;
 
 	// only need to do fieldsplit IS setup on first nonlinear iteration
 	if(nonlinear_iteration == 1 && es->parameters.get<bool>("fieldsplit"))
 		system->linear_solver->init_names(*system);
-				std::cout << "yeah"<< std::endl;
 
 
 	// Get the user-specifiied linear solver tolerance
@@ -1874,7 +1860,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	// ************************************* //
 
-	std::cout << "what??" << std::endl;
 
 	if(es->parameters.get<bool>("nonzero_initial_guess"))
 	{
@@ -1897,7 +1882,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	//get the inner iteration ksp
 	int num_splits = 0;
 
-	std::cout << "ja" << std::endl;
 
 	//get the pc
 	PC pc;
@@ -1924,7 +1908,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	if(es->parameters.get<unsigned int>("preconditioner_type"))
 	{
 
-	std::cout << "1" << std::endl;
+		std::cout << "Constructing submatrices." << std::endl;
 		const unsigned int u_var = system->variable_number ("u");
 		const unsigned int v_var = system->variable_number ("v");
 		unsigned int w_var = 0;
@@ -1950,14 +1934,10 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			system->get_dof_map().local_variable_indices
 				(w_var_idx, system->get_mesh(), w_var);
 
-		std::cout << "hi" << std::endl;
 		// concatenate all velocity dofs
 		U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
-		std::cout << "hi" << std::endl;
 		U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
-		std::cout << "hi" << std::endl;
 		U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
-		std::cout << "hi" << std::endl;
 
 		std::sort(U_var_idx.begin(),U_var_idx.end());
 
@@ -1971,7 +1951,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		rows.push_back(0);
 
 
-	std::cout << "2" << std::endl;
 		// pressure mass matrix
 		pressure_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 		system->request_matrix("Pressure Mass Matrix")->create_submatrix(*pressure_mass_matrix,var_idx,var_idx);
@@ -1989,7 +1968,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		scaled_pressure_mass_matrix->close();
 		
 
-	std::cout << "3" << std::endl;
 		// pressure laplacian matrix
 		pressure_laplacian_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 		// need to pin laplacian matrix... at the first pressure node
@@ -2004,7 +1982,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 		
 
-	std::cout << "4" << std::endl;
 		// pressure convection diffusion matrix
 		pressure_convection_diffusion_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 		system->request_matrix("Pressure Convection Diffusion Matrix")->create_submatrix(*pressure_convection_diffusion_matrix,var_idx,var_idx);
@@ -2017,7 +1994,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 		
 
-	std::cout << "4" << std::endl;
 		// pressure convection diffusion matrix
 		velocity_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 		system->request_matrix("Velocity Mass Matrix")->create_submatrix(*velocity_mass_matrix,U_var_idx,U_var_idx);
@@ -2048,7 +2024,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 		//system->request_matrix("Pressure Mass Matrix")->print();
 
-	std::cout << "5" << std::endl;
 
 
 		if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
@@ -2057,19 +2032,15 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			//PCFieldSplitSchurPrecondition(pc,PC_FIELDSPLIT_SCHUR_PRE_USER,scaled_pressure_mass_matrix->mat());
 
 			
-			std::cout << "hello" << std::endl;
 			// note even though the preconditioner says it is using A11 it is not
 			ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 
-			std::cout << "hmmm" << std::endl;
 			KSP* subksp;	//subksps
 			ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
 
-			std::cout << "k" << std::endl;
 			Mat Amat, Pmat;
 			//MatStructure mat_structure;
 
-			std::cout << "k" << std::endl;
 			//MatView(scaled_pressure_mass_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
 			//ierr = KSPGetOperators(subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
 			ierr = KSPGetOperators(subksp[1],&Amat,&Pmat); CHKERRQ(ierr);
@@ -2078,13 +2049,13 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			//ierr = KSPSetOperators(subksp[1],scaled_pressure_mass_matrix->mat(),scaled_pressure_mass_matrix->mat(),mat_structure); CHKERRQ(ierr);
 			ierr = KSPSetOperators(subksp[1],Amat,scaled_pressure_mass_matrix->mat()); CHKERRQ(ierr);
 			
-			std::cout << "k" << std::endl;
 			
 			
 		}
 		else if(es->parameters.get<unsigned int>("preconditioner_type") == 3)	// shell pc..
 		{
 
+			std::cout << "Setting up Pressure preconditioner." << std::endl;
 			ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 			KSP* subksp;	//subksps
 			ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
@@ -2103,7 +2074,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			// destroy old shell before it is created
 			if(shell_pc_created)
 			{
-				std::cout << "destroying old contents of shell pc" << std::endl;
+				std::cout << "Destroying old contents of shell pc" << std::endl;
 				ierr = ShellPCDestroy(schur_pc);
 			}
 
@@ -2125,13 +2096,12 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			// Note: This function could be set with PCShellSetSetUp and it would be called when necessary 
 			ierr = PressureShellPCSetUp(schur_pc,scaled_pressure_mass_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 
-			std::cout << "finished setting up shell preconditioner" << std::endl;
 			shell_pc_created = true;
 		}
 		else if(es->parameters.get<unsigned int>("preconditioner_type") == 4)	// shell pc..
 		{
 
-			std::cout << "hello" << std::endl;
+			std::cout << "Setting up PCD preconditioner." << std::endl;
 			ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 			KSP* subksp;	//subksps
 			ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
@@ -2148,7 +2118,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 			if(shell_pc_created)
 			{
-				std::cout << "destroying old contents of shell pc" << std::endl;
+				std::cout << "Destroying old contents of shell pc" << std::endl;
 				ierr = ShellPCDestroy(schur_pc);
 			}
 
@@ -2251,6 +2221,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		ierr = KSPView(system_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
 	}
 
+	std::cout << std::endl;
 	perf_log.pop("solve_pre_setup");
 	perf_log.push("solve");
 
@@ -2259,7 +2230,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	// Solve the linear system.  Several cases:
 	std::pair<unsigned int, Real> rval = std::make_pair(0,0.0);
 	bool _shell_matrix = false;
-	std::cout << "hi" << std::endl;
 	// matrix always passed by reference, preconditioner can be passed by reference of pointer
 
 	// 2.) No shell matrix, with or without user-supplied preconditioner
@@ -2277,7 +2247,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	else if(es->parameters.get<unsigned int>("preconditioner_type"))
 		rval = system_linear_solver->solve (*system->request_matrix("System Matrix"), *system->request_matrix("Preconditioner"), *system->solution, *system->rhs, tol, maxits);	
 */
-	std::cout << "hi" << std::endl;
 	perf_log.pop("solve");
 
 	//system->request_matrix("Preconditioner")->print();
@@ -2294,11 +2263,9 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	
 	PetscReal rnorm;
 	KSPGetResidualNorm(system_ksp,&rnorm);
-	std::cout << "last residual norm = " << rnorm << std::endl;
 
 	PetscReal divtol;
 	KSPGetTolerances(system_ksp,NULL,NULL,&divtol,NULL);
-	std::cout << "divtol = " << divtol << std::endl;
 	
 
 	//double ave_pressure_its = (double)total_inner_pressure_its/(double)num_outer_its;
@@ -2317,25 +2284,23 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 			max_gmres_iterations = num_outer_its;
 	}
 
-
+	std::cout << std::endl;
 	std::cout << "outer its this timestep = " << num_outer_its << std::endl;
 	std::cout << "stokes outer its = " << stokes_gmres_iterations << std::endl;
 	std::cout << "total outer its = " << total_gmres_iterations << std::endl;
 	std::cout << "average nonlin outer its = " << (double)total_gmres_iterations/(double)(nonlinear_iteration-1) << std::endl;
 	std::cout << "max outer its = " << max_gmres_iterations << std::endl;
+	std::cout << std::endl;
 
 
 	//_n_linear_iterations   = rval.first;
-	std::cout << "yes?" << std::endl;
 	double final_linear_residual = rval.second;
 
-	std::cout << "yes?" << std::endl;
 	// Update the system after the solve
 	system->update();
 
 	// delete matrices after solve
 
-	std::cout << "yes?" << std::endl;
 	if(es->parameters.get<unsigned int>("preconditioner_type"))
 	{
 		
@@ -2473,7 +2438,6 @@ PetscErrorCode PCDShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapla
 	ierr = PetscLogStagePush(1);
 
 
-	std::cout << "hi" << std::endl;
 
 
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
@@ -2829,7 +2793,7 @@ PetscErrorCode ShellPCDestroy(PC pc)
   PetscErrorCode ierr;
 
 	ierr = PetscLogStagePush(1);
-  std::cout << "in shell destroy" << std::endl;
+  //std::cout << "in shell destroy" << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);

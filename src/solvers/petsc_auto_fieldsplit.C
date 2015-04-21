@@ -40,12 +40,12 @@ void indices_to_fieldsplit (const Parallel::Communicator& comm,
                             const std::string& field_name)
 {
 
-	std::cout << "giving the indices to fieldsplit" << std::endl;
+	//std::cout << "giving the indices to fieldsplit" << std::endl;
   const PetscInt *idx = PETSC_NULL;
   if (!indices.empty())
     idx = reinterpret_cast<const PetscInt*>(&indices[0]);
 
-	std::cout << "fieldname = " << field_name << std::endl;
+	//std::cout << "fieldname = " << field_name << std::endl;
 
   IS is;
   int ierr = ISCreateLibMesh(comm.get(), indices.size(),
@@ -72,7 +72,7 @@ void petsc_auto_fieldsplit (PC my_pc,
                             const System &sys)
 {
 
-	std::cout << "doing the autofieldsplit" << std::endl;
+	std::cout << "Setting up the IS for fieldsplit." << std::endl;
 
   std::string sys_prefix = "--solver_group_";
 
@@ -104,7 +104,7 @@ void petsc_auto_fieldsplit (PC my_pc,
 
           if (group_name != empty_string)
             {
-							std::cout << "yeah doing " << var_name << " u figuring out now" << std::endl; 
+							//std::cout << "yeah doing " << var_name << " u figuring out now" << std::endl; 
               std::vector<dof_id_type> &indices =
                 group_indices[group_name];
               const bool prior_indices = !indices.empty();
@@ -115,7 +115,7 @@ void petsc_auto_fieldsplit (PC my_pc,
             }
           else
             {
-							std::cout << "yeah doing p now" << std::endl; 
+							//std::cout << "yeah doing p now" << std::endl; 
               indices_to_fieldsplit (sys.comm(), var_idx, my_pc, var_name);
             }
         }
@@ -125,7 +125,7 @@ void petsc_auto_fieldsplit (PC my_pc,
   for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
          i = group_indices.begin(); i != group_indices.end(); ++i)
     {
-			std::cout << "k doing U" << std::endl;
+			//std::cout << "k doing U" << std::endl;
       indices_to_fieldsplit(sys.comm(), i->second, my_pc, i->first);
     }
 

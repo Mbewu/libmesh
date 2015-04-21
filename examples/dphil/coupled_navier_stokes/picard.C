@@ -2352,7 +2352,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	else
 		std::cout << "end 2D assembly" << std::endl;
 
-	std::cout << "tau_sum = " << tau_sum << std::endl;
+	//std::cout << "tau_sum = " << tau_sum << std::endl;
 
 
   return;
