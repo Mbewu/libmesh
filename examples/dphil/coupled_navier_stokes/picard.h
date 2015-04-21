@@ -58,7 +58,7 @@ class Picard : public NSAssembler3D
 		Picard (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries) :
 			NSAssembler3D (es_in, _surface_boundaries)
 		{
-			std::cout << "hmm" << std::endl;
+			//std::cout << "hmm" << std::endl;
 		}
 
 		using NSAssembler3D::assemble;

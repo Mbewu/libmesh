@@ -14,7 +14,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> previous_previous_flow_values = std::vector<double>()) 
 {
 
-	std::cout << "hiyo..." << std::endl;
+	std::cout << "Setting 2D/3D BCs." << std::endl;
 	
 	//resize so that doesn't break ;)
 	pressure_values.resize(boundary_ids.size());

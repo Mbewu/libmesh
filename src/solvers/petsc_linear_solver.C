@@ -205,14 +205,12 @@ void PetscLinearSolver<T>::init (const char *name)
 			// this option is usually not natively called so we add in our own prefix parameter
       if (name)
         {
-					std::cout << "hi" << std::endl;
           ierr = KSPSetOptionsPrefix(_ksp, name);
           LIBMESH_CHKERRABORT(ierr);
         }
 	
 			if(_prefix.c_str())
 				{
-					std::cout << "hi again" << std::endl;
 					ierr = KSPSetOptionsPrefix(_ksp,_prefix.c_str()); 
           LIBMESH_CHKERRABORT(ierr);
         }
@@ -507,7 +505,7 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
 	PCType type2;
 	ierr = PCGetType(_pc,&type2);
 	LIBMESH_CHKERRABORT(ierr);
-	std::cout << "pc type (in petsc solve beginning) = " << type2 << std::endl;
+	std::cout << "pc type = " << type2 << std::endl;
 
   // Close the matrices and vectors in case this wasn't already done.
   matrix->close ();
@@ -515,7 +513,6 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
   solution->close ();
   rhs->close ();
 
-	std::cout << "k" << std::endl;
   //   // If matrix != precond, then this means we have specified a
   //   // special preconditioner, so reset preconditioner type to PCMAT.
   //   if (matrix != precond)
@@ -765,7 +762,6 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
 #endif
 
 			KSPSetUp(_ksp);
-		std::cout << "after set operators" << std::endl;
       LIBMESH_CHKERRABORT(ierr);
 
       if(this->_preconditioner)
@@ -898,7 +894,7 @@ PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,
 	PCType type2;
 	ierr = PCGetType(_pc,&type2);
 	LIBMESH_CHKERRABORT(ierr);
-	std::cout << "pc type (in petsc solve beginning) = " << type2 << std::endl;
+	std::cout << "pc type = " << type2 << std::endl;
 
   // Close the matrices and vectors in case this wasn't already done.
   matrix->close ();
@@ -906,7 +902,6 @@ PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,
   solution->close ();
   rhs->close ();
 
-	std::cout << "k" << std::endl;
   //   // If matrix != precond, then this means we have specified a
   //   // special preconditioner, so reset preconditioner type to PCMAT.
   //   if (matrix != precond)
@@ -931,7 +926,6 @@ PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,
 #endif
 
 	//KSPSetUp(_ksp);
-std::cout << "after set operators" << std::endl;
   LIBMESH_CHKERRABORT(ierr);
 
   if(this->_preconditioner)
@@ -978,7 +972,6 @@ PetscLinearSolver<T>::solve_simple (SparseMatrix<T>&  matrix_in,
   PetscInt its=0, max_its = static_cast<PetscInt>(m_its);
   PetscReal final_resid=0.;
 
-	std::cout << "k" << std::endl;
 
 
   // Solve the linear system

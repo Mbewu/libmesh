@@ -365,7 +365,7 @@ public:
 			// rescale normal
 			normal = normal.unit();
 
-			std::cout << "normal where i know = " << normal << std::endl;
+			//std::cout << "normal where i know = " << normal << std::endl;
 
 
 			// ***** CALCULATE THE CENTROID ****** //
@@ -412,7 +412,7 @@ public:
 				centroid(1) = 0.;
 			}
 
-			std::cout << "centroid where i know = " << centroid << std::endl;
+			//std::cout << "centroid where i know = " << centroid << std::endl;
 
 		}
 
@@ -476,8 +476,8 @@ public:
 				parabolic_integral *= 2.0;
 		}
 
-		std::cout << "parabola integral = " << parabolic_integral << std::endl;
-		std::cout << "area = " << area << std::endl;
+		//std::cout << "parabola integral = " << parabolic_integral << std::endl;
+		//std::cout << "area = " << area << std::endl;
 
 		//if(surface_boundary_id == 0)
 		//	centroid = Point(0.5,0.5,1);
