@@ -1396,7 +1396,11 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"mesh_dependent_stab_param",false);
 	set_bool_parameter(infile,"gravemeier_element_length",false);
 	set_unsigned_int_parameter(infile,"pcd_boundary_condition_type",0);
+
+	set_bool_parameter(infile,"multiply_system_by_dt",false);
+	set_double_parameter(infile,"numerical_continuation_starting_reynolds_number",1.0);
 	
+
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
 	
 
@@ -1645,7 +1649,7 @@ void NavierStokesCoupled::read_parameters()
 	{
 		
 		double current_re = 1.0;
-		current_re = 5.0;
+		current_re = es->parameters.get<double> ("numerical_continuation_starting_reynolds_number");
 		std::cout << "Ramping up Reynolds number as:" << std::endl;
 		std::cout << "\t";
 		while(current_re < reynolds_number)
