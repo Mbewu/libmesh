@@ -133,7 +133,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		threed(true),
 		total_nonlinear_iterations(0),
 		total_linear_iterations(0),
-
+		total_max_iterations(0),
+		local_linear_iterations(0),
 
 		particle_deposition(false),
 		shell_pc_created(false)
@@ -589,9 +590,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					{
 						nonlinear_iteration = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
-						total_gmres_iterations = 0;
-						max_gmres_iterations = 0;
-						stokes_gmres_iterations = 0;
+						local_linear_iterations = 0;
 					
 						//TEMP : this is to test how the different meshes compare
 						//double before_norm = system_3d->solution->l2_norm();
@@ -2378,15 +2377,16 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 		// write geometry variables later when reading meta data file
 		// write boundary conditions later with Picard class
 		linear_iterations_output_file << "# Results" << std::endl;
-		linear_iterations_output_file << "# timestep\tnonlinear_iteration\ttotal_linear_iterations\tmax_linear_iterations\tstokes_linear_iterations";
+		linear_iterations_output_file << "# timestep\tnonlinear_iteration\tlocal_linear_iterations\tmax_linear_iterations\ttotal_nonlinear_iterations\ttotal_linear_iterations";
 		linear_iterations_output_file << std::endl;
 	}
 	else
 	{
 		linear_iterations_output_file << t_step << "\t" << nonlinear_iteration << 
-																							"\t" << total_gmres_iterations << 
-																							"\t" << max_gmres_iterations << 
-																							"\t" << stokes_gmres_iterations << std::endl;
+																							"\t" << local_linear_iterations << 
+																							"\t" << total_max_iterations << 
+																							"\t" << total_nonlinear_iterations <<
+																							"\t" << total_linear_iterations << std::endl;
 	}
 }
 
