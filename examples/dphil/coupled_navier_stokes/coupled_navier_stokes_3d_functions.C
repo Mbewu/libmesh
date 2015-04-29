@@ -1631,8 +1631,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
-	total_linear_iterations += system->n_linear_iterations();
-
 	if(es->parameters.get<bool> ("output_linear_iteration_count"))
 		output_linear_iteration_count();
 
@@ -2273,23 +2271,16 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	//double ave_velocity_its = (double)total_inner_pressure_its/(double)total_inner_velocity_its;
 	//std::cout << "Ave velocity its = " << ave_pressure_its << std::endl;
 
-	if(nonlinear_iteration == 1)
-	{
-		stokes_gmres_iterations = num_outer_its;
-	}
-	else
-	{
-		total_gmres_iterations += num_outer_its;
-		if(num_outer_its > max_gmres_iterations)
-			max_gmres_iterations = num_outer_its;
-	}
+	total_linear_iterations += num_outer_its;
+	local_linear_iterations += num_outer_its;
+	if(num_outer_its > total_max_iterations)
+		total_max_iterations = num_outer_its;
 
 	std::cout << std::endl;
-	std::cout << "outer its this timestep = " << num_outer_its << std::endl;
-	std::cout << "stokes outer its = " << stokes_gmres_iterations << std::endl;
-	std::cout << "total outer its = " << total_gmres_iterations << std::endl;
-	std::cout << "average nonlin outer its = " << (double)total_gmres_iterations/(double)(nonlinear_iteration-1) << std::endl;
-	std::cout << "max outer its = " << max_gmres_iterations << std::endl;
+	std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+	std::cout << "total outer its = " << total_linear_iterations << std::endl;
+	std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+	std::cout << "max outer its = " << total_max_iterations << std::endl;
 	std::cout << std::endl;
 
 

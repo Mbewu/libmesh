@@ -405,7 +405,7 @@ private:
 	std::vector<unsigned int> subdomains_2d;		//list of subdomain ids that are 2d (i.e. neumann boundary)
 	std::vector<unsigned int> subdomains_3d;		//list of subdomain ids that are 3d (i.e. 3d airways) 
 	unsigned int total_nonlinear_iterations;		//list of subdomain ids that are 3d (i.e. 3d airways)
-	unsigned int total_linear_iterations;		//list of subdomain ids that are 3d (i.e. 3d airways) 
+	unsigned int local_linear_iterations;		//list of subdomain ids that are 3d (i.e. 3d airways) 
 	//SurfaceBoundary inflow_surface_boundary_object;
 	std::vector<SurfaceBoundary* > surface_boundaries;
 	unsigned int nonlinear_iteration;
@@ -429,8 +429,8 @@ private:
 	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
 	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation
 	int total_particles_inhaled;
-	int total_gmres_iterations;
-	int max_gmres_iterations;
+	int total_linear_iterations;
+	int total_max_iterations;
 	int stokes_gmres_iterations;
 	bool shell_pc_created;
 

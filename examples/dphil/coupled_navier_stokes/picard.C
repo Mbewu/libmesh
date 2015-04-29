@@ -48,9 +48,6 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	bool multiply_system_by_dt = es->parameters.get<bool>("multiply_system_by_dt");
 	double sd_param = 0.;
 
-	if(!es->parameters.get<bool> ("mesh_dependent_stab_param") && (stab  || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg)))
-		alpha *= Re;
-
 	//
 	if(es->parameters.get<unsigned int> ("nonlinear_iteration") == 1
 		|| (es->parameters.get<unsigned int> ("nonlinear_iteration") > 1 && es->parameters.get<double> ("last_nonlinear_iterate") > 0.1) )
@@ -244,13 +241,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	NumberVectorValue total_residual_4(0,0);
 		
 	double tau_sum = 0.;
+	double alpha_factor_sum = 0;
+	unsigned int count = 0;
   for ( ; el != end_el; ++el)
   {				
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
 		if(elem->subdomain_id() == 0)
 		{
-
+			count++;
 		  dof_map.dof_indices (elem, dof_indices);
 		  dof_map.dof_indices (elem, dof_indices_u, u_var);
 		  dof_map.dof_indices (elem, dof_indices_v, v_var);
@@ -442,24 +441,31 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					}
 				}
 
+				if(stokes)
+					max_u_sd = 0.;
+
 				double m_k = 1./3.;
-				double Pe_k_1 = 0.;
-				if(unsteady)
-					Pe_k_1 = 2./(Re*m_k/dt*h_T*h_T);
-				double Pe_k_2 = Re*m_k*max_u_sd*h_T;
-				double xi_1 = 1.;
+				double Pe_k_1 = 4.*dt/(Re*m_k*h_T*h_T);
+				double Pe_k_2 = Re*m_k*max_u_sd*h_T/2.;
+				double xi_1 = Pe_k_1;	//will always be the max cause dt is "infinite"
 				if(unsteady)
 					xi_1 = std::max(Pe_k_1,1.);
 				double xi_2 = std::max(Pe_k_2,1.);
 
 				// take out factor of h_T
-				alpha = 1./((h_T*h_T/dt*h_T*h_T*xi_1) + 2./m_k/Re*xi_2);
+				alpha = 1./(1./dt*xi_1 + 4./m_k/Re/(h_T*h_T)*xi_2);
 	
 				//std::cout << " using stab_param alpha = " << alpha << std::endl;			
 
 			}
+			else
+			{
+				alpha = es->parameters.get<Real>("alpha")*Re*h_T*h_T;
+			}
 
 			// *************************************************************************** //
+
+			alpha_factor_sum += alpha/(Re*h_T*h_T);
 
 
 		  // ******** Build volume contribution to element matrix and rhs ************** //
@@ -729,7 +735,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		      	for (unsigned int j=0; j<n_p_dofs; j++)
 		        {
 		          //Kpp(i,j) += alpha*elem_volume*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
-							Kpp(i,j) += -alpha*h_T*h_T*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
+							Kpp(i,j) += -alpha*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
 		        }
 					}
 
@@ -2389,6 +2395,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		std::cout << "end 2D assembly" << std::endl;
 
 	//std::cout << "tau_sum = " << tau_sum << std::endl;
+	std::cout << "average alpha factor = " << alpha_factor_sum/count << std::endl;
 
 
   return;
