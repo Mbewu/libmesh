@@ -45,6 +45,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	bool lsic	= es->parameters.get<bool>("lsic");
 	bool supg_laplacian	= es->parameters.get<bool>("supg_laplacian");
 	bool symmetric_gradient = es->parameters.get<bool>("symmetric_gradient");
+	bool multiply_system_by_dt = es->parameters.get<bool>("multiply_system_by_dt");
 	double sd_param = 0.;
 
 	if(!es->parameters.get<bool> ("mesh_dependent_stab_param") && (stab  || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg)))
@@ -358,6 +359,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					JxW[qp] *= qpoint[qp](1);
 				}
 			}
+
+			if(multiply_system_by_dt)
+			{
+				for(unsigned int qp=0; qp<qrule.n_points(); qp++)
+				{
+					JxW[qp] *= dt;
+				}
+			}	
+				
 
 			// calculate streamline_diffusion parameter
 			double max_u_sd = 0.;
@@ -1559,6 +1569,14 @@ void Picard::assemble(ErrorVector&)// error_vector)
 								
 									std::vector<Real> JxW_face = JxW_face_elem;
 
+									if(multiply_system_by_dt)
+									{
+										for(unsigned int qp=0; qp<qface.n_points(); qp++)
+										{
+											JxW_face[qp] *= dt;
+										}
+									}
+
 									for (unsigned int qp=0; qp<qface.n_points(); qp++)
 									{
 										// calculate the velocity at gauss points on the face
@@ -1642,6 +1660,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 								{
 									for(unsigned int qp=0; qp<qface.n_points(); qp++)
 										JxW_face[qp] *= qpoint_face[qp](1);
+								}
+
+
+								if(multiply_system_by_dt)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+									{
+										JxW_face[qp] *= dt;
+									}
 								}
 
 								for (unsigned int qp=0; qp<qface.n_points(); qp++)
@@ -2076,6 +2103,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 								{
 									for(unsigned int qp=0; qp<qface.n_points(); qp++)
 										JxW_face[qp] *= qpoint_face[qp](1);
+								}
+
+
+								if(multiply_system_by_dt)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+									{
+										JxW_face[qp] *= dt;
+									}
 								}
 
 								// for the pressure term in the 3d equations
