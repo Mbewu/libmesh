@@ -82,7 +82,7 @@ impaction_type = 1	#0 - schum, 1 - zhang 1997 (a bit better but not great)
 
 
 ## some IO data
-output_folder = results/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files can't have names longer than 80 expanding_pipe/straight_pipe_stab_expand_v50.0_working_small_stretch/
+output_folder = /data/comp-respiratory-modelling/jmbewu/results/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files can't have names longer than 80 expanding_pipe/straight_pipe_stab_expand_v50.0_working_small_stretch/
 results_folder_1 = results/supgpspg_convergence/4_norm/		# this is the reference folder
 results_folder_2 = results/supgpspg_convergence/4_comp/
 
@@ -362,7 +362,7 @@ direct = false
 ksp_view = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
-reynolds_number = 2000.0
+reynolds_number = 1.0
 streamline_diffusion = true
 stokes = false
 cube_length = 1.
