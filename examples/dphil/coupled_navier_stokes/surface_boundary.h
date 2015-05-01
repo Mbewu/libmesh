@@ -58,8 +58,10 @@ public:
 			threed = false;
 
 
+
 		if(!libmesh_geometry)
 		{
+
 
 			//EquationSystems es = _es;
 
@@ -80,6 +82,8 @@ public:
 			const std::vector<Point>& 	face_normals = fe_face->get_normals();
 			fe_face->attach_quadrature_rule (&qrule);
 
+
+			std::cout << "1" << std::endl;
 
 			for ( ; el != end_el; ++el)
 			{
@@ -117,6 +121,14 @@ public:
 			// rescale normal
 			normal = normal.unit();
 
+			std::cout << "2" << std::endl;
+/*
+			for(unsigned int i=0; i< boundary_points.size(); i++)
+			{
+				std::cout << "boundary_point[" << i << "] = " << boundary_points[i] << std::endl;
+			}
+	*/		
+			std::cout << "normal = " << normal << std::endl;
 
 			// sort the boundary points vector and remove duplicate boundary points
 			double tol = 1e-10;
@@ -162,6 +174,7 @@ public:
 			}
 
 
+			std::cout << "3" << std::endl;
 			boundary_points = sorted_boundary_points;
 
 			/*
@@ -171,147 +184,168 @@ public:
 			}
 			*/
 
-			// calculate the centroid using the wikipedia formula
-			// we need to map to a 2d surface so choose an origin
-			Point origin = boundary_points[5];
-			//basis in surface
-			Point basis_1 = boundary_points[0] - boundary_points[1];
-			Point basis_2 = boundary_points[0] - boundary_points[2];
-			//find vector orthogonal to vector_in_plane_1 that is component
-			basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
+			if(threed)
+			{
+				// calculate the centroid using the wikipedia formula
+				// we need to map to a 2d surface so choose an origin
+				Point origin = boundary_points[5];
+				//basis in surface
+				Point basis_1 = boundary_points[0] - boundary_points[1];
+				Point basis_2 = boundary_points[0] - boundary_points[2];
+				//find vector orthogonal to vector_in_plane_1 that is component
+				basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
 	
-			basis_1 = basis_1.unit();
-			basis_2 = basis_2.unit();
+				basis_1 = basis_1.unit();
+				basis_2 = basis_2.unit();
 
-			std::vector<Point> boundary_points_transformed(boundary_points.size());
-			for(unsigned int i=0; i< boundary_points.size(); i++)
-			{
-				boundary_points_transformed[i](0) = (boundary_points[i](0) - origin(0)) * basis_1(0)
-																						+ (boundary_points[i](1) - origin(1)) * basis_1(1)
-																						+ (boundary_points[i](2) - origin(2)) * basis_1(2);
+				std::vector<Point> boundary_points_transformed(boundary_points.size());
+				for(unsigned int i=0; i< boundary_points.size(); i++)
+				{
+					boundary_points_transformed[i](0) = (boundary_points[i](0) - origin(0)) * basis_1(0)
+																							+ (boundary_points[i](1) - origin(1)) * basis_1(1)
+																							+ (boundary_points[i](2) - origin(2)) * basis_1(2);
 
-				boundary_points_transformed[i](1) = (boundary_points[i](0) - origin(0)) * basis_2(0)
-																						+ (boundary_points[i](1) - origin(1)) * basis_2(1)
-																						+ (boundary_points[i](2) - origin(2)) * basis_2(2);
-			}	
-
-
+					boundary_points_transformed[i](1) = (boundary_points[i](0) - origin(0)) * basis_2(0)
+																							+ (boundary_points[i](1) - origin(1)) * basis_2(1)
+																							+ (boundary_points[i](2) - origin(2)) * basis_2(2);
+				}	
 
 
-			// calc area of convex polygon
-			double area = 0.;
-			for(unsigned int i=0; i<boundary_points_transformed.size() - 1; i++)
-				area += (boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
-									boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
-
-			area += (boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
-									boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
-
-			area /= 2.;
 
 
-			centroid = 0.;
-			Point centroid_2d;
+				// calc area of convex polygon
+				double area = 0.;
+				for(unsigned int i=0; i<boundary_points_transformed.size() - 1; i++)
+					area += (boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
+										boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
 
-	//		std::cout << "centroid_2d = " << centroid_2d << std::endl;
-			for(unsigned int i=0; i<boundary_points_transformed.size() - 1; i++)
-			{
-				centroid_2d(0) += 	(boundary_points_transformed[i](0) + boundary_points_transformed[i+1](0)) *
-												(boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
-													boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
+				area += (boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
+										boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
 
-				centroid_2d(1) +=	(boundary_points_transformed[i](1) + boundary_points_transformed[i+1](1)) *
-												(boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
-													boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
-			}
+				area /= 2.;
 
-			centroid_2d(0) += (boundary_points_transformed[boundary_points_transformed.size() - 1](0) + boundary_points_transformed[0](0)) *
-											(boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
-											boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
-
-			centroid_2d(1) += (boundary_points_transformed[boundary_points_transformed.size() - 1](1) + boundary_points_transformed[0](1)) *
-											(boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
-											boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
-
-			centroid_2d /= (6. * area);
-
-			centroid(0) = origin(0) + basis_1(0) * centroid_2d(0) + basis_2(0) * centroid_2d(1);
-			centroid(1) = origin(1) + basis_1(1) * centroid_2d(0) + basis_2(1) * centroid_2d(1);
-			centroid(2) = origin(2) + basis_1(2) * centroid_2d(0) + basis_2(2) * centroid_2d(1);
-
-			//std::cout << "centroid = " << centroid << std::endl;
+				std::cout << "area = " << area << std::endl;
 
 
-			// want the angle to increase from zero.
-			// hmmm points will be approximately in a plane, but not exactly...
-			// so can do the angle thing by, noticing when angles are decreasing and simply doing 360 - angle.
-			// the question is, when i get on arb point "in the plane" how do i know if it is in the top bit or bottom bit
-			// idea idea is that the angle should go in the same vague direction (dot product of directions should be positive)
-			// calculate the angle between the point-centroid and the ref_point-centroid (ref_point is first point and arb)
-			Point ref_point = boundary_points[0];
-			boundary_point_angles.resize(boundary_points.size(),0.);
-			bool bottom = false;
+				centroid = 0.;
+				Point centroid_2d;
+
+
+		//		std::cout << "centroid_2d = " << centroid_2d << std::endl;
+				for(unsigned int i=0; i<boundary_points_transformed.size() - 1; i++)
+				{
+					centroid_2d(0) += 	(boundary_points_transformed[i](0) + boundary_points_transformed[i+1](0)) *
+													(boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
+														boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
+
+					centroid_2d(1) +=	(boundary_points_transformed[i](1) + boundary_points_transformed[i+1](1)) *
+													(boundary_points_transformed[i](0)*boundary_points_transformed[i+1](1) - 
+														boundary_points_transformed[i+1](0)*boundary_points_transformed[i](1));
+				}
+
+				centroid_2d(0) += (boundary_points_transformed[boundary_points_transformed.size() - 1](0) + boundary_points_transformed[0](0)) *
+												(boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
+												boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
+
+				centroid_2d(1) += (boundary_points_transformed[boundary_points_transformed.size() - 1](1) + boundary_points_transformed[0](1)) *
+												(boundary_points_transformed[boundary_points_transformed.size() - 1](0)*boundary_points_transformed[0](1) - 
+												boundary_points_transformed[0](0)*boundary_points_transformed[boundary_points_transformed.size() - 1](1));
+
+				centroid_2d /= (6. * area);
+
+				centroid(0) = origin(0) + basis_1(0) * centroid_2d(0) + basis_2(0) * centroid_2d(1);
+				centroid(1) = origin(1) + basis_1(1) * centroid_2d(0) + basis_2(1) * centroid_2d(1);
+				centroid(2) = origin(2) + basis_1(2) * centroid_2d(0) + basis_2(2) * centroid_2d(1);
+
+
+				std::cout << "4" << std::endl;
+
+				// want the angle to increase from zero.
+				// hmmm points will be approximately in a plane, but not exactly...
+				// so can do the angle thing by, noticing when angles are decreasing and simply doing 360 - angle.
+				// the question is, when i get on arb point "in the plane" how do i know if it is in the top bit or bottom bit
+				// idea idea is that the angle should go in the same vague direction (dot product of directions should be positive)
+				// calculate the angle between the point-centroid and the ref_point-centroid (ref_point is first point and arb)
+				Point ref_point = boundary_points[0];
+				boundary_point_angles.resize(boundary_points.size(),0.);
+				bool bottom = false;
 		
-			// we can also calculate the increasing angle direction from the line 
-			// orthogonal to the ref_point-centroid and first_point-centroid
+				// we can also calculate the increasing angle direction from the line 
+				// orthogonal to the ref_point-centroid and first_point-centroid
 
-			Point ref_line = boundary_points[0] - centroid;
-			for(unsigned int i=0; i<boundary_points.size();i++)
-			{
-				Point line = boundary_points[i] - centroid;
+				Point ref_line = boundary_points[0] - centroid;
+				for(unsigned int i=0; i<boundary_points.size();i++)
+				{
+					Point line = boundary_points[i] - centroid;
 
-				// first find the angle between the point-centroid and the ref_point-centroid
-				double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
+					// first find the angle between the point-centroid and the ref_point-centroid
+					double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
 
-				if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol) // 0 degree line
-					angle = 0.;
-				else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol)	// 180 degree line
-					angle = pi;
+					if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol) // 0 degree line
+						angle = 0.;
+					else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol)	// 180 degree line
+						angle = pi;
 
 				
-				if(bottom)
-				{
-					boundary_point_angles[i] = 2*pi - angle;
-				}
-				else if(i > 0 && angle < boundary_point_angles[i-1])
-				{
-					bottom = true;
-					boundary_point_angles[i] = 2*pi - angle;
-				}
-				else
-				{
-					boundary_point_angles[i] = angle;
-				}
+					if(bottom)
+					{
+						boundary_point_angles[i] = 2*pi - angle;
+					}
+					else if(i > 0 && angle < boundary_point_angles[i-1])
+					{
+						bottom = true;
+						boundary_point_angles[i] = 2*pi - angle;
+					}
+					else
+					{
+						boundary_point_angles[i] = angle;
+					}
 				
-			}
+				}
 
+				std::cout << "5" << std::endl;
 
-			// we calculate the direction in which the angle is increasing based 
-			// on the perpendicular component, relative to the ref_point
-			// assume there is at least "a few points" defining the boundary lol
-			Point line = boundary_points[1] - centroid;
+				// we calculate the direction in which the angle is increasing based 
+				// on the perpendicular component, relative to the ref_point
+				// assume there is at least "a few points" defining the boundary lol
+				Point line = boundary_points[1] - centroid;
 	
-			// based on dot product cos rule and projection
-			increasing_angle_direction = line - ref_line*line/(ref_line*ref_line) * ref_line;
+				// based on dot product cos rule and projection
+				increasing_angle_direction = line - ref_line*line/(ref_line*ref_line) * ref_line;
 
 	
-			// calculate the distance to the centroid of each boundary point
-			boundary_point_radii.resize(boundary_points.size(),0.);
-			for(unsigned int i=0; i<boundary_points.size();i++)
-			{
-				Point diff = boundary_points[i] - centroid;
-				boundary_point_radii[i] = diff.size();
-			}
+				// calculate the distance to the centroid of each boundary point
+				boundary_point_radii.resize(boundary_points.size(),0.);
+				for(unsigned int i=0; i<boundary_points.size();i++)
+				{
+					Point diff = boundary_points[i] - centroid;
+					boundary_point_radii[i] = diff.size();
+				}
 
 
-			/*
-			for(unsigned int i=0; i< boundary_points.size(); i++)
-			{
-				std::cout << "point " << i << " = " << boundary_points[i] << std::endl;
-				std::cout << "angle " << i << " = " << boundary_point_angles[i] << std::endl;
-				std::cout << "radius " << i << " = " << boundary_point_radii[i] << std::endl;
+				/*
+				for(unsigned int i=0; i< boundary_points.size(); i++)
+				{
+					std::cout << "point " << i << " = " << boundary_points[i] << std::endl;
+					std::cout << "angle " << i << " = " << boundary_point_angles[i] << std::endl;
+					std::cout << "radius " << i << " = " << boundary_point_radii[i] << std::endl;
+				}
+				*/
 			}
-			*/
+			else
+			{
+				if(boundary_points.size() > 2)
+				{
+					std::cout << "error, in 2D a side should only have two boundary points.. Exiting" << std::endl;
+					exit(0);
+				}
+
+				centroid = (boundary_points[0] + boundary_points[1])/2.0;
+				area = (boundary_points[1] - boundary_points[0]).size();
+			}
+
+			std::cout << "centroid = " << centroid << std::endl;
+
 		}
 		else
 		{
@@ -436,6 +470,7 @@ public:
 		parabolic_integral = 0.;
 		area = 0.;
 
+			std::cout << "7" << std::endl;
 
 		for ( ; el != end_el; ++el)
 		{
@@ -476,6 +511,7 @@ public:
 				parabolic_integral *= 2.0;
 		}
 
+			std::cout << "8" << std::endl;
 		//std::cout << "parabola integral = " << parabolic_integral << std::endl;
 		//std::cout << "area = " << area << std::endl;
 
@@ -497,64 +533,75 @@ public:
 	{
 		if(!libmesh_geometry)
 		{
-			Point ref_line = boundary_points[0] - centroid;
-			Point line = p - centroid;
 
-			double tol = 1e-10;
-
-			// first find the angle between the point-centroid and the ref_point-centroid
-			double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
-
-			if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol)	// for 0 degrees
-				angle = 0.;
-			else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol) // for 180 degrees
-				angle = pi;
-
-			// based on dot producct cos rule and projection
-			Point orthogonal_component = line - ref_line*line/(ref_line*ref_line) * ref_line;
-
-			// if opposite direction then for the angle we need 360 - angle
-			if(orthogonal_component * increasing_angle_direction < 0)
-				angle = 2*pi - angle;
-
-			// next find between which points it is, could do a nice search but whatever
-			unsigned int max_index = 0;
-			while(angle >= boundary_point_angles[max_index] && max_index < boundary_point_angles.size() - 1)
-				max_index++;
-
-			double large_angle = boundary_point_angles[max_index] - boundary_point_angles[max_index - 1];
-			double small_angle = angle - boundary_point_angles[max_index - 1];
-			double a = boundary_point_radii[max_index - 1];
-			double b = boundary_point_radii[max_index];
-			double c = sqrt(a*a + b*b - 2*a*b*cos(large_angle));
-			double opposite_angle = 0.;
-
-			if(a >= b)
+			if(threed)
 			{
-				opposite_angle = asin(b/c*sin(large_angle));
+				Point ref_line = boundary_points[0] - centroid;
+				Point line = p - centroid;
+
+				double tol = 1e-10;
+
+				// first find the angle between the point-centroid and the ref_point-centroid
+				double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
+
+				if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol)	// for 0 degrees
+					angle = 0.;
+				else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol) // for 180 degrees
+					angle = pi;
+
+				// based on dot producct cos rule and projection
+				Point orthogonal_component = line - ref_line*line/(ref_line*ref_line) * ref_line;
+
+				// if opposite direction then for the angle we need 360 - angle
+				if(orthogonal_component * increasing_angle_direction < 0)
+					angle = 2*pi - angle;
+
+				// next find between which points it is, could do a nice search but whatever
+				unsigned int max_index = 0;
+				while(angle >= boundary_point_angles[max_index] && max_index < boundary_point_angles.size() - 1)
+					max_index++;
+
+				double large_angle = boundary_point_angles[max_index] - boundary_point_angles[max_index - 1];
+				double small_angle = angle - boundary_point_angles[max_index - 1];
+				double a = boundary_point_radii[max_index - 1];
+				double b = boundary_point_radii[max_index];
+				double c = sqrt(a*a + b*b - 2*a*b*cos(large_angle));
+				double opposite_angle = 0.;
+
+				if(a >= b)
+				{
+					opposite_angle = asin(b/c*sin(large_angle));
+				}
+				else
+				{
+				
+					opposite_angle = pi - asin(a/c*sin(large_angle)) - large_angle;
+				}
+
+				double correct_radius = a * sin(opposite_angle)/sin(pi - small_angle - opposite_angle);
+
+				/*
+				std::cout << "in radius calc:" << std::endl;
+				std::cout << "angle = " << angle << std::endl;
+				std::cout << "BIG angle = " << boundary_point_angles[max_index] << std::endl;
+				std::cout << "SMALL angle = " << boundary_point_angles[max_index-1] << std::endl;
+				std::cout << "BIG angle radii = " << boundary_point_radii[max_index] << std::endl;
+				std::cout << "SMALL angle radii = " << boundary_point_radii[max_index-1] << std::endl;
+				std::cout << "correct angle radii = " << correct_radius << std::endl;
+				std::cout << "opp_angle = " << opposite_angle << std::endl;
+				std::cout << "small_angle = " << small_angle << std::endl;
+				std::cout << "other_small_angle = " << pi - small_angle - opposite_angle << std::endl;
+				*/
+
+				return line.size() / correct_radius;
 			}
 			else
 			{
-				
-				opposite_angle = pi - asin(a/c*sin(large_angle)) - large_angle;
+
+				double distance = (p - centroid).size();
+
+				return distance/get_max_radius();		//radius is always 0.5 dudeman
 			}
-
-			double correct_radius = a * sin(opposite_angle)/sin(pi - small_angle - opposite_angle);
-
-			/*
-			std::cout << "in radius calc:" << std::endl;
-			std::cout << "angle = " << angle << std::endl;
-			std::cout << "BIG angle = " << boundary_point_angles[max_index] << std::endl;
-			std::cout << "SMALL angle = " << boundary_point_angles[max_index-1] << std::endl;
-			std::cout << "BIG angle radii = " << boundary_point_radii[max_index] << std::endl;
-			std::cout << "SMALL angle radii = " << boundary_point_radii[max_index-1] << std::endl;
-			std::cout << "correct angle radii = " << correct_radius << std::endl;
-			std::cout << "opp_angle = " << opposite_angle << std::endl;
-			std::cout << "small_angle = " << small_angle << std::endl;
-			std::cout << "other_small_angle = " << pi - small_angle - opposite_angle << std::endl;
-			*/
-
-			return line.size() / correct_radius;
 		}
 		else
 		{
@@ -568,7 +615,10 @@ public:
 				if(es->parameters.get<unsigned int> ("geometry_type") == 5)
 					distance = distance/(es->parameters.get<double>("cube_width"));
 				else
-					distance = distance/(es->parameters.get<double>("cube_width")/2.);
+				{
+					//distance = distance/(es->parameters.get<double>("cube_width")/2.);
+					distance = distance/get_max_radius();
+				}
 					
 				return distance;		//radius is always 0.5 dudeman
 
@@ -688,8 +738,11 @@ public:
 				std::cout << "no support for function SurfaceBoundary::get_max_radius() for expanding pipe geometries... exiting" << std::endl;
 				std::exit(0);
 			}
-
-			max_radius = es->parameters.get<double>("cube_width")/2.0;
+			
+			if(libmesh_geometry)
+				max_radius = es->parameters.get<double>("cube_width")/2.0;
+			else
+				max_radius = area/2.0;
 		}
 
 		
@@ -754,10 +807,20 @@ public:
 				std::exit(0);
 			}
 
-			if((p - centroid).size() < (es->parameters.get<double>("cube_width")/2.0))
-				return true;
+			if(libmesh_geometry)
+			{
+				if((p - centroid).size() < (es->parameters.get<double>("cube_width")/2.0))
+					return true;
+				else
+					return false;
+			}
 			else
-				return false;
+			{
+				if((p - centroid).size() < (area/2.0))
+					return true;
+				else
+					return false;
+			}
 		}
 
 	}

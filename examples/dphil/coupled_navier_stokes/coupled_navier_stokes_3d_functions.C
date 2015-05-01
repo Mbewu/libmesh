@@ -1631,8 +1631,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
-	total_linear_iterations += system->n_linear_iterations();
-
 	if(es->parameters.get<bool> ("output_linear_iteration_count"))
 		output_linear_iteration_count();
 
@@ -2273,23 +2271,16 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	//double ave_velocity_its = (double)total_inner_pressure_its/(double)total_inner_velocity_its;
 	//std::cout << "Ave velocity its = " << ave_pressure_its << std::endl;
 
-	if(nonlinear_iteration == 1)
-	{
-		stokes_gmres_iterations = num_outer_its;
-	}
-	else
-	{
-		total_gmres_iterations += num_outer_its;
-		if(num_outer_its > max_gmres_iterations)
-			max_gmres_iterations = num_outer_its;
-	}
+	total_linear_iterations += num_outer_its;
+	local_linear_iterations += num_outer_its;
+	if(num_outer_its > total_max_iterations)
+		total_max_iterations = num_outer_its;
 
 	std::cout << std::endl;
-	std::cout << "outer its this timestep = " << num_outer_its << std::endl;
-	std::cout << "stokes outer its = " << stokes_gmres_iterations << std::endl;
-	std::cout << "total outer its = " << total_gmres_iterations << std::endl;
-	std::cout << "average nonlin outer its = " << (double)total_gmres_iterations/(double)(nonlinear_iteration-1) << std::endl;
-	std::cout << "max outer its = " << max_gmres_iterations << std::endl;
+	std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+	std::cout << "total outer its = " << total_linear_iterations << std::endl;
+	std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+	std::cout << "max outer its = " << total_max_iterations << std::endl;
 	std::cout << std::endl;
 
 
@@ -2634,7 +2625,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscLogStage pcd_stage;
 	ierr = PetscLogStagePush(1);
 
-	printf ("in PCD preconditioner\n");
+	//printf ("in PCD preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
@@ -2651,7 +2642,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscInt num_lap_its = 0;
   ierr = KSPGetIterationNumber (local_lap_ksp, &num_lap_its); CHKERRQ(ierr);
 	//std::cout << "num_lap_its = " << num_lap_its << std::endl;
-	printf ("num_lap_its = %d\n",num_lap_its);
+	//printf ("num_lap_its = %d\n",num_lap_its);
 
 	PetscInt rows;
 	PetscInt cols;
@@ -2679,7 +2670,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 	PetscInt num_mass_its = 0;
   ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its); CHKERRQ(ierr);
 	//std::cout << "num_mass_its = " << num_mass_its << std::endl;
-	printf ("num_mass_its = %d\n",num_mass_its);
+	//printf ("num_mass_its = %d\n",num_mass_its);
 
 	ierr = PetscLogStagePop();
 

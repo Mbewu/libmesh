@@ -45,10 +45,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	bool lsic	= es->parameters.get<bool>("lsic");
 	bool supg_laplacian	= es->parameters.get<bool>("supg_laplacian");
 	bool symmetric_gradient = es->parameters.get<bool>("symmetric_gradient");
+	bool multiply_system_by_dt = es->parameters.get<bool>("multiply_system_by_dt");
 	double sd_param = 0.;
-
-	if(!es->parameters.get<bool> ("mesh_dependent_stab_param") && (stab  || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg)))
-		alpha *= Re;
 
 	//
 	if(es->parameters.get<unsigned int> ("nonlinear_iteration") == 1
@@ -243,13 +241,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	NumberVectorValue total_residual_4(0,0);
 		
 	double tau_sum = 0.;
+	double alpha_factor_sum = 0;
+	unsigned int count = 0;
   for ( ; el != end_el; ++el)
   {				
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
 		if(elem->subdomain_id() == 0)
 		{
-
+			count++;
 		  dof_map.dof_indices (elem, dof_indices);
 		  dof_map.dof_indices (elem, dof_indices_u, u_var);
 		  dof_map.dof_indices (elem, dof_indices_v, v_var);
@@ -279,6 +279,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 			}
 			else
 				h_T = pow(elem_volume,1.0/2.0);
+
+			h_T *= es->parameters.get<double>("element_length_scaling");
 
 			pressure_dof = -1;
 			pressure_dofs_on_inflow_boundary.resize(0);
@@ -359,6 +361,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				}
 			}
 
+			if(multiply_system_by_dt)
+			{
+				for(unsigned int qp=0; qp<qrule.n_points(); qp++)
+				{
+					JxW[qp] *= dt;
+				}
+			}	
+				
+
 			// calculate streamline_diffusion parameter
 			double max_u_sd = 0.;
 			sd_param = 0.;
@@ -432,24 +443,31 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					}
 				}
 
+				if(stokes)
+					max_u_sd = 0.;
+
 				double m_k = 1./3.;
-				double Pe_k_1 = 0.;
-				if(unsteady)
-					Pe_k_1 = 2./(Re*m_k/dt*h_T*h_T);
-				double Pe_k_2 = Re*m_k*max_u_sd*h_T;
-				double xi_1 = 1.;
+				double Pe_k_1 = 4.*dt/(Re*m_k*h_T*h_T);
+				double Pe_k_2 = Re*m_k*max_u_sd*h_T/2.;
+				double xi_1 = Pe_k_1;	//will always be the max cause dt is "infinite"
 				if(unsteady)
 					xi_1 = std::max(Pe_k_1,1.);
 				double xi_2 = std::max(Pe_k_2,1.);
 
 				// take out factor of h_T
-				alpha = 1./((h_T*h_T/dt*h_T*h_T*xi_1) + 2./m_k/Re*xi_2);
+				alpha = 1./(1./dt*xi_1 + 4./m_k/Re/(h_T*h_T)*xi_2);
 	
 				//std::cout << " using stab_param alpha = " << alpha << std::endl;			
 
 			}
+			else
+			{
+				alpha = es->parameters.get<Real>("alpha")*Re*h_T*h_T;
+			}
 
 			// *************************************************************************** //
+
+			alpha_factor_sum += alpha/(Re*h_T*h_T);
 
 
 		  // ******** Build volume contribution to element matrix and rhs ************** //
@@ -719,7 +737,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		      	for (unsigned int j=0; j<n_p_dofs; j++)
 		        {
 		          //Kpp(i,j) += alpha*elem_volume*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
-							Kpp(i,j) += -alpha*h_T*h_T*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
+							Kpp(i,j) += -alpha*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
 		        }
 					}
 
@@ -1536,7 +1554,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							if(boundary_id == 0)
 							{
 
-								if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3)
+								if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3
+									|| es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
 								{
 									std::vector<unsigned int> pressure_dofs_on_side;
 									FEInterface::dofs_on_side(elem,dim,fe_pres_type,s,pressure_dofs_on_side);
@@ -1558,6 +1577,14 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 								
 									std::vector<Real> JxW_face = JxW_face_elem;
+
+									if(multiply_system_by_dt)
+									{
+										for(unsigned int qp=0; qp<qface.n_points(); qp++)
+										{
+											JxW_face[qp] *= dt;
+										}
+									}
 
 									for (unsigned int qp=0; qp<qface.n_points(); qp++)
 									{
@@ -1642,6 +1669,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 								{
 									for(unsigned int qp=0; qp<qface.n_points(); qp++)
 										JxW_face[qp] *= qpoint_face[qp](1);
+								}
+
+
+								if(multiply_system_by_dt)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+									{
+										JxW_face[qp] *= dt;
+									}
 								}
 
 								for (unsigned int qp=0; qp<qface.n_points(); qp++)
@@ -2078,6 +2114,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 										JxW_face[qp] *= qpoint_face[qp](1);
 								}
 
+
+								if(multiply_system_by_dt)
+								{
+									for(unsigned int qp=0; qp<qface.n_points(); qp++)
+									{
+										JxW_face[qp] *= dt;
+									}
+								}
+
 								// for the pressure term in the 3d equations
 								for (unsigned int qp=0; qp<qface.n_points(); qp++)
 								{
@@ -2248,7 +2293,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				if((es->parameters.get<unsigned int>("preconditioner_type") == 4 || es->parameters.get<unsigned int>("preconditioner_type") == 5)
 					 && es->parameters.get<unsigned int>("problem_type") != 4)
 				{
-					if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3)
+					if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3
+							|| es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
 					{
 						for(unsigned int i=0; i<pressure_dofs_on_inflow_boundary.size(); i++)
 						{
@@ -2349,6 +2395,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		std::cout << "end 2D assembly" << std::endl;
 
 	//std::cout << "tau_sum = " << tau_sum << std::endl;
+	std::cout << "average alpha factor = " << alpha_factor_sum/count << std::endl;
 
 
   return;

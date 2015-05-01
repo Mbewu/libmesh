@@ -75,7 +75,7 @@ public:
 			r = surface_boundary_object->get_normalised_distance_from_centroid(p_xy);
 			normalisation_constant = surface_boundary_object->get_unit_parabola_integral();
 			area = surface_boundary_object->get_area();
-			radius = 1.0;
+			radius = 1.0;//surface_boundary_object->get_max_radius();
 
 			//std::cout << "centroid = " << surface_boundary_object->get_centroid() << std::endl;
 
@@ -112,7 +112,6 @@ public:
 		}
 			
 
-		//std::cout << "r = " << r << std::endl;
 
 		double direction = 1.0;
 		if(es->parameters.get<bool> ("reverse_inflow_profile"))
@@ -121,6 +120,7 @@ public:
 		
 
 		//std::cout << "r = " << r << std::endl;
+		//std::cout << "radius = " << radius << std::endl;
 		//std::cout << "p = " << p << std::endl;
 		// 0 - constant, 1 - parabolic (tensor)
 		if(es->parameters.get<unsigned int> ("inflow_profile") == 0)
@@ -144,7 +144,7 @@ public:
 			}
 			else
 			{
-				return direction * (pow(radius,2)-pow(r,2))*es->parameters.get<double>("time_scaling") * velocity_magnitude;
+				return direction * (pow(radius,2)-pow(r,2))/pow(radius,2)*es->parameters.get<double>("time_scaling") * velocity_magnitude;
 			}
 		}
 		else if(es->parameters.get<unsigned int> ("inflow_profile") == 2)
