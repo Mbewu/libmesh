@@ -1398,6 +1398,8 @@ void NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"multiply_system_by_dt",false);
 	set_double_parameter(infile,"numerical_continuation_starting_reynolds_number",1.0);
+
+	set_double_parameter(infile,"element_length_scaling",1.0);
 	
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;

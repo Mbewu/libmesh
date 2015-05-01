@@ -122,12 +122,12 @@ public:
 			normal = normal.unit();
 
 			std::cout << "2" << std::endl;
-
+/*
 			for(unsigned int i=0; i< boundary_points.size(); i++)
 			{
 				std::cout << "boundary_point[" << i << "] = " << boundary_points[i] << std::endl;
 			}
-			
+	*/		
 			std::cout << "normal = " << normal << std::endl;
 
 			// sort the boundary points vector and remove duplicate boundary points
@@ -177,12 +177,12 @@ public:
 			std::cout << "3" << std::endl;
 			boundary_points = sorted_boundary_points;
 
-			
+			/*
 			for(unsigned int i=0; i< boundary_points.size(); i++)
 			{
 				std::cout << "boundary_point[" << i << "] = " << boundary_points[i] << std::endl;
 			}
-			
+			*/
 
 			if(threed)
 			{
