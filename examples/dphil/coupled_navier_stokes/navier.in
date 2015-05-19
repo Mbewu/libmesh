@@ -60,15 +60,15 @@ old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcati
 ################################### 1D MESH STUFF #############################
 ###############################################################################
 
-_read_1d_mesh = true
+_read_1d_mesh = false
 input_1d_edge_file = meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
 input_1d_node_file = meshes/APLE0036266/output_airways_full.node #meshes/APLE0081560/output_airways_full.node #meshes/APLE0036266/output_airways_full.node
-mesh_input_scaling_1d = 1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
-num_generations_1 =5
+mesh_input_scaling_1d = 1.0 #1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
+num_generations_1 =1
 num_generations_2 = 0
 num_1d_trees = 1
-initial_segment_length = 0.005		#SI units
-length_diam_ratio = 2.5		#3.0
+initial_segment_length = 1 #0.005		#SI units
+length_diam_ratio = 1.0		#3.0
 alveolated_1d_tree = 1	#0 - is no, 1 - is average, 2 - is random
 alveolar_length_diam_ratio = 2.2
 alveolar_diameter = 0.00001	# 0.2mm hofmann,koblinger 1990
@@ -94,7 +94,7 @@ results_folder_2 = results/supgpspg_convergence/4_comp/
 # 3 is 3d and 1d implicitly coupled, 
 # 4 is 3d and 1d explicitly coupled, 
 # 5 is 3d and 1d monolithically coupled, 
-sim_type = 0
+sim_type = 5
 
 # 0 is steady, 
 # 1 is sin, 
@@ -118,11 +118,11 @@ problem_type = 0
 threed = false
 stokes = false
 optimisation_stabilised = 0	# says whether we stabilise the neumann boundary by minimising gradients on the boundary
-reynolds_number_calculation = true
+reynolds_number_calculation = false
 
 #scalings (always from SI units)
-length_scale = 1.0#1.0e-03			#1.0e-3		#for a radius 10mm=1cm pipe
-velocity_scale = 1.0#1.0e3
+length_scale = 1 #5.0e-3 #1.0e-03			#1.0e-3		#for a radius 10mm=1cm pipe
+velocity_scale = 1.0 #2.04e1 #1.0e3
 
 
 adaptive_refinement = false	# num time_steps between refinements
@@ -134,7 +134,7 @@ pearson_example = false
 flat_lid_driven_cavity = true
 constant_pressure = false
 # 0 is poiseuille, 1 is pedley, 2 is van ertbruggen, 3 - modified reynolds
-resistance_type_1d = 1
+resistance_type_1d = 0
 
 
 compare_results = false
@@ -211,23 +211,23 @@ end_time = 4.0
 hofmann_breath_hold = 0.2
 
 ## 3D
-prescribed_flow = 0		# boundary condition is specified by the flow rate as opposed to velocity magnitude
+prescribed_flow = 1		# boundary condition is specified by the flow rate as opposed to velocity magnitude
 inflow_profile = 1		# 0 - constant profile, 1 - parabolic profile, 2 - womersley profile (need womersley input file)
 reverse_inflow_profile = 1
-flow_mag_3d = 0.5e-3		#this is 30L/min, can get up to 120L/min
-velocity_mag_3d = 1.0		#this is approx 30L/min
+flow_mag_3d = 1 #0.1e-3		#this is 30L/min, can get up to 120L/min
+velocity_mag_3d = 2.04e1 #1.0		#this is approx 30L/min
 pressure_mag = 0.0 #4000.0 #0.2		#nondimensionalised
 parent_pressure_mag = 0.0 #4000.0
 daughter_1_pressure_mag = 0.0
 daughter_2_pressure_mag = 0.0
 prescribed_womersley = false
-prescribed_womersley_file = parallel_plates_solution_axi_cos_negative.dat #parallel_plates_solution_axi_cos_negative_slow.dat
+prescribed_womersley_file = parallel_plates_solution_axi_cos_negative_times_hundred.dat #parallel_plates_solution_axi_cos_negative.dat #parallel_plates_solution_axi_cos_negative_slow.dat
 
 
 ## 1D
-flow_mag_1d = 1.0e-3#0.5e-3#2.0e-3		#SI units
+flow_mag_1d = 1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
 bc_type_1d = 0		#//0- flow-pressure 1-pressure-pressure
-in_pressure = 908.215
+in_pressure = 0
 
 
 ##############################################################################
@@ -269,8 +269,8 @@ supg_laplacian = false		# this is incorrect at the moment!
 ###############################################################################
 
 reynolds_number = 20.0
-viscosity = 1.92e-5 #1.81e-5	for air in m^2/s, wet air and temperature 1.92e-5 swan 
-density = 1.51 # 1.176 correctval in SI units, wet air and temperature 1.51 swan 
+viscosity = 1 #17.91e-6#0.00035 #1.92e-5 #1.81e-5	for air in m^2/s, wet air and temperature 1.92e-5 swan 
+density = 1 #1.176 #1.0 #1.51 # 1.176 correctval in SI units, wet air and temperature 1.51 swan 
 zeta_1 = -0.057e3
 zeta_2 = 0.2096
 zeta_3 = 0.00904e-3
@@ -322,9 +322,9 @@ ksp_view = false
 
 
 ##### 3D outer solver options #####
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary' # -ns3d_ksp_view'
+#petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary' # -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_ksp_view'
+petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d_pc_hypre_type euclid -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor -ns3d_ksp_view'
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
 
@@ -356,59 +356,64 @@ petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly 
 petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns1d_ksp_view'
 
 # 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner
-preconditioner_type = 4
-fieldsplit = true
-direct = false
+preconditioner_type = 0
+fieldsplit = false
+direct = true
 ksp_view = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
-reynolds_number = 1.0
-streamline_diffusion = true
-stokes = true
+reynolds_number = 3000.0
+streamline_diffusion = false
+stokes = false
 tube_length = 1.
-cube_length_N = 8 #100
+cube_length_N = 64 #100
 cube_width = 1.
-cube_width_N = 8	#40
+cube_width_N = 64	#40
 cube_height = 1.
 cube_height_N = 8	#40
-linear_shape_functions = false
+linear_shape_functions = true
 quads = true #else tris
-stab = false
-alpha = 0.0005
+stab = true
+alpha = 0.005
 leaky_lid_driven_cavity = true
-threed = true
+threed = false
 quads = true
 pin_pressure = false
-mesh_input_scaling_3d = 1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
+mesh_input_scaling_3d = 1 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
 no_refinement = 0
 output_no_refinement = 0		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
-dt = 0.75
-geometry_type = 4
+dt = 0.1
+geometry_type = 2
 problem_type = 0
 mesh_dependent_stab_param = true
-#mesh_file = meshes/structured_tube_straight_tet.msh
+mesh_file = meshes/structured_tube_straight_tet.msh
 #mesh_file = meshes/fine_mesh_truncated_labelled.msh
 #mesh_file = meshes/coarse_mesh_truncated_labelled.msh
 #mesh_file = meshes/coarse_mesh_labelled.msh
 #mesh_file = meshes/fine_mesh_labelled.msh
-mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
+#mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
 #mesh_file = meshes/backward_facing_step_2.msh #usual
 #mesh_file = meshes/obstruction.msh #usual
-old_geometry = 2	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
+#mesh_file = meshes/bifurcation.msh #usual
+#mesh_file = meshes/the_mesh.msh #usual
+old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 0
 ramp_duration = 1.0
-end_time = 75.0
-period = 150.0
+end_time = 1.0
+period = 2.0
 newton = false
 viscosity_controlled = false
 max_newton_iterations = 100
 multiply_system_by_dt = false
 restart_time = 0.
 restart_time_step = 0
-write_interval = 0.75
+write_interval = 0.01
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
 element_length_scaling = 1.25
+output_nondim = true
+sim_type = 5
+reynolds_number_calculation = true

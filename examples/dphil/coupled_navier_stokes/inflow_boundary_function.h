@@ -69,6 +69,24 @@ public:
 		// hmmm we want like  the p(2) to equal 0 for the initial condition, 
 		// assuming centroid is at p(2) = 0.		
 		Point p_xy(x,y,z);
+
+		bool along_line = false;
+		if(fabs(x/y - 1) < 1e-10)
+		{
+			along_line = true;
+			//std::cout << std::endl;
+			//std::cout << "x = " << x << std::endl;
+		}
+		//std::cout << "X/Y = " << x/y << std::endl;
+
+		
+		double r_before_normed = r/0.5;
+
+		if(along_line)
+		{
+			//std::cout << "r_before = " << r << std::endl;
+			//std::cout << "r_before_normed = " << r_before_normed << std::endl;
+		}
 		// using new definition
 		if(surface_boundary_object != NULL)
 		{
@@ -77,6 +95,11 @@ public:
 			area = surface_boundary_object->get_area();
 			radius = 1.0;//surface_boundary_object->get_max_radius();
 
+			if(along_line)
+			{
+				//std::cout << "r_after = " << r << std::endl;
+				//std::cout << "diff: r_before_normed - r_after = " << r_before_normed - r  << std::endl;
+			}
 			//std::cout << "centroid = " << surface_boundary_object->get_centroid() << std::endl;
 
 		}

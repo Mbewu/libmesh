@@ -544,8 +544,13 @@ public:
 				// first find the angle between the point-centroid and the ref_point-centroid
 				double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
 
+				//std::cout << "should be cool num = " << ref_line * line / (line.size() * ref_line.size()) << std::endl;
+				//std::cout << "diff = " << fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) << std::endl;
 				if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol)	// for 0 degrees
+				{
+					//std::cout << "hi" << std::endl;
 					angle = 0.;
+				}
 				else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol) // for 180 degrees
 					angle = pi;
 
@@ -553,7 +558,8 @@ public:
 				Point orthogonal_component = line - ref_line*line/(ref_line*ref_line) * ref_line;
 
 				// if opposite direction then for the angle we need 360 - angle
-				if(orthogonal_component * increasing_angle_direction < 0)
+				// and not on zero..
+				if(orthogonal_component * increasing_angle_direction < 0 && angle > tol)
 					angle = 2*pi - angle;
 
 				// next find between which points it is, could do a nice search but whatever
@@ -592,6 +598,10 @@ public:
 				std::cout << "small_angle = " << small_angle << std::endl;
 				std::cout << "other_small_angle = " << pi - small_angle - opposite_angle << std::endl;
 				*/
+
+				//std::cout << "in radius calc, radius = " << a << std::endl;
+				//std::cout << "angle = " << angle << std::endl;
+				//std::cout << "small_angle = " << small_angle << std::endl;
 
 				return line.size() / correct_radius;
 			}
@@ -732,7 +742,7 @@ public:
 		}
 		else
 		{
-			
+			//mesh has already been scaled
 			if(es->parameters.get<unsigned int> ("geometry_type") == 5)
 			{
 				std::cout << "no support for function SurfaceBoundary::get_max_radius() for expanding pipe geometries... exiting" << std::endl;

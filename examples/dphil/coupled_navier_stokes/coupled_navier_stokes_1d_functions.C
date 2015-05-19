@@ -417,7 +417,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	//we need to make this tree in dimensionless units, assume parameters are in SI units
 	
 	// if we are using an arbitrary tree mesh and 
-	if(es->parameters.get<unsigned int> ("geometry_type") == 4 && sim_3d)
+	if((es->parameters.get<unsigned int> ("geometry_type") == 4 || es->parameters.get<unsigned int> ("geometry_type") == 2) && sim_3d)
 	{
 
 		std::cout << "in generate_1d_mesh generating " << es->parameters.get<unsigned int> ("num_1d_trees") << " trees" << std::endl;
@@ -441,6 +441,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 			// start at centroid
 			p0 = centroid;
+			std::cout << "centroid = " << centroid << std::endl;
 			//next point should be in direction of normal, with length based on diameter
 			double approx_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
 			initial_segment_length = length_diam_ratio * approx_diam;
@@ -1028,6 +1029,8 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	int P_var = 0;
 	int Q_var = 0;
 	//int radius_var = 0;
+
+	std::cout << "hi 0D prarmeter = " << es->parameters.set<bool>("0D") << std::endl;
 
 	if(es->parameters.set<bool>("0D"))
 	{
