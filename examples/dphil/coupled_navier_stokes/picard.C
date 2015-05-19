@@ -280,6 +280,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 			else
 				h_T = pow(elem_volume,1.0/2.0);
 
+			h_T *= 0.7;
+			//h_T *= 1.4;
 			pressure_dof = -1;
 			pressure_dofs_on_inflow_boundary.resize(0);
 
