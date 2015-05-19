@@ -198,6 +198,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			C = density*pow(velocity_scale,2)*C/length_scale;
 			I = I*length_scale/density;
 
+		std::cout << "R = " << R << std::endl;
+		std::cout << "viscosity = " << viscosity << std::endl;
+		std::cout << "l = " << l << std::endl;
+		std::cout << "r = " << r << std::endl;
+		std::cout << "r^4 = " << pow(r,4.0) << std::endl;
+
 
 			// use given reynolds number is reynolds number calc
 			if(es->parameters.get<bool> ("reynolds_number_calculation"))
@@ -383,7 +389,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					{
 						// now there is no zero on the 3rd equation
 						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn - not anymore it isn't
-				  	system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0*dt);
+				  	system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
 						//std::cout << "dt = " << dt << std::endl;
 						std::cout << "flux_values[" << subdomain_id <<"] = " << flux_values[subdomain_id] << std::endl;
 						if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
@@ -827,7 +833,10 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
 		}
 	}
 
+	std::cout << "flux calculated is " << flux << std::endl;
+
 	es->comm().sum(flux);
+	std::cout << "flux calculated is " << flux << std::endl;
 			
 	return flux;
 }

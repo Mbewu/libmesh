@@ -251,7 +251,7 @@ public:
    */
 
 	// JAMES EDIT: not in libmesh-0.9.4
-  //void initialize_discontinuous(std::string title, const MeshBase & mesh);
+  void initialize_discontinuous(std::string title, const MeshBase & mesh);
 
   /**
    * Writes the nodal coordinates contained in "mesh"

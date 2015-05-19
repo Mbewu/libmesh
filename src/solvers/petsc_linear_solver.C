@@ -921,8 +921,8 @@ PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,
 #else
   ierr = KSPSetOperators(_ksp, matrix->mat(), precond->mat());
 
-  //PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
-  //ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
+  PetscBool ksp_reuse_preconditioner = this->same_preconditioner ? PETSC_TRUE : PETSC_FALSE;
+  ierr = KSPSetReusePreconditioner(_ksp, ksp_reuse_preconditioner);
 #endif
 
 	//KSPSetUp(_ksp);

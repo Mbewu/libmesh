@@ -31,6 +31,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
   const unsigned int p_var = system->variable_number ("P");
   const unsigned int q_var = system->variable_number ("Q");
+	const bool threed = es->parameters.get<bool>("threed");
 
   const DofMap & dof_map = system->get_dof_map();
 
@@ -251,7 +252,8 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		  std::vector<int> variable_numbers_3d;
 		  variable_numbers_3d.push_back(system->variable_number("u"));
 		  variable_numbers_3d.push_back(system->variable_number("v"));
-		  variable_numbers_3d.push_back(system->variable_number("w"));
+			if(threed)
+			  variable_numbers_3d.push_back(system->variable_number("w"));
 		  variable_numbers_3d.push_back(system->variable_number("p")); // just to be safe...
 
 			// vector containing the dof indices for the different variables

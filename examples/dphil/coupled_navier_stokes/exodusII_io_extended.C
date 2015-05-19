@@ -84,13 +84,13 @@ void ExodusII_IO_Extended::write_discontinuous_exodusII(const std::string& name,
 
 	//std::cout<< "buildin names" << std::endl;
   es.build_variable_names  (solution_names, NULL, system_names);
-	//std::cout<< "buildin disc soln vec" << std::endl;
+	std::cout<< "buildin disc soln vec" << std::endl;
   es.build_discontinuous_solution_vector (v, system_names);
 
 	//for(unsigned int i=0; i< v.size(); i++)
 	//	std::cout << "v[" << i << "] = " << v[i] << std::endl; 
 
-	//std::cout<< "writin nodal data disc" << std::endl;
+	std::cout<< "writin nodal data disc" << std::endl;
   this->write_nodal_data_discontinuous(name, v, solution_names);
 
 }
@@ -891,7 +891,7 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 {
   START_LOG("write_nodal_data_discontinuous()", "ExodusII_IO_Extended");
 
-	//std::cout << "herr" << std::endl;
+	std::cout << "herr" << std::endl;
   const MeshBase & mesh = MeshOutput<MeshBase>::mesh();
 
   int num_vars = cast_int<int>(names.size());

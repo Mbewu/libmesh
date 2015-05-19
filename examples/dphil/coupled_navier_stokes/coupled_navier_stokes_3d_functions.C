@@ -77,6 +77,9 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 
 
+			double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
+			MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
+
 			if(!_es->parameters.get<bool>("linear_shape_functions"))
 				_mesh.all_second_order();
 

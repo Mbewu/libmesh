@@ -6,7 +6,7 @@ dx = 0.0025;
 dt = 0.001;
 Re = 1./0.035; %10;
 mu = 0.035; %3.5;
-P = 10;
+P = 1000;
 dL = 1;
 C = i*P/(dL);       %negative sin solution
 C = P/(dL);       %positive cos solution
@@ -63,7 +63,7 @@ end
 %%%%%%%%%%%%%%%%%% write file
 % we want to write it with normalised R
 if(write_file)
-    filename = 'parallel_plates_solution_axi_cos_negative_slow.dat';
+    filename = 'parallel_plates_solution_axi_cos_negative_times_hundred.dat';
     fid = fopen(filename,'w');
     fprintf(fid,'-1');
     for j=1:length(real_r_norm)

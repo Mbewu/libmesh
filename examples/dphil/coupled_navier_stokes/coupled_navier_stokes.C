@@ -620,6 +620,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				
 								calculate_3d_boundary_values();
 								ns_assembler->init_bc(flux_values_3d);
+								for(unsigned int i=0; i<flux_values_3d.size(); i++)
+									std::cout << "flux_values_3d[" << i << "] = " << flux_values_3d[i] << std::endl;
 								solve_1d_system();
 
 								calculate_3d_boundary_values();
@@ -662,6 +664,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 						input_flux_values[0] = 0.0;
 						std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
+						std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
+						std::cout << "inflow = " << inflow  << std::endl;
 						for(unsigned int i=1; i<input_flux_values.size(); i++)
 						{
 							input_flux_values[i] = inflow;
@@ -687,9 +691,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					{
 	
 						nonlinear_iteration = 0;
+						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						while(true)
 						{
 							nonlinear_iteration++;
+							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 
 							calculate_1d_boundary_values();
 							picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
@@ -1398,6 +1404,10 @@ void NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"multiply_system_by_dt",false);
 	set_double_parameter(infile,"numerical_continuation_starting_reynolds_number",1.0);
+
+	set_double_parameter(infile,"element_length_scaling",1.0);
+
+	set_bool_parameter(infile,"output_nondim",false);
 	
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
@@ -1718,7 +1728,7 @@ void NavierStokesCoupled::read_parameters()
 
 	
 	// ****************** WE DON'T DO 1D ELEMENTS AT THE MOMENT *********** //
-	if(es->parameters.set<bool>("0D") = false)
+	if(es->parameters.set<bool>("0D") == false)
 	{
 		std::cout << "Currently only 0D elements are supported. Setting to use 0D elements." << std::endl;
 		std::cout << "\t0D = true" << std::endl;
@@ -3077,6 +3087,15 @@ void NavierStokesCoupled::setup_variable_scalings()
 										pow(es->parameters.get<double>("length_scale"),2.0);
 	double mean_pressure_scale = es->parameters.get<double>("density") *
 													pow(es->parameters.get<double>("velocity_scale"),2.0);
+
+	if(es->parameters.get<bool>("output_nondim"))
+	{
+		velocity_scale = 1.0;
+		pressure_scale = 1.0;
+		flow_scale = 1.0;
+		mean_pressure_scale = 1.0;
+		std::cout << "using nondim output" << std::endl;
+	}
 
 	if(es->parameters.get<bool>("reynolds_number_calculation"))
 	{
