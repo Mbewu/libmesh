@@ -444,7 +444,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			std::cout << "centroid = " << centroid << std::endl;
 			//next point should be in direction of normal, with length based on diameter
 			double approx_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
-			initial_segment_length = length_diam_ratio * approx_diam;
+			//initial_segment_length = length_diam_ratio * approx_diam;
 			p1 = centroid + normal * initial_segment_length;
 
 			vertices.push_back(p0);

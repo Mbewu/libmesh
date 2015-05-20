@@ -142,8 +142,8 @@ public:
 	
 		
 
-		//std::cout << "r = " << r << std::endl;
-		//std::cout << "radius = " << radius << std::endl;
+		std::cout << "r = " << r << std::endl;
+		std::cout << "radius = " << radius << std::endl;
 		//std::cout << "p = " << p << std::endl;
 		// 0 - constant, 1 - parabolic (tensor)
 		if(es->parameters.get<unsigned int> ("inflow_profile") == 0)
@@ -163,6 +163,12 @@ public:
 			{
 				// not right but who fuckin cares..
 				// better to have max v == 1
+				std::cout << "hi - " << direction / normalisation_constant * (pow(radius,2)-pow(r,2)) * es->parameters.get<double>("time_scaling") * flow_mag << std::endl;
+				std::cout << direction << std::endl;
+				std::cout << es->parameters.get<double>("time_scaling") << std::endl;
+				std::cout << flow_mag  << std::endl;
+				std::cout << normalisation_constant  << std::endl;
+				std::cout << (pow(radius,2)-pow(r,2))  << std::endl;
 				return direction / normalisation_constant * (pow(radius,2)-pow(r,2)) * es->parameters.get<double>("time_scaling") * flow_mag;//*(pow(radius,2)-r*r);
 			}
 			else
