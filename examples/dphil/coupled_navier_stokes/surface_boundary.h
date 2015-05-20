@@ -467,7 +467,6 @@ public:
 		const std::vector<Point>&  q_point = fe_face->get_xyz();
 	  const std::vector<Real>&   JxW_face = fe_face->get_JxW();
 
-		parabolic_integral = 0.;
 		area = 0.;
 
 			std::cout << "7" << std::endl;
@@ -495,11 +494,43 @@ public:
 						
 						for (unsigned int qp=0; qp<qrule.n_points(); qp++)
 						{
+							area += JxW_face[qp];
+						}
+					}
+				}
+			}
+		}
+
+		el     = mesh.active_elements_begin();
+
+		parabolic_integral = 0.;
+		for ( ; el != end_el; ++el)
+		{
+
+			const Elem* elem = *el;
+
+			for (unsigned int s=0; s<elem->n_sides(); s++)
+			{
+				//for some reason it is natural to have more than one boundary id per side or even node
+				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+				//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
+
+				if(boundary_ids.size() > 0) 
+				{
+					if(boundary_ids[0] == surface_boundary_id) 
+					{
+						// now we know we are on a boundary integrate over the dofs
+			      AutoPtr<Elem> side (elem->build_side(s));
+						fe_face->reinit(elem, s);
+	
+						
+						for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+						{
 							double r = get_normalised_distance_from_centroid (q_point[qp]);
 							double radius = 1.0;
 							double parabola_value = (pow(radius,2)-pow(r,2));
 							parabolic_integral += parabola_value * JxW_face[qp];
-							area += JxW_face[qp];
 						}
 					}
 				}
@@ -607,7 +638,9 @@ public:
 			}
 			else
 			{
-
+				std::cout << "in norm distance." << std::endl;
+				std::cout << "centroid = "<< centroid<< std::endl;
+				std::cout << "max_radius = "<< get_max_radius()<< std::endl;
 				double distance = (p - centroid).size();
 
 				return distance/get_max_radius();		//radius is always 0.5 dudeman
@@ -752,7 +785,10 @@ public:
 			if(libmesh_geometry)
 				max_radius = es->parameters.get<double>("cube_width")/2.0;
 			else
+			{
 				max_radius = area/2.0;
+				//std::cout << "hey max_radius = " << max_radius << std::endl;
+			}
 		}
 
 		
