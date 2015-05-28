@@ -638,9 +638,9 @@ public:
 			}
 			else
 			{
-				std::cout << "in norm distance." << std::endl;
-				std::cout << "centroid = "<< centroid<< std::endl;
-				std::cout << "max_radius = "<< get_max_radius()<< std::endl;
+				//std::cout << "in norm distance." << std::endl;
+				//std::cout << "centroid = "<< centroid<< std::endl;
+				//std::cout << "max_radius = "<< get_max_radius()<< std::endl;
 				double distance = (p - centroid).size();
 
 				return distance/get_max_radius();		//radius is always 0.5 dudeman
