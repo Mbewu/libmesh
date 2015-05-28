@@ -496,8 +496,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			perf_log.push("output");
 			if(unsteady && !restart)
 			{
-				if(sim_3d) {write_3d_solution(true);}
-				if(sim_1d) {write_1d_solution();}
+				if(sim_3d && !es->parameters.get<bool>("no_output")) {write_3d_solution(true);}
+				if(sim_1d && !es->parameters.get<bool>("no_output")) {write_1d_solution();}
 			}
 
 			if(particle_deposition)
@@ -717,7 +717,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(exit_program)
 						break;
 
-
+					std::cout << "hmmmm" << std::endl;
 			
 					perf_log.push("output");
 					// ************ WRITE OUTPUT *************** //								
@@ -727,10 +727,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
-							if(sim_3d) {write_3d_solution(true);}
-							if(sim_1d) {write_1d_solution();}
+							std::cout << "what?" << std::endl;
+							if(sim_3d && !es->parameters.get<bool>("no_output")) {write_3d_solution(true);}
+							if(sim_1d && !es->parameters.get<bool>("no_output")) {write_1d_solution();}
 						}
 					}
+					std::cout << "hi" << std::endl;
 			
 					perf_log.pop("output");
 
@@ -1411,6 +1413,8 @@ void NavierStokesCoupled::read_parameters()
 	
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
+
+	set_bool_parameter(infile,"no_output",false);
 	
 
 
@@ -2374,8 +2378,8 @@ void NavierStokesCoupled::output_sim_data(bool header)
 			std::cout << "flux, pressure etc output for timestep " << t_step
 							<< " written." << std::endl;
 
-		if(sim_1d)
-			output_poiseuille_resistance_per_generation();
+		//if(sim_1d)
+		//	output_poiseuille_resistance_per_generation();
 
 	}
 }

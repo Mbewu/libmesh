@@ -453,6 +453,9 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			segment.push_back(1);
 			cell_vertices.push_back(segment);
 
+			if(i>1)
+				num_generations_1 = num_generations_2;
+
 			// for each element/segment, assuming same numbering convention
 			// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 			// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
