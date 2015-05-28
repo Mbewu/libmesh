@@ -411,6 +411,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 	unsigned int num_generations_1 = es->parameters.get<unsigned int> ("num_generations_1");
 	unsigned int num_generations_2 = es->parameters.get<unsigned int> ("num_generations_2");
+	unsigned int num_generations_3 = es->parameters.get<unsigned int> ("num_generations_3");
 
 	double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
 
@@ -442,9 +443,23 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			// start at centroid
 			p0 = centroid;
 			std::cout << "centroid = " << centroid << std::endl;
+			std::cout << "area = " << area << std::endl;
 			//next point should be in direction of normal, with length based on diameter
-			double approx_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
-			//initial_segment_length = length_diam_ratio * approx_diam;
+			double approx_diam = 0.;
+			if(es->parameters.get<bool> ("threed"))
+				approx_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
+			else
+				approx_diam = area; // diameter approximated by assuming circular outflow
+				
+			if(es->parameters.get<bool> ("initial_segment_length_from_mesh"))
+			{
+				initial_segment_length = length_diam_ratio * approx_diam;
+				if(es->parameters.get<bool> ("half_initial_length"))
+					initial_segment_length *= 0.5;
+
+				std::cout << "initial_sgment_length = " << initial_segment_length << std::endl;
+				std::cout << "approx_diam = " << approx_diam << std::endl;
+			}
 			p1 = centroid + normal * initial_segment_length;
 
 			vertices.push_back(p0);
@@ -453,8 +468,13 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			segment.push_back(1);
 			cell_vertices.push_back(segment);
 
-			if(i>1)
-				num_generations_1 = num_generations_2;
+			unsigned int num_generations_local = num_generations_1;
+			if(i==1)
+				num_generations_local = num_generations_1;
+			else if(i==2)
+				num_generations_local = num_generations_2;
+			else if(i==3)
+				num_generations_local = num_generations_3;
 
 			// for each element/segment, assuming same numbering convention
 			// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
@@ -462,22 +482,34 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			element_data.push_back(std::vector<double>(12,-1));
 			element_data[element_data.size() - 1][0] = -1;
 			element_data[element_data.size() - 1][5] = initial_segment_length;
-			element_data[element_data.size() - 1][6] = element_data[element_data.size() - 1][5]/length_diam_ratio/2.0;	//this is the radius no diameter
+
+			double radius = element_data[element_data.size() - 1][5]/length_diam_ratio/2.0;
+			if(es->parameters.get<bool> ("half_initial_length"))
+			{
+				radius *= 2.0;
+			}
+
+			// if we are doing a twod approx then we need to change the radius
+			if(es->parameters.get<bool> ("twod_oned_tree"))
+				radius = pow(16/3/M_PI*pow(radius,3.0),1./4.0);
+
+			element_data[element_data.size() - 1][6] = radius;	//this is the radius no diameter
 			element_data[element_data.size() - 1][7] = 0;	//generation
-			element_data[element_data.size() - 1][8] = num_generations_1;	//generation
+			element_data[element_data.size() - 1][8] = num_generations_local;	//generation
 			//particle deposition stuff
 			element_data[element_data.size() - 1][9] = 0;	//the flow rate in this tube for the current time step
 			element_data[element_data.size() - 1][10] = 0;	//the efficiency in this tube for the current time step
 			element_data[element_data.size() - 1][11] = 0;	//num alveolar generations
 
-			create_1d_tree(vertices,cell_vertices,num_generations_1);
-			num_generations.push_back(num_generations_1);
+
+			create_1d_tree(vertices,cell_vertices,num_generations_local);
+			num_generations.push_back(num_generations_local);
 
 			// this is needed for the particle deposition in alveoli
 			if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
-				num_generations.push_back(num_generations_1 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+				num_generations.push_back(num_generations_local + es->parameters.get<unsigned int> ("num_alveolar_generations"));
 			else
-				num_generations.push_back(num_generations_1);
+				num_generations.push_back(num_generations_local);
 
 	
 			add_1d_tree_to_mesh(vertices,cell_vertices, i);
@@ -717,15 +749,38 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			Point unit_direction = direction.unit();
 
 			Point p0_direction;
-			p0_direction(0) = cos(bifurcation_angle)*unit_direction(0) + sin(bifurcation_angle)* unit_direction(2);
-			p0_direction(2) = -sin(bifurcation_angle)*unit_direction(0) + cos(bifurcation_angle)* unit_direction(2);
+			if(es->parameters.get<bool> ("threed"))
+			{
+				p0_direction(0) = cos(bifurcation_angle)*unit_direction(0) + sin(bifurcation_angle)* unit_direction(2);
+				p0_direction(2) = -sin(bifurcation_angle)*unit_direction(0) + cos(bifurcation_angle)* unit_direction(2);
+			}
+			else
+			{
+				p0_direction(0) = cos(bifurcation_angle)*unit_direction(0) + sin(bifurcation_angle)* unit_direction(1);
+				p0_direction(1) = -sin(bifurcation_angle)*unit_direction(0) + cos(bifurcation_angle)* unit_direction(1);
+			}
 
 			Point p1_direction;
-			p1_direction(0) = cos(-bifurcation_angle)*unit_direction(0) + sin(-bifurcation_angle)* unit_direction(2);
-			p1_direction(2) = -sin(-bifurcation_angle)*unit_direction(0) + cos(-bifurcation_angle)* unit_direction(2);
+			if(es->parameters.get<bool> ("threed"))
+			{
+				p1_direction(0) = cos(-bifurcation_angle)*unit_direction(0) + sin(-bifurcation_angle)* unit_direction(2);
+				p1_direction(2) = -sin(-bifurcation_angle)*unit_direction(0) + cos(-bifurcation_angle)* unit_direction(2);
+			}
+			else
+			{
+				p1_direction(0) = cos(-bifurcation_angle)*unit_direction(0) + sin(-bifurcation_angle)* unit_direction(1);
+				p1_direction(1) = -sin(-bifurcation_angle)*unit_direction(0) + cos(-bifurcation_angle)* unit_direction(1);
+			}
 
 			double length_1 = element_data[parent_segment + j + element_offset][5]*left_length_ratio;
 			double length_2 = element_data[parent_segment + j + element_offset][5]*right_length_ratio;
+
+			// if the first segment is a half segment then the next should double
+			if(i == 1 && es->parameters.get<bool> ("half_initial_length"))
+			{
+				length_1 *= 2.;
+				length_2 *= 2.;
+			}
 
 			//p0 = vertices[parent_start_node + j] + pow(length_ratio,i)*p0_direction;
 			//p1 = vertices[parent_start_node + j] + pow(length_ratio,i)*p1_direction;
@@ -744,8 +799,14 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][4] = 1;
-			element_data[cell_vertices.size() - 1 + element_offset][5] = element_data[parent_segment + j + element_offset][5]*left_length_ratio;
-			element_data[cell_vertices.size() - 1 + element_offset][6] = element_data[cell_vertices.size() - 1 + element_offset][5]/length_diam_ratio/2.0; //radius not diam
+			element_data[cell_vertices.size() - 1 + element_offset][5] = length_1;
+
+			double radius_1 = length_1/length_diam_ratio/2.0;
+			// if we are doing a twod approx then we need to change the radius
+			if(es->parameters.get<bool> ("twod_oned_tree"))
+				radius_1 = pow(16/3/M_PI*pow(radius_1,3.0),1./4.0);
+
+			element_data[cell_vertices.size() - 1 + element_offset][6] = radius_1; //radius not diam
 			element_data[cell_vertices.size() - 1 + element_offset][7] = i; //generation
 			element_data[cell_vertices.size() - 1 + element_offset][8] = num_generations - i; //order
 			//particle deposition stuff
@@ -764,8 +825,14 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() - 2 + element_offset;
 			element_data[cell_vertices.size() - 1 + element_offset][4] = 0;
-			element_data[cell_vertices.size() - 1 + element_offset][5] = element_data[parent_segment + j + element_offset][5]*right_length_ratio;
-			element_data[cell_vertices.size() - 1 + element_offset][6] = element_data[cell_vertices.size() - 1 + element_offset][5]/length_diam_ratio/2.0; //radius not diam
+			element_data[cell_vertices.size() - 1 + element_offset][5] = length_2;
+
+			double radius_2 = length_2/length_diam_ratio/2.0;
+			// if we are doing a twod approx then we need to change the radius
+			if(es->parameters.get<bool> ("twod_oned_tree"))
+				radius_2 = pow(16/3/M_PI*pow(radius_2,3.0),1./4.0);
+
+			element_data[cell_vertices.size() - 1 + element_offset][6] = radius_2; //radius not diam
 			element_data[cell_vertices.size() - 1 + element_offset][7] = i; //generation
 			element_data[cell_vertices.size() - 1 + element_offset][8] = num_generations - i; //order
 			//particle deposition stuff

@@ -1253,6 +1253,7 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"E",3.3);
 	set_unsigned_int_parameter(infile,"num_generations_1",2);
 	set_unsigned_int_parameter(infile,"num_generations_2",5);
+	set_unsigned_int_parameter(infile,"num_generations_3",1);
 	// the petsc stuff
 	// different solver types. default(0), mumps_both(1), superlu_dist_both(2), mumps_1d_iter_3d(3), 
   std::string solver_options = set_string_parameter(infile,"solver_options","");
@@ -1410,6 +1411,9 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"element_length_scaling",1.0);
 
 	set_bool_parameter(infile,"output_nondim",false);
+	set_bool_parameter(infile,"half_initial_length",false);
+	set_bool_parameter(infile,"twod_oned_tree",false);
+	set_bool_parameter(infile,"initial_segment_length_from_mesh",false);
 	
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
@@ -2381,6 +2385,7 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		//if(sim_1d)
 		//	output_poiseuille_resistance_per_generation();
 
+		std::cout << "bye" << std::endl;
 	}
 }
 
