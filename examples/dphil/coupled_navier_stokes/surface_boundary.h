@@ -46,10 +46,9 @@ public:
 	{
 
 
-		
 
 		libmesh_geometry = _libmesh_geometry;		
-		std::cout << "libmesh_geometry = " << libmesh_geometry << std::endl;
+		//std::cout << "libmesh_geometry = " << libmesh_geometry << std::endl;
 
 		//libmesh_geometry = 0;
 		if(mesh.mesh_dimension() == 3)
@@ -85,8 +84,13 @@ public:
 
 			std::cout << "1" << std::endl;
 
+			int count = 0;
 			for ( ; el != end_el; ++el)
 			{
+
+				count++;
+				//if(count%100 == 0)
+				//	std::cout << "count = " << count << std::endl;
 
 			  const Elem* elem = *el;
 
@@ -97,6 +101,7 @@ public:
 
 					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
 					{
+						
 						// now we know we are on a boundary, are we on the edge of a boundary
 			      AutoPtr<Elem> side (elem->build_side(s));
 						fe_face->reinit(elem, s);
@@ -121,14 +126,15 @@ public:
 			// rescale normal
 			normal = normal.unit();
 
-			std::cout << "2" << std::endl;
+			std::cout << "2" << std::endl;;
+
 /*
 			for(unsigned int i=0; i< boundary_points.size(); i++)
 			{
 				std::cout << "boundary_point[" << i << "] = " << boundary_points[i] << std::endl;
 			}
-	*/		
-			std::cout << "normal = " << normal << std::endl;
+*/			
+			//std::cout << "normal = " << normal << std::endl;
 
 			// sort the boundary points vector and remove duplicate boundary points
 			double tol = 1e-10;
@@ -186,15 +192,32 @@ public:
 
 			if(threed)
 			{
+
 				// calculate the centroid using the wikipedia formula
 				// we need to map to a 2d surface so choose an origin
+				// it is possible that if we have refined then boundary points 0,1,2 
+				// lie in a line which is bad, so we iterate to get a good third point
 				Point origin = boundary_points[5];
-				//basis in surface
-				Point basis_1 = boundary_points[0] - boundary_points[1];
-				Point basis_2 = boundary_points[0] - boundary_points[2];
-				//find vector orthogonal to vector_in_plane_1 that is component
-				basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
-	
+				unsigned int point_2 = 2;
+				Point basis_1;
+				Point basis_2;
+				do
+				{
+					//basis in surface
+					basis_1 = boundary_points[0] - boundary_points[1];
+					basis_2 = boundary_points[0] - boundary_points[point_2];
+					//find vector orthogonal to vector_in_plane_1 that is component
+					basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
+					point_2++;
+				}while(basis_2.size() < 1e-10 && point_2 < boundary_points.size());
+				
+				if(basis_2.size() < 1e-10)
+				{
+					std::cout << "error in surface_boundary.h, basis for surface cannot be found" << std::endl;
+					std:exit(0);
+				}	
+
+
 				basis_1 = basis_1.unit();
 				basis_2 = basis_2.unit();
 
@@ -224,7 +247,7 @@ public:
 
 				area /= 2.;
 
-				std::cout << "area = " << area << std::endl;
+				//std::cout << "area = " << area << std::endl;
 
 
 				centroid = 0.;
@@ -344,7 +367,7 @@ public:
 				area = (boundary_points[1] - boundary_points[0]).size();
 			}
 
-			std::cout << "centroid = " << centroid << std::endl;
+			//std::cout << "centroid = " << centroid << std::endl;
 
 		}
 		else
@@ -469,7 +492,7 @@ public:
 
 		area = 0.;
 
-			std::cout << "7" << std::endl;
+			std::cout << "6" << std::endl;
 
 		for ( ; el != end_el; ++el)
 		{
@@ -500,6 +523,8 @@ public:
 				}
 			}
 		}
+
+			std::cout << "6a" << std::endl;
 
 		el     = mesh.active_elements_begin();
 
@@ -542,7 +567,7 @@ public:
 				parabolic_integral *= 2.0;
 		}
 
-			std::cout << "8" << std::endl;
+			std::cout << "7" << std::endl;
 		//std::cout << "parabola integral = " << parabolic_integral << std::endl;
 		//std::cout << "area = " << area << std::endl;
 

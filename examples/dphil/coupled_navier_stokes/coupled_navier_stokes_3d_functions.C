@@ -39,11 +39,9 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::cout << "Reading mesh." << std::endl;
 			_mesh.read(_es->parameters.get<std::string> ("mesh_file"));
 
-			//scale the mesh to make SI units
-
-
 			
-
+		
+			//scale the mesh to make SI units
 			if(!_es->parameters.get<bool>("linear_shape_functions"))
 					_mesh.all_second_order();
 
@@ -53,6 +51,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::cout << "Scaling mesh." << std::endl;
 			double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
 			MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
+
 		}
 		// the cubioids can be auto generated
 		else if(es->parameters.get<unsigned int> ("geometry_type") == 2 || es->parameters.get<unsigned int> ("geometry_type") == 3
@@ -163,6 +162,10 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	//
 
 	std::cout << "Setting up boundaries." << std::endl;
+
+	// set node ids from side ids so that surface_boundary can identify shared boundaries.
+	_mesh.boundary_info->build_node_list_from_side_list();
+
 	// the pipe geometry or the expanding_pipe geometry
 	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<bool> ("expanding_pipe"))
 	{
@@ -236,17 +239,47 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::set<boundary_id_type> bdyids = _mesh.boundary_info->get_boundary_ids();
 			std::set<subdomain_id_type> subids;
 			_mesh.subdomain_ids(subids);
+			std::cout << "hye there" << std::endl;
+			std::cout << "bdyids.size = " << bdyids.size() << std::endl;
 
 			// we wanna do this relabelling automagically, and yes sets are ordered in a particular way
 			if(true)//_es->parameters.get<std::string> ("mesh_file").compare("meshes/coarse_mesh_truncated_labelled.msh") == 0)
 			{
-				int count = -1;
+				int count = 0;
 				for (std::set<boundary_id_type>::iterator it=bdyids.begin(); it!=bdyids.end(); ++it)
 				{
-					MeshTools::Modification::change_boundary_id(_mesh,*it,count);		//walls
-					std::cout << "old bdy id = " << *it << std::endl;
-					std::cout << "new bdy id = " << count << std::endl;
-					count++;
+					if(es->parameters.get<int> ("inflow_bdy_id") > 0)
+					{
+						if(count == 0)
+						{
+							MeshTools::Modification::change_boundary_id(_mesh,*it,-1);		//walls
+							std::cout << "old bdy id = " << *it << std::endl;
+							std::cout << "new bdy id = " << -1 << std::endl;
+							count++;
+
+						}
+						else if(*it == es->parameters.get<int> ("inflow_bdy_id"))
+						{
+							MeshTools::Modification::change_boundary_id(_mesh,*it,0);		//inflow
+							std::cout << "old bdy id = " << *it << std::endl;
+							std::cout << "new bdy id = " << 0 << std::endl;					
+						}
+						else
+						{
+							MeshTools::Modification::change_boundary_id(_mesh,*it,count);		//outlets
+							std::cout << "old bdy id = " << *it << std::endl;
+							std::cout << "new bdy id = " << count << std::endl;		
+							count++;			
+						}
+					}
+					else
+					{
+						MeshTools::Modification::change_boundary_id(_mesh,*it,count - 1);		//walls
+						std::cout << "old bdy id = " << *it << std::endl;
+						std::cout << "new bdy id = " << count << std::endl;
+						count++;
+					
+					}
 				}
 
 				/*
@@ -317,8 +350,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			surface_boundaries.push_back(surface_boundary);
 			surface_boundaries[i]->init(_mesh,i,0);
 
-			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
+			std::cout << "surface " << i << ":" << std::endl;
+			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+			std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+			std::cout << std::endl;
 		}
 
 
@@ -400,8 +438,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			surface_boundaries.push_back(surface_boundary);
 			surface_boundaries[i]->init(_mesh,i,true);
 
-			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
+			std::cout << "surface " << i << ":" << std::endl;
+			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+			std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+			std::cout << std::endl;
 		}
 		
 
@@ -574,8 +617,54 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		//MeshTools::Modification::scale(_mesh,5.6);
 	}
 
+	// *************** SET UP SUBDOMAINS IN 3D **************** //
+	// can have any number of types of elements each with a different subdomainid
+	// we start at 0
+
+	//  assign different subdomain id to different element types
+	// Loop over all elements.
+	
+	std::vector<libMesh::ElemType> elem_types;	// temporary variable storing the types of elements encountered
+	MeshBase::element_iterator       elem_it  = mesh.elements_begin();
+	const MeshBase::element_iterator elem_end = mesh.elements_end();
+	
+	std::vector<libMesh::ElemType>::iterator it;
+
+	unsigned int count = 0;
+	for (; elem_it != elem_end; ++elem_it)
+	{
+		Elem* elem = *elem_it;
+		ElemType current_elem_type = elem->type();
+		it = std::find(elem_types.begin(), elem_types.end(), current_elem_type);
+
+		// element type not encountered yet
+		if(it==elem_types.end())
+		{
+			elem_types.push_back(current_elem_type);
+			elem->subdomain_id() = count;
+			count++;
+					
+		}
+		else
+		{
+			elem->subdomain_id() = it - elem_types.begin();
+			count++;
+		}
+	}
+
+	std::cout << std::endl;
+	std::cout << "Subdomain identification summary:" << std::endl;
+	std::cout << " " << elem_types.size() << " element types found." << std::endl;
+	std::cout << " Given subdomain ids:" << std::endl;
+	for(unsigned int i=0; i<elem_types.size(); i++)
+	{
+		std::cout << " subdomain " << i << ": " << Utility::enum_to_string(elem_types[i]) << " elements." << std::endl;
+	}
+	
+
 	//populate subdomains_3d
-	subdomains_3d.push_back(0);
+	for(unsigned int i=0; i<elem_types.size(); i++)
+		subdomains_3d.push_back(i);
 
 
 }
@@ -602,7 +691,9 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 	//const MeshBase& mesh = es->get_mesh();
 
 	std::set<subdomain_id_type> active_subdomains;
-	active_subdomains.clear(); active_subdomains.insert(0);
+	active_subdomains.clear(); 
+	for(unsigned int i=0; i<subdomains_3d.size(); i++)
+		active_subdomains.insert(subdomains_3d[i]);
 
 	unsigned int u_var = 0, v_var = 0, w_var = 0;
 	unsigned int u_adj_var = 0, v_adj_var = 0, w_adj_var = 0;
@@ -1587,12 +1678,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	
 	system->get_dof_map().enforce_constraints_exactly(*system);
 
-
-  // Compute the difference between this solution and the last
-  // nonlinear iterate.
-	last_nonlinear_soln->add (-1., *system->solution);
-	last_nonlinear_soln->close();
-
 	std::vector<Real> weights;  // u, v
 	weights.push_back(1.0);
 	weights.push_back(1.0);
@@ -1607,10 +1692,17 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		if(threed)
 			weights.push_back(0.0);
   	weights.push_back(0.0);            // p
-
 	}
-
 	std::vector<FEMNormType>	norms;	//if empty will automagically use discrete l2
+
+	double norm_3d = system->calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights));
+
+  // Compute the difference between this solution and the last
+  // nonlinear iterate.
+	last_nonlinear_soln->add (-1., *system->solution);
+	last_nonlinear_soln->close();
+
+
 	current_nonlinear_residual = system->calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights));
 	// now normalise it
 	current_nonlinear_residual /= system->calculate_norm(*system->solution,SystemNorm(norms, weights));
@@ -1630,7 +1722,8 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
         		<< std::endl;
 	std::cout << "Nonlinear iteration: " << nonlinear_iteration << std::endl;
 	std::cout << "Time: " << time << std::endl;
-	std::cout << "Time step: " << t_step << std::endl << std::endl;;
+	std::cout << "Time step: " << t_step << std::endl;
+	std::cout << "3D norm: " << norm_3d << std::endl << std::endl;
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
@@ -3101,7 +3194,7 @@ void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
   for ( ; el != end_el; ++el)
   {
     const Elem* elem = *el;;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  processor_dof_map.dof_indices(elem, dof_indices);

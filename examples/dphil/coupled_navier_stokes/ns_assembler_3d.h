@@ -58,8 +58,8 @@ using namespace libMesh;
 class NSAssembler3D : public System::Assembly
 {
 	public:
-		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries) :
-			es (&es_in),pressure_coupled(false),estimating_error(false),threed(true)
+		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> _subdomains_3d, unsigned int _n_initial_3d_elem) :
+			es (&es_in),subdomains_3d(_subdomains_3d), n_initial_3d_elem(_n_initial_3d_elem),pressure_coupled(false),estimating_error(false),threed(true)
 		
 		{
 			//rather insist on calling this yourself before each assembly so that you 
@@ -96,6 +96,8 @@ class NSAssembler3D : public System::Assembly
 		virtual void set_pressure_coupled (bool _pressure_coupled) { pressure_coupled = _pressure_coupled;};
 		virtual void find_1d_boundary_nodes();	//here we set the primary_pressure_boundary_nodes_1d etc
 		virtual void estimate_error(ErrorVector& _error_vector);	//here we set the primary_pressure_boundary_nodes_1d etc
+		virtual void set_subdomains_1d (std::vector<unsigned int> _subdomains_1d) { subdomains_1d = _subdomains_1d;};
+		virtual void set_element_data (std::vector<std::vector<double> >& _element_data) { element_data = _element_data;};
 	
 	protected:
 		EquationSystems* es;
@@ -113,6 +115,11 @@ class NSAssembler3D : public System::Assembly
 		bool estimating_error;
 		bool threed;
 		std::vector<SurfaceBoundary* >* surface_boundaries;
+		std::vector<unsigned int> subdomains_3d;
+		std::vector<unsigned int> subdomains_1d;
+		int n_initial_3d_elem;
+
+		std::vector<std::vector<double> > element_data;
 
 };
 

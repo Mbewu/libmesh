@@ -56,7 +56,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
     
 		if(coupled)
 		{
-			if(elem->subdomain_id() == 0)
+			if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		  {
 		    for (unsigned char side=0; side<elem->n_sides(); side++)
 		    if (elem->neighbor(side) == NULL)
@@ -74,7 +74,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		  }
 		}
 
-    if(elem->subdomain_id() > 0)
+    if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 
 			//***** first calculate the ids on the boundary
@@ -89,20 +89,6 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
 
-			if(coupled)
-			{
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
-				if(boundary_ids.size() > 0)
-				{
-					if(boundary_ids[0] > 0 && boundary_ids[0] < 1000)	// shouldn't get here if looking at side 0 anyway
-					{
-						boundary_nodes_1d[boundary_ids[0]][0] = dof_indices_p[0];
-						boundary_nodes_1d[boundary_ids[0]][1] = dof_indices_p[1];
-						boundary_nodes_1d[boundary_ids[0]][2] = dof_indices_q[0];
-						boundary_nodes_1d[boundary_ids[0]][3] = dof_indices_q[1];
-					}
-				}
-			}
 
 			//****** next calculate the coupling between 1d elements
 			int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
@@ -110,6 +96,8 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 			int daughter_1_el_idx = (int)element_data[current_1d_el_idx][1] + n_initial_3d_elem;
 			int daughter_2_el_idx = (int)element_data[current_1d_el_idx][2] + n_initial_3d_elem;
 			int sibling_el_idx = (int)element_data[current_1d_el_idx][3] + n_initial_3d_elem;
+			// need to figure out whether we are on daughter 1 or daughter 2			
+			int is_daughter_1 = (int)element_data[current_1d_el_idx][4];	//this is a bool duh!
 
 			//very dirty hack
 			if(parent_el_idx < n_initial_3d_elem)
@@ -123,6 +111,22 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
 			if(sibling_el_idx  < n_initial_3d_elem)
 				sibling_el_idx  = current_el_idx;
+
+
+			if(coupled)
+			{
+				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
+				if(boundary_ids.size() > 0)
+				{
+					if(boundary_ids[0] > 0 && boundary_ids[0] < 1000 && is_daughter_1)	// shouldn't get here if looking at side 0 anyway
+					{
+						boundary_nodes_1d[boundary_ids[0]][0] = dof_indices_p[0];
+						boundary_nodes_1d[boundary_ids[0]][1] = dof_indices_p[1];
+						boundary_nodes_1d[boundary_ids[0]][2] = dof_indices_q[0];
+						boundary_nodes_1d[boundary_ids[0]][3] = dof_indices_q[1];
+					}
+				}
+			}
 
 			tree_elem_elem_map[0][elem->id()] = parent_el_idx;
 			tree_elem_elem_map[1][elem->id()] = daughter_1_el_idx;

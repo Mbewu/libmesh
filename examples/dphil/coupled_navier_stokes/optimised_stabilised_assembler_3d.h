@@ -52,8 +52,8 @@ using namespace libMesh;
 class OptimisedStabilisedAssembler3D : public NSAssembler3D
 {
 	public:
-		OptimisedStabilisedAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries) :
-			NSAssembler3D (es_in,_surface_boundaries)
+		OptimisedStabilisedAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> subdomains_3d, unsigned int n_initial_3d_elem) :
+			NSAssembler3D (es_in,_surface_boundaries,subdomains_3d, n_initial_3d_elem)
 		{}
 
 		using NSAssembler3D::assemble;

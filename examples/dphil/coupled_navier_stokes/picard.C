@@ -247,7 +247,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
   {				
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 			count++;
 		  dof_map.dof_indices (elem, dof_indices);
@@ -2100,6 +2100,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							if(bc_type[boundary_id].compare("pressure") == 0)
 							{
 								//set the dof_index_0 to the correct node number
+								// primary pressure boundary node comes from either daughter 1 or daughter 2 (so we choose daughter 1)
+								// primary flux node comes from daughter 1
 								pressure_1d_index = primary_pressure_boundary_nodes_1d[boundary_id];
 								flux_1d_index = primary_flux_boundary_nodes_1d[boundary_id];
 
