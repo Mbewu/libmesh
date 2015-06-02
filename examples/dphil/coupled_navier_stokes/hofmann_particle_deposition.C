@@ -5,8 +5,8 @@
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
 
-HofmannParticleDeposition::HofmannParticleDeposition (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _num_generations): 
-		es (&es_in), element_data(element_data_in), total_particles_inhaled(0), end_sim_at_end_time(true), num_generations(_num_generations)
+HofmannParticleDeposition::HofmannParticleDeposition (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _num_generations,std::vector<unsigned int> _subdomains_1d): 
+		es (&es_in), element_data(element_data_in), total_particles_inhaled(0), end_sim_at_end_time(true), num_generations(_num_generations), subdomains_1d(_subdomains_1d)
 
 {
 
@@ -56,8 +56,7 @@ HofmannParticleDeposition::HofmannParticleDeposition (EquationSystems& es_in, st
 		for ( ; el != end_el; ++el)
 		{
 			const Elem* elem = *el;
-			unsigned int subdomain_id = elem->subdomain_id();
-			if(subdomain_id > 0)
+			if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 			{
 				const int current_el_idx = elem->id();
 				if(current_el_idx == 0)
@@ -127,8 +126,7 @@ HofmannParticleDeposition::HofmannParticleDeposition (EquationSystems& es_in, st
   for ( ; el != end_el; ++el)
   {
 		const Elem* elem = *el;
-		unsigned int subdomain_id = elem->subdomain_id();
-		if(subdomain_id > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 			
 

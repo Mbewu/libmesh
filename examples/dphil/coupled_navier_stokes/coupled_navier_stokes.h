@@ -149,6 +149,10 @@
 
 #include "libmesh/point_locator_base.h"
 
+// for element type names
+#include "libmesh/elem_type.h"
+#include "libmesh/string_to_enum.h"
+
 //#include <boost/bind.hpp>
 
 // *** stuff for shell pc
@@ -275,7 +279,7 @@ public:
 
 	void end_timestep_admin();
 
-	void add_1d_tree_to_mesh(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices,unsigned int subdomain_id);
+	void add_1d_tree_to_mesh(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices,unsigned int subdomain_id, unsigned int boundary_id);
 
 	void create_1d_tree(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int num_generations);
 
@@ -444,6 +448,7 @@ private:
 	NSShellPC  *shell;    /* user-defined preconditioner context */
 
 	PCD2ShellMatrixCtx mat_ctx;
+
 
 };
 

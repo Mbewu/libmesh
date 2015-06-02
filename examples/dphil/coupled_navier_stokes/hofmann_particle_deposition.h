@@ -55,7 +55,7 @@ using namespace libMesh;
 class HofmannParticleDeposition
 {
 	public:
-		HofmannParticleDeposition (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _num_generations);
+		HofmannParticleDeposition (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _num_generations, std::vector<unsigned int> _subdomains_1d);
 
 		// efficiency of deposition of particle being deposited at this time
 		void calculate_deposition_efficiency(unsigned int t_step_in);
@@ -147,6 +147,7 @@ class HofmannParticleDeposition
 		double dt;
 
 		std::vector<std::vector<double> > temporary_alveolar_tree;	
+		std::vector<unsigned int> subdomains_1d;
 
 };
 #endif //__hofmann_particle_deposition_h__

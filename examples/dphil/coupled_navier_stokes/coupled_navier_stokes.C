@@ -221,10 +221,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	{
 		setup_3d_mesh(&*es,mesh);
 
+		es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
+
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
-			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries));
+			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 		else
-			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries));
+			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
 		if(sim_type == 5)
 		{
@@ -240,8 +242,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		}
 
 	}
-	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
+	// in case not set already
+	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
 	// ******************** SETUP 1D STUFFS ********************* //
 	if(sim_1d)
@@ -249,7 +252,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		setup_1d_mesh();
 		ns_assembler = AutoPtr<NavierStokesAssembler>
-								(new NavierStokesAssembler(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+								(new NavierStokesAssembler(*es,element_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
 		if(sim_type == 5)
 		{
@@ -265,7 +268,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			//get the extra couplings sorted for the matrix, maybe don't need this?
 			augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-										(new AugmentSparsityOnInterface(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+										(new AugmentSparsityOnInterface(*es,element_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
 	}
@@ -279,8 +282,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		//get the extra couplings sorted for the matrix
 		augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-									(new AugmentSparsityOnInterface(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
+									(new AugmentSparsityOnInterface(*es,element_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
 		system_coupled->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
+
+		picard->set_subdomains_1d(subdomains_1d);
+		picard->set_element_data(element_data);
 
 	}
 
@@ -1059,7 +1065,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	else if (particle_deposition == 2)
 	{
 
-		HofmannParticleDeposition particle_deposition_object(*es,element_data,num_generations[0]);
+		HofmannParticleDeposition particle_deposition_object(*es,element_data,num_generations[0],subdomains_1d);
 
 		std::cout << "oh and hey babe" << std::endl;
 
@@ -1258,8 +1264,7 @@ void NavierStokesCoupled::read_parameters()
 	// different solver types. default(0), mumps_both(1), superlu_dist_both(2), mumps_1d_iter_3d(3), 
   std::string solver_options = set_string_parameter(infile,"solver_options","");
   output_folder << set_string_parameter(infile,"output_folder","results/");
-  set_string_parameter(infile,"input_1d_node_file","");
-  set_string_parameter(infile,"input_1d_edge_file","");
+  set_string_parameter(infile,"input_1d_file","");
   set_bool_parameter(infile,"_read_1d_mesh",false);
   set_unsigned_int_parameter(infile,"max_newton_iterations",6);
   set_bool_parameter(infile,"compliance_1d",false);
@@ -1420,8 +1425,14 @@ void NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"no_output",false);
 	
+	set_int_parameter(infile,"inflow_bdy_id",-1);	
 
 
+  set_string_parameter(infile,"input_1d_node_file_2","");
+  set_string_parameter(infile,"input_1d_edge_file_2","");
+
+
+  set_bool_parameter(infile,"match_1d_mesh_to_3d_mesh",false);
 
 
 
@@ -2014,7 +2025,7 @@ void NavierStokesCoupled::print_flux_and_pressure()
 		std::cout << "1D pressure values:    " << std::endl;
 		for(unsigned int i=1; i < pressure_values_1d.size(); i++)
 			std::cout << " " << pressure_values_1d[i] << " (" <<
-								pressure_values_1d[i] * pressure_scaling << " kPa)" << std::endl;
+								pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
 		std::cout << "total daughter flux 1D = " << total_daughter_flux_1d * flux_scaling << " m^3/s)" << std::endl;
 	}
 }

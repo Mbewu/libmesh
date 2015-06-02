@@ -255,7 +255,7 @@ void OptimisedStabilisedAssembler3D::assemble(ErrorVector&)// error_vector)
 		bool boundary_element = false;
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 		  dof_map.dof_indices (elem, dof_indices);
 		  dof_map.dof_indices (elem, dof_indices_u, u_var);

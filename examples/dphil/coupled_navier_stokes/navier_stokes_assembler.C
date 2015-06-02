@@ -106,6 +106,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   std::vector<dof_id_type> dof_indices_parent_q;
   std::vector<dof_id_type> dof_indices_daughter_1_p;
   std::vector<dof_id_type> dof_indices_sibling_q;
+  std::vector<dof_id_type> dof_indices_sibling_p;
 
   // Now we will loop over all the elements in the mesh that
   // live on the local processor. We will compute the element
@@ -120,7 +121,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   {
 		const Elem* elem = *el;
 		unsigned int subdomain_id = elem->subdomain_id();
-		if(subdomain_id > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), subdomain_id) != subdomains_1d.end())
 		{
 			//element data object starts numbering from 0
 			//and the values referenced in it also do so need to take this into account
@@ -135,6 +136,10 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			const double l = element_data[current_1d_el_idx][5];	//nondimensionalised length
 			const double r = element_data[current_1d_el_idx][6]; //nondimensionalised radius
 			int generation = element_data[current_1d_el_idx][7];
+
+			bool has_sibling = false;
+			if((int)element_data[current_1d_el_idx][3] > -1)
+				has_sibling = true;
 
 			//very dirty hack
 			if(parent_el_idx < n_initial_3d_elem)
@@ -176,6 +181,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
       dof_map.dof_indices (parent_elem, dof_indices_parent_q, q_var);
       dof_map.dof_indices (daughter_1_elem, dof_indices_daughter_1_p, p_var);
       dof_map.dof_indices (sibling_elem, dof_indices_sibling_q, q_var);
+      dof_map.dof_indices (sibling_elem, dof_indices_sibling_p, p_var);
 
       const unsigned int n_dofs   = 4;
       const unsigned int n_p_dofs = 2;
@@ -198,11 +204,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			C = density*pow(velocity_scale,2)*C/length_scale;
 			I = I*length_scale/density;
 
-		std::cout << "R = " << R << std::endl;
-		std::cout << "viscosity = " << viscosity << std::endl;
-		std::cout << "l = " << l << std::endl;
-		std::cout << "r = " << r << std::endl;
-		std::cout << "r^4 = " << pow(r,4.0) << std::endl;
+		//std::cout << "R = " << R << std::endl;
+		//std::cout << "viscosity = " << viscosity << std::endl;
+		//std::cout << "l = " << l << std::endl;
+		//std::cout << "r = " << r << std::endl;
+		//std::cout << "r^4 = " << pow(r,4.0) << std::endl;
 
 
 			// use given reynolds number is reynolds number calc
@@ -342,8 +348,10 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					//flow prescribed at inflow
 					if(es->parameters.get<unsigned int> ("bc_type_1d") == 0)
 					{
-						eqn_3_dof = dof_indices_q[0];		//put influx condition in eqn_3, no change
+						// these actually remain the same
+						// eqn_3_dof = dof_indices_q[0];		//put influx condition in eqn_3, no change
 						// if we also have the pressure prescribed at the outflow then eqn_4 is also unchanged, still p_out
+
 				
 					}
 					//pressure prescribed at inflow
@@ -384,17 +392,42 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				// **** equation 3 - BC on inflow
 				if(parent_el_idx == current_el_idx)
 				{
+					//std::cout << "parent_el_idx = " << parent_el_idx << std::endl;
+					//std::cout << "current_el_idx = " << current_el_idx << std::endl;
 					// flow
 					if(es->parameters.get<unsigned int> ("bc_type_1d") == 0)
 					{
 						// now there is no zero on the 3rd equation
 						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn - not anymore it isn't
-				  	system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
-						//std::cout << "dt = " << dt << std::endl;
-						std::cout << "flux_values[" << subdomain_id <<"] = " << flux_values[subdomain_id] << std::endl;
-						if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
+	
+						if(is_daughter_1)
 						{
-					  	system->rhs->add (eqn_3_dof,-flux_values[subdomain_id]);
+							
+							system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
+							if(has_sibling)
+								system->matrix->add (eqn_3_dof,dof_indices_sibling_q[0],-1.0);
+			
+							// boundary condition should be on side 0
+							std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
+							if(boundary_ids.size() == 0)
+								std::cout << "error, boundary does not have boundary id as expected, el idx = " << current_el_idx << std::endl;
+
+							//std::cout << "flux_values[" << boundary_ids[0] <<"] = " << flux_values[boundary_ids[0]] << std::endl;
+
+							if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
+							{
+								// if there is a bifurcation at the inflow then daughter_1 can add it
+								if(is_daughter_1)
+								{
+									std::cout << "double oopsie" << std::endl;
+									system->rhs->add (eqn_3_dof,-flux_values[boundary_ids[0]]);
+								}
+							}
+						}
+						else	// if we are a daughter 2 then we have a sibling and need to apply the pressure continuity condition
+						{
+							system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
+							system->matrix->add (eqn_3_dof,dof_indices_sibling_p[0],-1.0);
 						}
 					}
 					// pressure
@@ -577,7 +610,7 @@ void NavierStokesAssembler::assemble_stokes_1D ()
   for ( ; el != end_el; ++el)
   {				
     const Elem* elem = *el;
-		if(elem->subdomain_id() == 1)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
       // Get the degree of freedom indices for the
       // current element.  These define where in the global
@@ -801,7 +834,7 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
   {
 		const Elem* elem = *el;
 		//only concerned with 1d elements
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
       for (unsigned int s=0; s<elem->n_sides(); s++)
 			{
@@ -833,10 +866,10 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
 		}
 	}
 
-	std::cout << "flux calculated is " << flux << std::endl;
+	//std::cout << "flux calculated is " << flux << std::endl;
 
 	es->comm().sum(flux);
-	std::cout << "flux calculated is " << flux << std::endl;
+	//std::cout << "flux calculated is " << flux << std::endl;
 			
 	return flux;
 }
@@ -891,7 +924,7 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
   {
 		const Elem* elem = *el;
 		//only concerned with 1d elements
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
       for (unsigned int s=0; s<elem->n_sides(); s++)
 			{

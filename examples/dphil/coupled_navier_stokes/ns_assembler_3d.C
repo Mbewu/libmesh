@@ -136,6 +136,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 		}
 	
 	}
+
 			
 
 	
@@ -151,11 +152,11 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 		boundary_radius[boundary_ids[0]] = 0.5;
 	}
 
-
 	if(pressure_coupled)
 	{
 		find_1d_boundary_nodes();
 	}
+
 
 
 		
@@ -172,7 +173,6 @@ void NSAssembler3D::find_1d_boundary_nodes()
 	secondary_pressure_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
 	primary_flux_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
 	secondary_flux_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
-
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -200,10 +200,11 @@ void NSAssembler3D::find_1d_boundary_nodes()
   MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
 
+
   for ( ; el != end_el; ++el)
   {
 		const Elem* elem = *el;
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 			//element data object starts numbering from 0
 			//and the values referenced in it also do so need to take this into account
@@ -218,20 +219,25 @@ void NSAssembler3D::find_1d_boundary_nodes()
       dof_map.dof_indices (elem, dof_indices_p, p_var);
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
+			// need to figure out whether we are on daughter 1 or daughter 2			
+			const int current_el_idx = elem->id();
+			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			int is_daughter_1 = (int)element_data[current_1d_el_idx][4];	//this is a bool duh!
+
       //const unsigned int n_dofs   = 4;
       //const unsigned int n_p_dofs = 2;
 
 			std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
 			if(boundary_ids.size() > 0)
 			{
-				if(boundary_ids[0] > 0 && boundary_ids[0] < 1000)	// shouldn't get here if looking at side 0 anyway
+				if(boundary_ids[0] > 0 && boundary_ids[0] < 1000 && is_daughter_1)	// shouldn't get here if looking at side 0 anyway
 				{
 					primary_pressure_boundary_nodes_1d[boundary_ids[0]] = dof_indices_p[0];
 					secondary_pressure_boundary_nodes_1d[boundary_ids[0]] = dof_indices_p[1];
 					primary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[0];
 					secondary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[1];
 
-					std::cout << "primary_pressure_boundary_nodes_1d" << boundary_ids[0] << "  = " << primary_pressure_boundary_nodes_1d[boundary_ids[0]] << std::endl;
+					//std::cout << "primary_pressure_boundary_nodes_1d" << boundary_ids[0] << "  = " << primary_pressure_boundary_nodes_1d[boundary_ids[0]] << std::endl;
 				}
 			}		
 		}	
@@ -309,7 +315,7 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
@@ -450,7 +456,7 @@ double NSAssembler3D::calculate_pressure(const int boundary_id)
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 			// note each element will only have one side on the boundary
 		  for (unsigned int s=0; s<elem->n_sides(); s++)
@@ -607,7 +613,7 @@ void NSAssembler3D::calculate_peclet_number(ErrorVector& error_vector)
   {				
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
@@ -768,7 +774,7 @@ double NSAssembler3D::calculate_l2_norm(const unsigned int var_to_calc, bool ref
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
