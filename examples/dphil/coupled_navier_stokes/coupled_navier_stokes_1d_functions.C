@@ -41,9 +41,25 @@ void NavierStokesCoupled::read_1d_mesh ()
 	pressure_values_1d.push_back(-1.0);	//inflow
 	flux_values_1d.push_back(0.0);	//inflow
 
+	std::cout << "calculate_1d_info_at_coupling_nodes = " << es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes") << std::endl;
+	std::cout << "num_1d_trees = " << es->parameters.get<unsigned int> ("num_1d_trees") << std::endl;
+
+	if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+	{
+		coupling_flux_values_1d.push_back(0.);
+		coupling_pressure_values_1d.push_back(0.);
+	}
+
+
 	// number of 1d meshes is all the boundaries minus the inflow boundary
 	if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
+	{
 		es->parameters.set<unsigned int> ("num_1d_trees") = surface_boundaries.size() - 1;
+
+		// the inflow boundary id 0 does not have a 1d subdomain
+		boundary_id_to_tree_id.resize(surface_boundaries.size(),0);	// one for each boundary including inflow
+		tree_id_to_boundary_id.resize(surface_boundaries.size(),0);	// one for each boundary including inflow
+	}
 
 	for(unsigned int m=1; m<es->parameters.get<unsigned int> ("num_1d_trees")+1; m++)
 	{
@@ -65,7 +81,8 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 		}
 
-		std::cout << "file = " << node_file.str() << std::endl;
+		std::cout << "node_file = " << node_file.str() << std::endl;
+		std::cout << "edge_file = " << edge_file.str() << std::endl;
 
 		std::ifstream infile_node(node_file.str().c_str());
 		std::ifstream infile_edge(edge_file.str().c_str());
@@ -98,11 +115,13 @@ void NavierStokesCoupled::read_1d_mesh ()
 				double y_coord = 0.;
 				double z_coord = 0.;
 				double radius = 0.;
+				double sub_tree_number = 0;
 				line_stream >> node_num;
 				line_stream >> x_coord;
 				line_stream >> y_coord;
 				line_stream >> z_coord;
 				line_stream >> radius;
+				line_stream >> sub_tree_number;
 
 				//scale the data appropriately, to SI units from the mesh
 				x_coord *= es->parameters.get<double> ("mesh_input_scaling_1d");
@@ -121,6 +140,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 				node_data.push_back(y_coord);
 				node_data.push_back(z_coord);
 				node_data.push_back(radius);
+				node_data.push_back(sub_tree_number);
 
 				node_1d_data.push_back(node_data);
 			}
@@ -139,24 +159,41 @@ void NavierStokesCoupled::read_1d_mesh ()
 			edge_1d_data.resize(0);
 			while(std::getline(infile_edge,line))
 			{
-				std::vector<unsigned int> edge_data;
+				std::vector<double> edge_data;
 				std::stringstream line_stream(line);
 		
 				unsigned int edge_num = 0;
 				unsigned int node_1 = 0.;
 				unsigned int node_2 = 0.;
+				double radius = 0.;
 				unsigned int generation = 0.;
 				unsigned int order = 0.;
 
 				line_stream >> edge_num;
 				line_stream >> node_1;
 				line_stream >> node_2;
+				line_stream >> radius;
 				line_stream >> generation;
 				line_stream >> order;
+
+				if(es->parameters.set<bool> ("radius_on_edge") && radius < 1e-10)
+				{
+					std::cout << "error, radius < 0 on elem" << edge_num << " EXItin" << std::endl; 
+					std::cout << "node_1 = " << node_1 << std::endl;
+					std::cout << "node_2 = " << node_2 << std::endl;
+					std::cout << "radius = " << radius << std::endl;
+					std::cout << "generation = " << generation << std::endl;
+					std::cout << "order = " << order << std::endl;
+					std::exit(0);
+				}
+
+				radius *= es->parameters.get<double> ("mesh_input_scaling_1d");
+				radius /= es->parameters.get<double> ("length_scale");
 
 				edge_data.push_back(edge_num);
 				edge_data.push_back(node_1);
 				edge_data.push_back(node_2);
+				edge_data.push_back(radius);
 				edge_data.push_back(generation);
 				edge_data.push_back(order);
 
@@ -164,6 +201,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 			}
 		}
 
+		//edge 3 to 4 and 4 to 5
 
 		std::cout << "3";	
 		//do vertex and element stuff before reordering the vector
@@ -181,8 +219,8 @@ void NavierStokesCoupled::read_1d_mesh ()
 		for(unsigned int i=0; i<num_edges_1d; i++)
 		{
 			std::vector<unsigned int> segment;
-			segment.push_back(edge_1d_data[i][1]);
-			segment.push_back(edge_1d_data[i][2]);
+			segment.push_back((unsigned int)edge_1d_data[i][1]);
+			segment.push_back((unsigned int)edge_1d_data[i][2]);
 
 			cell_vertices[i] = segment;
 		}
@@ -227,15 +265,21 @@ void NavierStokesCoupled::read_1d_mesh ()
 		// while we are doing this we can also find the minimum generation number
 
 		unsigned int min_generation = 1000;
+		unsigned int max_generation = 0;
 		int generation_array[edge_1d_data.size()];
 		int index[edge_1d_data.size()];
 		for(unsigned int i=0; i<edge_1d_data.size(); i++)
 		{
-			if(edge_1d_data[i][3] < min_generation)
-				min_generation = edge_1d_data[i][3];
-			generation_array[i] = edge_1d_data[i][3];
+			if((unsigned int)edge_1d_data[i][4] < min_generation)
+				min_generation = (unsigned int)edge_1d_data[i][4];
+
+			if((unsigned int)edge_1d_data[i][4] > max_generation)
+				max_generation = (unsigned int)edge_1d_data[i][4];
+			generation_array[i] = (unsigned int)edge_1d_data[i][4];
 			index[i] = i;
 		}
+
+		std::cout << "max_generation = " << max_generation << std::endl;
 
 	
 	
@@ -244,7 +288,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 		//exit(0);
 
 
-		std::vector<std::vector<unsigned int> > temp_edge_1d_data = edge_1d_data;
+		std::vector<std::vector<double> > temp_edge_1d_data = edge_1d_data;
 	
 		std::cout << "5";	
 		for(unsigned int i=0; i<edge_1d_data.size(); i++)
@@ -260,10 +304,10 @@ void NavierStokesCoupled::read_1d_mesh ()
 	
 		for(unsigned int i=0; i<edge_1d_data.size(); i++)
 		{
-			if((int)edge_1d_data[i][3] > current_gen)
+			if((int)edge_1d_data[i][4] > current_gen)
 			{
 				generation_start.push_back(i);
-				current_gen = edge_1d_data[i][3];
+				current_gen = (int)edge_1d_data[i][4];
 			
 			}
 		}
@@ -274,9 +318,12 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 		// this is needed for the particle deposition
 		if(es->parameters.get<unsigned int> ("alveolated_1d_tree"))
-			num_generations.push_back(generation_start.size() + es->parameters.get<unsigned int> ("num_alveolar_generations"));
+			num_generations.push_back(max_generation + 1 + es->parameters.get<unsigned int> ("num_alveolar_generations"));
 		else
-			num_generations.push_back(generation_start.size());
+		{
+			//num_generations.push_back(generation_start.size());
+			num_generations.push_back(max_generation + 1);
+		}
 	
 
 		//need a dummy generation denoting the end
@@ -292,11 +339,11 @@ void NavierStokesCoupled::read_1d_mesh ()
 		std::vector<std::vector<double> > element_data_temp(edge_1d_data.size(),std::vector<double>(12,-1));
 		for(unsigned int i=0; i<edge_1d_data.size(); i++)
 		{
-			unsigned int elem_number = edge_1d_data[i][0];
-			unsigned int generation = edge_1d_data[i][3];
-			unsigned int order = edge_1d_data[i][4];
-			unsigned int node_1 = edge_1d_data[i][1];
-			unsigned int node_2 = edge_1d_data[i][2];
+			unsigned int elem_number = (unsigned int)edge_1d_data[i][0];
+			unsigned int generation = (unsigned int)edge_1d_data[i][4];
+			unsigned int order = (unsigned int)edge_1d_data[i][5];
+			unsigned int node_1 = (unsigned int)edge_1d_data[i][1];
+			unsigned int node_2 = (unsigned int)edge_1d_data[i][2];
 
 			//okay let us find the parent number
 			if(generation > min_generation)
@@ -304,9 +351,9 @@ void NavierStokesCoupled::read_1d_mesh ()
 				for(int j=generation_start[generation-min_generation-1]; j<generation_start[generation-min_generation]; j++)
 				{
 					//if first node same as second node then parent
-					if(node_1 == edge_1d_data[j][2])
+					if(node_1 == (unsigned int)edge_1d_data[j][2])
 					{
-						element_data_temp[elem_number][0] = edge_1d_data[j][0];
+						element_data_temp[elem_number][0] = (unsigned int)edge_1d_data[j][0];
 					}
 				}
 			}
@@ -319,11 +366,12 @@ void NavierStokesCoupled::read_1d_mesh ()
 				// we can also set whether it is daughter 1 in a first come first serve manner
 				for(int j=generation_start[generation-min_generation]; j<generation_start[generation-min_generation+1]; j++)
 				{
-					if(node_1 == edge_1d_data[j][1] && elem_number != edge_1d_data[j][0])
+					if(node_1 == (unsigned int)edge_1d_data[j][1] && elem_number != (unsigned int)edge_1d_data[j][0])
 					{
-						element_data_temp[elem_number][3] = edge_1d_data[j][0];
+						element_data_temp[elem_number][3] = (unsigned int)edge_1d_data[j][0];
 						coupling_point = Point(node_1d_data[node_1][0],node_1d_data[node_1][1],node_1d_data[node_1][2]);
-						if(elem_number < edge_1d_data[j][0])
+						std::cout << "coupling_point [" << m << "] = " << coupling_point << std::endl;
+						if(elem_number < (unsigned int)edge_1d_data[j][0])
 						{
 							element_data_temp[elem_number][4] = 1;
 							//std::cout << "hi, elem_number = " << elem_number << std::endl;
@@ -344,19 +392,19 @@ void NavierStokesCoupled::read_1d_mesh ()
 				for(int j=generation_start[generation-min_generation+1]; j<generation_start[generation-min_generation+2]; j++)
 				{
 					//if second node same as first node then daughter. daughter 1 is the first in the list
-					if(node_2 == edge_1d_data[j][1])
+					if(node_2 == (unsigned int)edge_1d_data[j][1])
 					{
 						if(element_data_temp[elem_number][1] == -1)
 						{
-							element_data_temp[elem_number][1] = edge_1d_data[j][0];
+							element_data_temp[elem_number][1] = (unsigned int)edge_1d_data[j][0];
 							//if given daughter 1 status let us also tell that daughter it is daughter 1
-							element_data_temp[edge_1d_data[j][0]][4] = 1;
+							element_data_temp[(unsigned int)edge_1d_data[j][0]][4] = 1;
 						}
 						else
 						{
-							element_data_temp[elem_number][2] = edge_1d_data[j][0];
+							element_data_temp[elem_number][2] = (unsigned int)edge_1d_data[j][0];
 							//if given daughter 1 status let us also tell that daughter it is not daughter 1
-							element_data_temp[edge_1d_data[j][0]][4] = 0;
+							element_data_temp[(unsigned int)edge_1d_data[j][0]][4] = 0;
 						}
 					}
 				
@@ -388,8 +436,28 @@ void NavierStokesCoupled::read_1d_mesh ()
 			//	length *= 1.5;
 
 			// set the radius to the average
-			double radius = 0.5 * (node_1d_data[node_1][3] + node_1d_data[node_2][3]);
+			double radius = 0.;
+			if(es->parameters.set<bool> ("radius_on_edge"))
+			{
+				if(edge_1d_data[i][3] < 1e-10)
+				{
+					std::cout << "ERROR: radius < 0 on elem " << i << ", radius = " << edge_1d_data[i][3] <<  " EXITING" << std::endl;
+					std::exit(0);
+				}
+				radius = edge_1d_data[i][3];
+			}
+			else
+			{
+				
+				if(node_1d_data[node_1][3] + node_1d_data[node_2][3] < 1e-10)
+				{
+					std::cout << "ERROR: radius < 0 on nodes " << node_1 << " and " << node_2 << " EXITING" << std::endl;
+					std::exit(0);
+				}
+				radius = 0.5 * (node_1d_data[node_1][3] + node_1d_data[node_2][3]);
 
+			}
+			
 			element_data_temp[elem_number][5] = length;
 			element_data_temp[elem_number][6] = radius;
 
@@ -405,7 +473,31 @@ void NavierStokesCoupled::read_1d_mesh ()
 			element_data_temp[elem_number][11] = 0;	//number of alveolar generations emanating from this branch
 
 
+			//check if this is the terminating edge.
+			if(es->parameters.set<unsigned int> ("num_1d_trees") == 1 && es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			{
+				unsigned int subtree_number_1 = (unsigned int)node_1d_data[node_1][4];
+				unsigned int subtree_number_2 = (unsigned int)node_1d_data[node_2][4];
+				// if we are at the end of 3d and the beginning of 1d
+				if(subtree_number_1 == 0 && subtree_number_2 != 0)
+				{
+					if(subtree_number_2 >= subtree_starting_elements.size())
+					{
+						subtree_starting_elements.resize(subtree_number_2+1,-1);
+					}
+					subtree_starting_elements[subtree_number_2] = elem_number;
+					coupling_flux_values_1d.push_back(0.);
+					coupling_pressure_values_1d.push_back(0.);
+					std::cout << "coupling_point[" << subtree_number_2 << "] = " << point_2 << std::endl;
+					std::cout << "subtree_starting_elements[" << subtree_number_2 << "] = " << subtree_starting_elements[subtree_number_2] << std::endl;
+
+				}
+			}
+			
+
+
 		}
+
 
 		calculate_num_alveloar_generations_for_tree();
 
@@ -472,6 +564,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 				if(distance < max_radius)
 				{
 					std::cout << "coupling surface found = " << i << std::endl;
+					boundary_id_to_tree_id[i] = m;
 					boundary_id = i;
 					break;
 				}
@@ -500,8 +593,19 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 
 	}
-	pressure_values_1d.push_back(0.0);	//outflow
-	flux_values_1d.push_back(0.0);	//outflow
+	//pressure_values_1d.push_back(0.0);	//outflow
+	//flux_values_1d.push_back(0.0);	//outflow
+
+	for(unsigned int i=0; i<boundary_id_to_tree_id.size(); i++)
+	{
+		tree_id_to_boundary_id[boundary_id_to_tree_id[i]] = i;
+		std::cout << "boundary id " << i << " assoc with tree " << boundary_id_to_tree_id[i] << std::endl;
+	}
+
+	for(unsigned int i=0; i<subtree_starting_elements.size(); i++)
+	{
+		std::cout << "subtree_starting_elements[" << i << "] = " << subtree_starting_elements[i] << std::endl;
+	}
 	
 	std::cout << " finished setting up 1d mesh from file" << std::endl;
 }
@@ -1304,6 +1408,8 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 
 void NavierStokesCoupled::calculate_1d_boundary_values()
 {
+	
+	std::cout << "yeah" << std::endl;
 
 	if(sim_1d)
 	{
@@ -1315,6 +1421,17 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		{
 			flux_values_1d[i] = ns_assembler->calculate_flux(i);
 			pressure_values_1d[i] = ns_assembler->calculate_pressure(i);
+			
+		}
+
+		for(unsigned int i=1; i<subtree_starting_elements.size();i++)
+		{
+			std::cout << "subtree_starting_elements[i] = " << subtree_starting_elements[i] << std::endl;
+			if(subtree_starting_elements[i] > -1)
+			{
+				coupling_flux_values_1d[i] = ns_assembler->calculate_flux(i,subtree_starting_elements[i]);
+				coupling_pressure_values_1d[i] = ns_assembler->calculate_pressure(i,subtree_starting_elements[i]);
+			}
 		}
 	}
 	else
@@ -1673,6 +1790,8 @@ void NavierStokesCoupled::scale_1d_solution_vector(double flux_scaling=1.0,doubl
 void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 {
 
+	std::cout<< "hey there" << std::endl;
+	
 	bool per_order = false;
 	
 	TransientLinearImplicitSystem * system;
@@ -1707,6 +1826,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	// trees are gonna be numbered by their subdomain_id
 	unsigned int num_1d_trees = es->parameters.get<unsigned int>("num_1d_trees");
 
+	/*
 	//vector of edges per generation to calc average
 	std::vector<std::vector<unsigned int> > num_edges_per_generation(subdomains_1d.back());
 	for(unsigned int i=0; i<subdomains_1d.back(); i++)
@@ -1726,10 +1846,50 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	//vector of resistance per generation, not sized
 	std::vector<std::vector<double> > resistance_per_order(subdomains_1d.back());
 	std::vector<std::vector<double> > num_edges_per_order(subdomains_1d.back());
+	*/
 
+	for(unsigned int i=0; i<num_generations.size(); i++)
+	{
+		std::cout << "num_generaions = " << num_generations[i] << std::endl;
+	}
+
+
+	//vector of edges per generation to calc average
+	std::vector<unsigned int> total_num_edges_per_generation;
+	std::vector<std::vector<unsigned int> > num_edges_per_generation(num_1d_trees);
+	for(unsigned int i=0; i<num_1d_trees; i++)
+		num_edges_per_generation[i] = std::vector<unsigned int> (num_generations[i],0);
+
+	//vector of resistance per generation
+	std::vector<double> total_resistance_per_generation;
+	std::vector<std::vector<double> > resistance_per_generation(num_1d_trees);
+	for(unsigned int i=0; i<num_1d_trees; i++)
+		resistance_per_generation[i] = std::vector<double> (num_generations[i],0.);
+
+	//vector of average_pressure_diff per generation
+	std::vector<std::vector<double> > average_pressure_diff_per_generation(num_1d_trees);
+	for(unsigned int i=0; i<num_1d_trees; i++)
+		average_pressure_diff_per_generation[i] = std::vector<double> (num_generations[i],0.);
+
+	std::cout << "num_generations.size() = " << num_edges_per_generation[0].size() << std::endl;
+
+	std::cout << "num_generations = " << num_generations[0] << std::endl;
+
+	std::cout<< "hey there" << std::endl;
+
+	//vector of resistance per generation, not sized
+	std::vector<std::vector<double> > resistance_per_order(num_1d_trees);
+	std::vector<std::vector<double> > num_edges_per_order(num_1d_trees);
 
   MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
+
+	double flow_scale = es->parameters.get<double>("velocity_scale") * 
+										pow(es->parameters.get<double>("length_scale"),2.0);
+	double mean_pressure_scale = es->parameters.get<double>("density") *
+													pow(es->parameters.get<double>("velocity_scale"),2.0);
+
+	unsigned int max_generation = 0;
 
 	// note this is not a parallel loop cause i am lazy
   for ( ; el != end_el; ++el)
@@ -1765,6 +1925,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			//	std::exit(0);
 			//}
 
+			if(generation > max_generation)
+				max_generation = generation;
+
 			double p0 = system->current_solution(dof_indices_p[0]);
 			double p1 = system->current_solution(dof_indices_p[1]);
 			double q0 = system->current_solution(dof_indices_q[0]);
@@ -1775,16 +1938,23 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			//double flow = fabs((q0 + q1)/2 + (q0 - q1)/2);
 
 			double pressure_diff = fabs(p0 - p1);
+			// convert pressure to SI units
+			pressure_diff *= mean_pressure_scale;
+			
 			double flow = fabs(q0 + q1)/2.;
+			flow *= flow_scale;
 
 			double resistance = pressure_diff / flow;
 			//get average pressure drop but, total flow
 
+			
 			//add to the correct tree
 			if(!per_order)
 			{
-				num_edges_per_generation[elem->subdomain_id() - 1][generation] += 1;
-				resistance_per_generation[elem->subdomain_id() - 1][generation] += resistance;
+				//num_edges_per_generation[elem->subdomain_id() - 1][generation] += 1;
+				//resistance_per_generation[elem->subdomain_id() - 1][generation] += resistance;
+				num_edges_per_generation[elem->subdomain_id() - subdomains_1d.front()][generation] += 1;
+				resistance_per_generation[elem->subdomain_id() - subdomains_1d.front()][generation] += resistance;
 				//average_pressure_diff_per_generation[elem->subdomain_id() - 1][generation] += pressure_diff;
 				//parallel resistance
 
@@ -1792,35 +1962,54 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			}
 			else
 			{
-				if(order > num_edges_per_order[elem->subdomain_id() - 1].size())
+				if(order > num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()].size())
 				{
-					num_edges_per_order[elem->subdomain_id() - 1].resize(order);
-					resistance_per_order[elem->subdomain_id() - 1].resize(order);
+					num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()].resize(order);
+					resistance_per_order[elem->subdomain_id() - subdomains_1d.front()].resize(order);
 				}
 				
-				num_edges_per_order[elem->subdomain_id() - 1][order - 1] +=1;
-				resistance_per_order[elem->subdomain_id() - 1][order - 1] += resistance;
+				num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()][order - 1] +=1;
+				resistance_per_order[elem->subdomain_id() - subdomains_1d.front()][order - 1] += resistance;
 			}
+			
 
     }// end of subdomain conditional
 	}// end of element loop
 
+	std::cout<< "hey there, max_gerertaion = " << max_generation << std::endl;
+
+		
+
 	// get average
+	total_num_edges_per_generation.resize(max_generation+1,0);
+	total_resistance_per_generation.resize(max_generation+1,0);
+	
+	// loop over all the trees
 	for(unsigned int i=0; i<num_edges_per_generation.size(); i++)
 	{
 		if(!per_order)
 		{
+			// loop over all the generations of each tree
 			for(unsigned int j=0; j<num_edges_per_generation[i].size(); j++)
 			{
 				if(num_edges_per_generation[i][j] > 0)
 				{
 					//average_pressure_diff_per_generation[i][j] /= num_edges_per_generation[i][j];
 				
-					//find average resistance
-					resistance_per_generation[i][j] = resistance_per_generation[i][j]/num_edges_per_generation[i][j];
-					// assume symmetric tree and calc parallel resistance
-					resistance_per_generation[i][j] = resistance_per_generation[i][j]/pow(2.,j);
+					total_num_edges_per_generation[j] += num_edges_per_generation[i][j];
+					total_resistance_per_generation[j] += resistance_per_generation[i][j];
+					if(es->parameters.get<bool>("assume_symmetric_tree"))
+					{
+						// assume symmetric tree and calc parallel resistance
+						resistance_per_generation[i][j] = resistance_per_generation[i][j]/pow(2.,j);
+					}
+					else
+					{
+						//find average resistance
+						resistance_per_generation[i][j] = resistance_per_generation[i][j]/num_edges_per_generation[i][j];
+					}
 					//resistance_per_generation[i][j] = 1./resistance_per_generation[i][j];
+
 				}
 			}
 		}
@@ -1839,23 +2028,57 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		}
 	}
 
+	// calculate the total average resistance 
+	for(unsigned int i=0; i<total_num_edges_per_generation.size(); i++)
+	{
+		if(!per_order)
+		{
+			if(es->parameters.get<bool>("assume_symmetric_tree"))
+			{
+				// assume symmetric tree and calc parallel resistance
+				total_resistance_per_generation[i] = total_resistance_per_generation[i]/pow(2.,i);
+			}
+			else
+			{
+				//find average resistance
+				total_resistance_per_generation[i] = total_resistance_per_generation[i]/total_num_edges_per_generation[i];
+			}
+		}
+	}
+
+	
+	
+
+	std::cout<< "hey there" << std::endl;
 	unsigned int max_num_order = 0;
+	
 	for(unsigned int i=0; i<num_edges_per_order.size(); i++)
 	{
 		if(num_edges_per_order[i].size() > max_num_order)
 			max_num_order = num_edges_per_order[i].size();
 	}
+	
 
-
+	std::cout<< "hey there" << std::endl;
 	// now output to a file
+
+	
+
 	if(num_1d_trees > 0)
 	{
+
+		std::cout << "boo" << std::endl;
 		std::ostringstream output_data_file_name;
 		std::ofstream resistance_output_file;
 
+		std::cout << "boo" << std::endl;
 		output_data_file_name << output_folder.str() << "resistance_per_generation.dat";
+		std::cout << "boo " << output_data_file_name.str() << std::endl;
 		resistance_output_file.open(output_data_file_name.str().c_str());
 
+		
+
+		std::cout<< "boo" << std::endl;
 		resistance_output_file << "# Resistance per generation per tree" << std::endl;
 		// write geometry variables later when reading meta data file
 		// write boundary conditions later with Picard class
@@ -1864,24 +2087,49 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			resistance_output_file << "# generation";
 		else
 			resistance_output_file << "# order";
+		
+		std::cout<< "boo" << std::endl;
 		for(unsigned int i=0; i < num_1d_trees; i++)
+		{
 			resistance_output_file <<	"\ttree_" << i+1;
+			resistance_output_file <<	"\tnum_edges";
+		}
+		//resistance_output_file <<	"\ttree_" << 1;
+		resistance_output_file <<	"\ttotal";
+		resistance_output_file <<	"\ttotal_num_edges";
 
-		unsigned int max_generations = *std::max_element(num_generations.begin(), num_generations.end());
+		//unsigned int max_generations = *std::max_element(num_generations.begin(), num_generations.end());
+
+		std::cout << "max_generations = " << max_generation << std::endl;
+		std::cout << "resistance_per_generation.size() = " << resistance_per_generation[0].size() << std::endl;
+		std::cout << "num_edges_per_generation.size() = " << num_edges_per_generation[0].size() << std::endl;
 
 		if(!per_order)
 		{
-			for(unsigned int i=0; i < max_generations; i++)
+			for(unsigned int i=0; i < max_generation; i++)
 			{
 				resistance_output_file << std::endl;
 				resistance_output_file <<	i;
+				//for(unsigned int j=0; j < num_1d_trees; j++)
 				for(unsigned int j=0; j < num_1d_trees; j++)
 				{
 					if(i < num_generations[j])
+					{
 						resistance_output_file <<	"\t" << resistance_per_generation[j][i];
+						resistance_output_file <<	"\t" << num_edges_per_generation[j][i];
+					}
 					else
+					{
 						resistance_output_file <<	"\t" << 0.;
-				}		
+						resistance_output_file <<	"\t" << 0.;
+					}
+
+				}
+
+				resistance_output_file <<	"\t" << total_resistance_per_generation[i];
+				resistance_output_file <<	"\t" << total_num_edges_per_generation[i];
+				
+						
 			}
 		}
 		else
@@ -1900,14 +2148,16 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			}
 
 		}
+		
 
-		resistance_output_file.close();
+		//resistance_output_file.close();
 
 	}
 	else
 	{
 		std::cout << "WARNING: no 1d trees so no need to output num trees per generation/order" << std::endl;
 	}
+	
 
 	std::cout << "end outputing"<< std::endl;
 }

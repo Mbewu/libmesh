@@ -677,11 +677,40 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							input_flux_values[i] = inflow;
 							std::cout << "inflow = " << inflow << std::endl;
 						}
-						ns_assembler->init_bc(input_flux_values);
-						std::cout << "bye" << std::endl;
-						solve_1d_system();
-						std::cout << "bye" << std::endl;
-						calculate_1d_boundary_values();
+
+						double old_pressure = 0.;
+						double new_pressure = 0.;
+
+						unsigned int nonlinear_iteration_1d = 0;
+						while(true)
+						{
+
+							nonlinear_iteration_1d++;
+							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
+							std::cout << "Nonlinear Iteration 1D = " << es->parameters.get<unsigned int> ("nonlinear_iteration_1d") << std::endl;
+							old_pressure = new_pressure;
+							ns_assembler->init_bc(input_flux_values);
+							std::cout << "bye" << std::endl;
+							solve_1d_system();
+							std::cout << "bye" << std::endl;
+							calculate_1d_boundary_values();
+
+							// stop when pressure has converged
+							new_pressure = pressure_values_1d[1];
+							std::cout << "resistance_type_1d = " << es->parameters.get<unsigned int> ("resistance_type_1d") << std::endl;
+							std::cout << "old pressure = " << old_pressure << std::endl;
+							std::cout << "new pressure = " << new_pressure << std::endl;
+							std::cout << "fabs((new_pressure - old_pressure)/new_pressure) = " << fabs((new_pressure - old_pressure)/new_pressure) << std::endl;
+							if(fabs((new_pressure - old_pressure)/new_pressure) < es->parameters.get<double> ("nonlinear_tolerance_1d"))
+								break;
+
+							if(!es->parameters.get<bool> ("nonlinear_1d"))
+							{
+								std::cout << "linear 1d so no nonlinear iterations required" << std::endl;
+								break;
+							}
+					
+						}
 						print_flux_and_pressure();
 					}
 					else if(sim_type == 4)
@@ -696,6 +725,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(sim_type == 5)
 					{
 	
+						std::cout << "hi" << std::endl;
 						nonlinear_iteration = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						while(true)
@@ -1429,6 +1459,13 @@ void NavierStokesCoupled::read_parameters()
 
 
   set_bool_parameter(infile,"match_1d_mesh_to_3d_mesh",false);
+  set_bool_parameter(infile,"assume_symmetric_tree",false);
+  set_bool_parameter(infile,"calculate_1d_info_at_coupling_nodes",false);
+  set_bool_parameter(infile,"radius_on_edge",false);
+
+  set_double_parameter(infile,"nonlinear_tolerance_1d",1e-4);
+  set_bool_parameter(infile,"nonlinear_1d",false);
+
 
 
 
@@ -1745,6 +1782,10 @@ void NavierStokesCoupled::read_parameters()
   	es->parameters.set<bool>("0D") = true;
 	}
 
+	if(es->parameters.set<unsigned int>("resistance_type_1d") > 0)
+	{
+		es->parameters.set<bool>("nonlinear_1d") = true;
+	}
 
 
 
@@ -1991,14 +2032,28 @@ void NavierStokesCoupled::print_flux_and_pressure()
 			total_daughter_flux_3d += flux_values_3d[i];
 
 		std::cout << "3D flux values:    " << std::endl;
-		for(unsigned int i=0; i < flux_values_3d.size(); i++)
-			std::cout << " " << flux_values_3d[i] << " (" << 
-								flux_values_3d[i] * flux_scaling << " m^3/s)" << std::endl;
+		if(boundary_id_to_tree_id.size()==0)
+		{
+			for(unsigned int i=0; i < flux_values_3d.size(); i++)
+				std::cout << " " << flux_values_3d[i] << " (" << 
+									flux_values_3d[i] * flux_scaling << " m^3/s)" << std::endl;
 
-		std::cout << "3D pressure values:    " << std::endl;
-		for(unsigned int i=0; i < pressure_values_3d.size(); i++)
-			std::cout << " " << pressure_values_3d[i] << " (" <<
-								pressure_values_3d[i] * pressure_scaling << " Pa)" << std::endl;
+			std::cout << "3D pressure values:    " << std::endl;
+			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+				std::cout << " " << pressure_values_3d[i] << " (" <<
+									pressure_values_3d[i] * pressure_scaling << " Pa)" << std::endl;
+		}
+		else
+		{
+			for(unsigned int i=0; i < flux_values_3d.size(); i++)
+				std::cout << " " << flux_values_3d[tree_id_to_boundary_id[i]] << " (" << 
+									flux_values_3d[tree_id_to_boundary_id[i]] * flux_scaling << " m^3/s)" << std::endl;
+
+			std::cout << "3D pressure values:    " << std::endl;
+			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+				std::cout << " " << pressure_values_3d[tree_id_to_boundary_id[i]] << " (" <<
+									pressure_values_3d[tree_id_to_boundary_id[i]] * pressure_scaling << " Pa)" << std::endl;
+		}
 		std::cout << "total daughter flux 3D = " << total_daughter_flux_3d * flux_scaling << " m^3/s)" << std::endl;
 	}
 
@@ -2013,11 +2068,27 @@ void NavierStokesCoupled::print_flux_and_pressure()
 			std::cout << " " << flux_values_1d[i] << " (" << 
 								flux_values_1d[i] * flux_scaling << " m^3/s)" << std::endl;
 
+		if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+		{
+			std::cout << "1D coupling flux values:    " << std::endl;
+			for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
+				std::cout << " " << coupling_flux_values_1d[i] << " (" << 
+									coupling_flux_values_1d[i] * flux_scaling << " m^3/s)" << std::endl;
+		}
+
 		std::cout << "1D pressure values:    " << std::endl;
 		for(unsigned int i=1; i < pressure_values_1d.size(); i++)
 			std::cout << " " << pressure_values_1d[i] << " (" <<
 								pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
-		std::cout << "total daughter flux 1D = " << total_daughter_flux_1d * flux_scaling << " m^3/s)" << std::endl;
+
+		if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+		{
+			std::cout << "1D coupling pressure values:    " << std::endl;
+			for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
+				std::cout << " " << coupling_pressure_values_1d[i] << " (" <<
+									coupling_pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
+			std::cout << "total daughter flux 1D = " << total_daughter_flux_1d * flux_scaling << " m^3/s)" << std::endl;
+		}
 	}
 }
 
@@ -2341,8 +2412,15 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		{
 			for(unsigned int i=1; i < flux_values_1d.size(); i++)
 				output_file <<	"\t1d_flux_value_" << i;
+
+			for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
+				output_file <<	"\t1d_coupling_flux_value_" << i;
+
 			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
 				output_file <<	"\t1d_press_value_" << i;
+
+			for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
+				output_file <<	"\t1d_coupling_pressure_value_" << i;
 		}
 
 		if(sim_3d)
@@ -2357,21 +2435,49 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		if(sim_3d)
 		{
 			calculate_3d_boundary_values();
-			for(unsigned int i=0; i < flux_values_3d.size(); i++)
-				output_file << "\t" << flux_values_3d[i] * flux_scaling;
+			if(boundary_id_to_tree_id.size() == 0)
+			{
+				for(unsigned int i=0; i < flux_values_3d.size(); i++)
+					output_file << "\t" << flux_values_3d[i] * flux_scaling;
 
-			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
-				output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
+				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
+			}
+			else
+			{
+				// output in order of tree id
+				for(unsigned int i=0; i < flux_values_3d.size(); i++)
+					output_file << "\t" << flux_values_3d[tree_id_to_boundary_id[i]] * flux_scaling;
+
+				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+					output_file << "\t" << pressure_values_3d[tree_id_to_boundary_id[i]] * pressure_scaling;
+			}
 		}
 		
 		if(sim_1d)
 		{
 			calculate_1d_boundary_values();
+			// always in order of tree id
 			for(unsigned int i=1; i < flux_values_1d.size(); i++)
 				output_file << "\t" << flux_values_1d[i] * flux_scaling;
 
+			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			{
+				std::cout << "1D coupling flux values:    " << std::endl;
+				for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
+					output_file << "\t" << coupling_flux_values_1d[i] * flux_scaling;
+			}
+
+
 			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
 				output_file << "\t" << pressure_values_1d[i] * pressure_scaling;
+
+			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			{
+				std::cout << "1D coupling pressure values:    " << std::endl;
+				for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
+					output_file << "\t" << coupling_pressure_values_1d[i] * pressure_scaling;
+			}
 		}
 
 		if(sim_3d)
@@ -2385,8 +2491,9 @@ void NavierStokesCoupled::output_sim_data(bool header)
 							<< " written." << std::endl;
 
 		std::cout << "hi" << std::endl;
-		//if(sim_1d)
-		//	output_poiseuille_resistance_per_generation();
+		if(sim_1d)
+			output_poiseuille_resistance_per_generation();
+
 
 		std::cout << "bye" << std::endl;
 	}
