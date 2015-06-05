@@ -234,7 +234,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				}
 
 				//pedley resistance
-				if(es->parameters.get<unsigned int> ("t_step") != 1 && 0.327 * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
+				if((es->parameters.get<unsigned int> ("t_step") != 1 || es->parameters.get<unsigned int> ("nonlinear_iteration_1d") != 1) && 0.327 * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
 				{
 					
 					R = 0.327 * sqrt(reynolds_number_0d*2.*r/l) * R;
@@ -279,10 +279,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					R=R;
 			}
 
-			if(generation <= 2)
-			{	
-				//std::cout << "resistance = " << R << std::endl;
-			}
+			double flow_scale = es->parameters.get<double>("velocity_scale") * 
+												pow(es->parameters.get<double>("length_scale"),2.0);
+			double mean_pressure_scale = es->parameters.get<double>("density") *
+															pow(es->parameters.get<double>("velocity_scale"),2.0);
+
 
 			//change for correctness, to change
 			//R = 8*R;
@@ -786,10 +787,11 @@ void NavierStokesAssembler::assemble_stokes_1D ()
 }
 
 
-// total flux through boundary_id boundaries
-double NavierStokesAssembler::calculate_flux (const int boundary_id)
+// total flux through boundary_id boundaries, or at the second node of an element mid mesh
+double NavierStokesAssembler::calculate_flux (const int boundary_id, const int mid_mesh_element)
 {
 	double flux = 0.0;
+
 
   // Get a constant reference to the mesh object.
   const MeshBase& mesh = es->get_mesh();
@@ -836,31 +838,48 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
 		//only concerned with 1d elements
 		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
-      for (unsigned int s=0; s<elem->n_sides(); s++)
+			if(mid_mesh_element < 0)
 			{
+		    for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
 
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-				if(boundary_ids.size() > 0) 
-				{ 
-					// dirichlet boundary conditions
-					if(boundary_ids[0] == boundary_id)
-					{	     
+					if(boundary_ids.size() > 0) 
+					{ 
+						// dirichlet boundary conditions
+						if(boundary_ids[0] == boundary_id)
+						{	     
 					
-						// Get the degree of freedom indices for the
-						// current element.  These define where in the global
-						// matrix and right-hand-side this element will
-						// contribute to.
-						dof_map.dof_indices (elem, dof_indices);
-						dof_map.dof_indices (elem, dof_indices_q, q_var);
+							// Get the degree of freedom indices for the
+							// current element.  These define where in the global
+							// matrix and right-hand-side this element will
+							// contribute to.
+							dof_map.dof_indices (elem, dof_indices);
+							dof_map.dof_indices (elem, dof_indices_q, q_var);
 
-						if(s == 0)
-							flux += (*system->solution) (dof_indices_q[0]);
-						else
-							flux += (*system->solution) (dof_indices_q[1]);
+							if(s == 0)
+								flux += (*system->solution) (dof_indices_q[0]);
+							else
+								flux += (*system->solution) (dof_indices_q[1]);
 
+						}
 					}
+				}
+			}
+			else
+			{
+				
+				const int current_el_idx = elem->id();
+				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+				if(current_1d_el_idx == mid_mesh_element)
+				{
+					dof_map.dof_indices (elem, dof_indices);
+					dof_map.dof_indices (elem, dof_indices_q, q_var);
+
+					flux += (*system->solution) (dof_indices_q[1]);
+					
 				}
 			}
 		}
@@ -869,13 +888,13 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
 	//std::cout << "flux calculated is " << flux << std::endl;
 
 	es->comm().sum(flux);
-	//std::cout << "flux calculated is " << flux << std::endl;
+	std::cout << "flux calculated is " << flux << std::endl;
 			
 	return flux;
 }
 
 // average pressure over boundary_id boundaries
-double NavierStokesAssembler::calculate_pressure (const int boundary_id)
+double NavierStokesAssembler::calculate_pressure (const int boundary_id, const int mid_mesh_element)
 {
 	double pressure = 0.0;
 
@@ -926,29 +945,47 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
 		//only concerned with 1d elements
 		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
-      for (unsigned int s=0; s<elem->n_sides(); s++)
+			if(mid_mesh_element < 0)
 			{
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+		    for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-				if(boundary_ids.size() > 0) 
-				{ 
-					// dirichlet boundary conditions
-					if(boundary_ids[0] == boundary_id)
-					{	     
-						total_nodes++;
-						// Get the degree of freedom indices for the
-						// current element.  These define where in the global
-						// matrix and right-hand-side this element will
-						// contribute to.
-						dof_map.dof_indices (elem, dof_indices);
-						dof_map.dof_indices (elem, dof_indices_p, p_var);
+					if(boundary_ids.size() > 0) 
+					{ 
+						// dirichlet boundary conditions
+						if(boundary_ids[0] == boundary_id)
+						{	     
+							total_nodes++;
+							// Get the degree of freedom indices for the
+							// current element.  These define where in the global
+							// matrix and right-hand-side this element will
+							// contribute to.
+							dof_map.dof_indices (elem, dof_indices);
+							dof_map.dof_indices (elem, dof_indices_p, p_var);
 
-						if(s == 0)
-							pressure += (*system->solution) (dof_indices_p[0]);
-						else
-							pressure += (*system->solution) (dof_indices_p[1]);
+							if(s == 0)
+								pressure += (*system->solution) (dof_indices_p[0]);
+							else
+								pressure += (*system->solution) (dof_indices_p[1]);
+						}
 					}
+				}
+			}
+			else
+			{
+
+				const int current_el_idx = elem->id();
+				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+				if(current_1d_el_idx == mid_mesh_element)
+				{
+					total_nodes++;
+					dof_map.dof_indices (elem, dof_indices);
+					dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+					pressure += (*system->solution) (dof_indices_p[1]);
+					
 				}
 			}
 		}
@@ -957,8 +994,12 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
 	es->comm().sum(pressure);
 	es->comm().sum(total_nodes);
 
-	// get the average pressure of course ;)
+	// get the average pressure of course ;) total_nodes should be 1
 	pressure = pressure/total_nodes;
+
+	std::cout << "total_nodes = " << total_nodes << std::endl;
+	std::cout << "pressure_calculated = " << pressure << std::endl;
+
 			
 	return pressure;
 }

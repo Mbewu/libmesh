@@ -63,10 +63,10 @@ old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcati
 
 _read_1d_mesh = true
 # file is appended with .edge .node + numbers etc
-input_1d_file = meshes/APLE0027688_truncated/output_airways_full #meshes/APLE0099627/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
+input_1d_file = meshes/APLE0027688_truncated/output_airways_full_new #meshes/APLE0027688_truncated/Novartis002_remeshed #meshes/APLE0027688_truncated/output_airways_full #meshes/APLE0099627/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
 
-input_1d_edge_file_2 = meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
-input_1d_node_file_2 = meshes/APLE0036266/output_airways_full.node #meshes/APLE0081560/output_airways_full.node #meshes/APLE0036266/output_airways_full.node
+input_1d_edge_file_2 = meshes/APLE0036266/output_airways_full_raf.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
+input_1d_node_file_2 = meshes/APLE0036266/output_airways_full_raf.node #meshes/APLE0081560/output_airways_full.node #meshes/APLE0036266/output_airways_full.node
 
 match_1d_mesh_to_3d_mesh = true
 mesh_input_scaling_1d = 1e-3 #1.0 #1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
@@ -79,7 +79,7 @@ initial_segment_length_from_mesh = true #get the initial segment length based on
 half_initial_length = true		# the first segment is half a tube
 twod_oned_tree = true					# we calculate the radius of the 1d approx of 3D using effective 2D radius
 length_diam_ratio = 2.5		#3.0
-alveolated_1d_tree = 1	#0 - is no, 1 - is average, 2 - is random
+alveolated_1d_tree = 0	#0 - is no, 1 - is average, 2 - is random
 alveolar_length_diam_ratio = 2.2
 alveolar_diameter = 0.00001	# 0.2mm hofmann,koblinger 1990
 num_alveolar_generations = 2
@@ -132,7 +132,7 @@ reynolds_number_calculation = false
 
 #scalings (always from SI units)
 length_scale = 0.0166 #5.0e-3 #1.0e-03			#1.0e-3		#for a radius 10mm=1cm pipe
-velocity_scale = 1.91 #2.04e1 #1.0e3
+velocity_scale = 18.76 #2.04e1 #1.0e3
 
 
 adaptive_refinement = false	# num time_steps between refinements
@@ -235,7 +235,7 @@ prescribed_womersley_file = parallel_plates_solution_axi_cos_negative_times_hund
 
 
 ## 1D
-flow_mag_1d = 1.67e-3 #1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
+flow_mag_1d = 0.83e-3#1.67e-3 #1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
 bc_type_1d = 0		#//0- flow-pressure 1-pressure-pressure
 in_pressure = 0
 
@@ -279,8 +279,8 @@ supg_laplacian = false		# this is incorrect at the moment!
 ###############################################################################
 
 reynolds_number = 20.0
-viscosity = 17.91e-6#0.00035 #1.92e-5 #1.81e-5	for air in m^2/s, wet air and temperature 1.92e-5 swan 
-density = 1.176 #1.0 #1.51 # 1.176 correctval in SI units, wet air and temperature 1.51 swan 
+viscosity = 19.2e-6 #17.91e-6#0.00035 #1.92e-5 #1.81e-5	for air in m^2/s, wet air and temperature 1.92e-5 swan 
+density = 1.15 #1.176 #1.0 #1.51 # 1.176 correctval in SI units, wet air and temperature 1.51 swan 
 zeta_1 = -0.057e3
 zeta_2 = 0.2096
 zeta_3 = 0.00904e-3
@@ -374,7 +374,7 @@ nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
 reynolds_number = 1.0
 streamline_diffusion = false
-stokes = false
+stokes = true
 tube_length = 1.
 cube_length_N = 64 #100
 cube_width = 0.665
@@ -391,8 +391,8 @@ quads = true
 pin_pressure = false
 mesh_input_scaling_3d = 1e-3 #1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement =1
-output_no_refinement = 1		#okay this only works for going to coarser mesh
+no_refinement =0
+output_no_refinement = 0		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
 dt = 0.005
 geometry_type = 4
@@ -432,11 +432,19 @@ restart_time = 0.
 restart_time_step = 0
 write_interval = 0.01
 adaptive_time_stepping = false
-numerical_continuation_scaling_factor = 1.5
-numerical_continuation_starting_reynolds_number = 500.0
+numerical_continuation_scaling_factor = 2.0
+numerical_continuation_starting_reynolds_number = 1000.0
 element_length_scaling = 1.25
 output_nondim = false
-sim_type = 5
+sim_type = 1
 reynolds_number_calculation = false
-match_1d_mesh_to_3d_mesh = true
+match_1d_mesh_to_3d_mesh = false
 num_1d_trees = 1
+assume_symmetric_tree = false
+calculate_1d_info_at_coupling_nodes = true
+radius_on_edge = false
+resistance_type_1d = 0
+nonlinear_1d = 1e-4
+output_folder = results/3d1d/1d_coarse_stokes/
+flow_mag_1d = 0.0425e-3 #0.83e-3#1.67e-3 #1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
+flow_mag_3d = 0.0425e-3 # 1.67e-3		#this is 30L/min, can get up to 120L/min

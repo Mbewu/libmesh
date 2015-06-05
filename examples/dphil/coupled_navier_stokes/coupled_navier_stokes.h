@@ -415,7 +415,7 @@ private:
 	unsigned int nonlinear_iteration;
 	unsigned int num_linear_iterations;
 	//edge num is idx, 0-elem_num 1-node1 2-node2 3-generation 4-order
-	std::vector<std::vector<unsigned int> > edge_1d_data;
+	std::vector<std::vector<double> > edge_1d_data;
 	unsigned int num_edges_1d;
 	//node num is idx, 0-xcoord 1-ycoord 2-zcoord 3-radius
 	std::vector<std::vector<double> > node_1d_data;
@@ -429,6 +429,12 @@ private:
 
 	std::vector<double> var_scalings;
 	std::vector<double> total_efficiency;
+
+	std::vector<int> subtree_starting_elements;	//ending elements of the 3d mesh and the subtree that they go to
+	std::vector<int> boundary_id_to_tree_id;
+	std::vector<int> tree_id_to_boundary_id;
+	std::vector<double> coupling_pressure_values_1d;
+	std::vector<double> coupling_flux_values_1d;
 
 	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
 	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation

@@ -59,8 +59,8 @@ class NavierStokesAssembler : public System::Assembly
 		void assemble ();
 		void assemble_stokes_steady_0D ();
 		void assemble_stokes_1D ();
-		double calculate_flux (const int boundary_id);
-		double calculate_pressure (const int boundary_id);
+		double calculate_flux (const int boundary_id, const int mid_mesh_element=-1);
+		double calculate_pressure (const int boundary_id, const int mid_mesh_element=-1);
 		void init_bc(std::vector<double> _flux_values, std::vector<double> _pressure_values = std::vector<double>());
 		void set_coupled(bool _coupled) { coupled = _coupled; };
 	
