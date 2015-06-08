@@ -1472,7 +1472,7 @@ void NavierStokesCoupled::read_parameters()
   set_double_parameter(infile,"nonlinear_tolerance_1d",1e-4);
   set_bool_parameter(infile,"nonlinear_1d",false);
 
-  set_unsigned_int_parameter(infile,"nonlinear_iteration_1d",0);
+  set_bool_parameter(infile,"use_centreline_data",false);
 
 
 

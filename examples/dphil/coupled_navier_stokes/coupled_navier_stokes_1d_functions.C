@@ -61,7 +61,11 @@ void NavierStokesCoupled::read_1d_mesh ()
 		tree_id_to_boundary_id.resize(surface_boundaries.size(),0);	// one for each boundary including inflow
 	}
 
-	for(unsigned int m=1; m<es->parameters.get<unsigned int> ("num_1d_trees")+1; m++)
+	unsigned int tree_start = 1;
+	if(es->parameters.get<bool> ("use_centreline_data"))
+		tree_start = 0;
+
+	for(unsigned int m=tree_start; m<es->parameters.get<unsigned int> ("num_1d_trees")+1; m++)
 	{
 
 		std::stringstream node_file;
@@ -322,7 +326,8 @@ void NavierStokesCoupled::read_1d_mesh ()
 		else
 		{
 			//num_generations.push_back(generation_start.size());
-			num_generations.push_back(max_generation + 1);
+			if(m>0)
+				num_generations.push_back(max_generation + 1);
 		}
 	
 
@@ -346,7 +351,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 			unsigned int node_2 = (unsigned int)edge_1d_data[i][2];
 
 			//okay let us find the parent number
-			if(generation > min_generation)
+			if(generation > min_generation)	//has a parent
 			{
 				for(int j=generation_start[generation-min_generation-1]; j<generation_start[generation-min_generation]; j++)
 				{
@@ -368,16 +373,21 @@ void NavierStokesCoupled::read_1d_mesh ()
 				{
 					if(node_1 == (unsigned int)edge_1d_data[j][1] && elem_number != (unsigned int)edge_1d_data[j][0])
 					{
+						// set the sibling
 						element_data_temp[elem_number][3] = (unsigned int)edge_1d_data[j][0];
+					
+						// the coupling point
 						coupling_point = Point(node_1d_data[node_1][0],node_1d_data[node_1][1],node_1d_data[node_1][2]);
 						std::cout << "coupling_point [" << m << "] = " << coupling_point << std::endl;
+
+						// is daughter 1 if has a lower elem_number
 						if(elem_number < (unsigned int)edge_1d_data[j][0])
 						{
 							element_data_temp[elem_number][4] = 1;
 							//std::cout << "hi, elem_number = " << elem_number << std::endl;
 							//std::cout << "hi, other elem_number = " << edge_1d_data[j][0] << std::endl;
 						}
-						else
+						else	// is not daughter 1
 							element_data_temp[elem_number][4] = 0;
 					}
 				}
@@ -493,103 +503,135 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 				}
 			}
+
+			// if this is the 3d centreline data then we need to populate the 
+			// centreline_terminal_id_to_boundary_id vector
+			if(m == 0 && es->parameters.get<bool> ("use_centreline_data"))
+			{
+
+				unsigned int subtree_number_2 = (unsigned int)node_1d_data[node_2][4];
+
+				centreline_terminal_id_to_tree_id.resize(element_data_temp.size(),-1);	
+				if(subtree_number_2 > 0)
+				{
+					centreline_terminal_id_to_tree_id[elem_number] = subtree_number_2;
+				}
+
+				centreline_points.resize(element_data_temp.size());
+				std::vector<Point> points;
+				points.push_back(point_1);
+				points.push_back(point_2);
+				centreline_points[elem_number] = points;
+			}
 			
 
 
 		}
 
 
-		calculate_num_alveloar_generations_for_tree();
 
-
-		std::cout << "7" << std::endl;	
-
-		/*
-		for(unsigned int i=0; i<10;i++)
+		
+		// if we are reading in the data from the 3d part then we just need to put it in centreline_element_data
+		if(m == 0 && es->parameters.get<bool> ("use_centreline_data"))
 		{
-			for(unsigned int j=0; j<5; j++)
-				std::cout << "element_data_temp[" << i << "][" << j << "] = " << element_data_temp[i][j] << std::endl;
-		}
-		*/
-
-
-
-		// move all the indices of element data up by num_1d_elements
-		for(unsigned int i=0; i<element_data_temp.size();i++)
-		{
-			//parent
-			if(element_data_temp[i][0] > -1)
-				element_data_temp[i][0] += num_1d_elements;
-
-			//daughter 1
-			if(element_data_temp[i][1] > -1)
-				element_data_temp[i][1] += num_1d_elements;
-
-			//daughter 2
-			if(element_data_temp[i][2] > -1)
-				element_data_temp[i][2] += num_1d_elements;
-
-			//sibling
-			if(element_data_temp[i][3] > -1)
-				element_data_temp[i][3] += num_1d_elements;
+			centreline_element_data = element_data_temp;
 
 		}
+		else
+		{
+
+			calculate_num_alveloar_generations_for_tree();
 
 
-		element_data.insert( element_data.end(), element_data_temp.begin(), element_data_temp.end() );
+			std::cout << "7" << std::endl;	
 
-		num_1d_elements += element_data_temp.size();
+			/*
+			for(unsigned int i=0; i<10;i++)
+			{
+				for(unsigned int j=0; j<5; j++)
+					std::cout << "element_data_temp[" << i << "][" << j << "] = " << element_data_temp[i][j] << std::endl;
+			}
+			*/
+
+
+
+			// move all the indices of element data up by num_1d_elements
+			for(unsigned int i=0; i<element_data_temp.size();i++)
+			{
+				//parent
+				if(element_data_temp[i][0] > -1)
+					element_data_temp[i][0] += num_1d_elements;
+
+				//daughter 1
+				if(element_data_temp[i][1] > -1)
+					element_data_temp[i][1] += num_1d_elements;
+
+				//daughter 2
+				if(element_data_temp[i][2] > -1)
+					element_data_temp[i][2] += num_1d_elements;
+
+				//sibling
+				if(element_data_temp[i][3] > -1)
+					element_data_temp[i][3] += num_1d_elements;
+
+			}
+
+
+			element_data.insert( element_data.end(), element_data_temp.begin(), element_data_temp.end() );
+
+			num_1d_elements += element_data_temp.size();
 
 	
-		unsigned int subdomain_id = m;
+			unsigned int subdomain_id = m;
 
-		// if there is a 3D subdomain, give the 1D tree a subdomain starting after the last 3D
-		if(subdomains_3d.size() > 0)
-			subdomain_id += subdomains_3d.back()  + 1;
+			// if there is a 3D subdomain, give the 1D tree a subdomain starting after the last 3D
+			if(subdomains_3d.size() > 0)
+				subdomain_id += subdomains_3d.back()  + 1;
 
-		unsigned int boundary_id = 1;
-		// here we need to figure out what boundary to give it by comparing to centroid of something.
-		if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
-		{
-			std::cout << "coupling_point is " << coupling_point << std::endl;
-			Point centroid;
-			double max_radius;
-			// don't bother checking inflow boundary
-
-			for(unsigned int i=1; i<surface_boundaries.size(); i++)
+			unsigned int boundary_id = 1;
+			// here we need to figure out what boundary to give it by comparing to centroid of something.
+			if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
 			{
-				centroid = surface_boundaries[i]->get_centroid();
-				max_radius = surface_boundaries[i]->get_max_radius();
-				double distance = (centroid - coupling_point).size();
-				if(distance < max_radius)
-				{
-					std::cout << "coupling surface found = " << i << std::endl;
-					boundary_id_to_tree_id[i] = m;
-					boundary_id = i;
-					break;
-				}
+				std::cout << "coupling_point is " << coupling_point << std::endl;
+				Point centroid;
+				double max_radius;
+				// don't bother checking inflow boundary
 
-				if(i == surface_boundaries.size()-1)
+				for(unsigned int i=1; i<surface_boundaries.size(); i++)
 				{
-					std::cout << "error coupling surface not found" << std::endl;
-					std::exit(0);
+					centroid = surface_boundaries[i]->get_centroid();
+					max_radius = surface_boundaries[i]->get_max_radius();
+					double distance = (centroid - coupling_point).size();
+					if(distance < max_radius)
+					{
+						std::cout << "coupling surface found = " << i << std::endl;
+						boundary_id_to_tree_id[i] = m;
+						boundary_id = i;
+						break;
+					}
+
+					if(i == surface_boundaries.size()-1)
+					{
+						std::cout << "error coupling surface not found" << std::endl;
+						std::exit(0);
+					}
 				}
 			}
+
+
+			// give it boundary id 1
+			add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id,boundary_id);
+
+			subdomains_1d.push_back(subdomain_id);
+
+			mesh.prepare_for_use (/*skip_renumber =*/ false);
+
+			// well although the 1d stuff doesn't actually have a boundary at 0
+			// we still consider it
+			pressure_values_1d.push_back(1.0);	//inflow
+
+			flux_values_1d.push_back(0.0);	//inflow
 		}
-
-
-		// give it boundary id 1
-		add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id,boundary_id);
-
-		subdomains_1d.push_back(subdomain_id);
-
-		mesh.prepare_for_use (/*skip_renumber =*/ false);
-
-		// well although the 1d stuff doesn't actually have a boundary at 0
-		// we still consider it
-		pressure_values_1d.push_back(1.0);	//inflow
-
-		flux_values_1d.push_back(0.0);	//inflow
 
 
 	}
@@ -1795,16 +1837,21 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	bool per_order = false;
 	
 	TransientLinearImplicitSystem * system;
+	TransientLinearImplicitSystem * system_threed;
   // Get a reference to the Stokes system object.
 	if(sim_type == 5)
 	{
 		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+		system_threed =
 		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
 	}
 	else
 	{
 		system =
 		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
+		system_threed =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 
@@ -1813,6 +1860,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
   //const double viscosity = es->parameters.get<double>("viscosity_1d");
   const unsigned int p_var = system->variable_number ("P");
   const unsigned int q_var = system->variable_number ("Q");
+
+
+  const unsigned int p_var_threed = system_threed->variable_number ("p");
 	
   const DofMap & dof_map = system->get_dof_map();
   // This vector will hold the degree of freedom indices for
@@ -1976,13 +2026,194 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
     }// end of subdomain conditional
 	}// end of element loop
 
+	std::cout<< "hey there yeah" << std::endl;
+
+	// get average
+	total_num_edges_per_generation.resize(max_generation+1,0);
+	std::cout<< "ho" << std::endl;
+	total_resistance_per_generation.resize(max_generation+1,0);
+	std::cout<< "yo" << std::endl;
+
+
+
+	//do a loop over the 3d section
+	//we add this to the total
+
+	
+
+	
+	if(es->parameters.get<bool>("use_centreline_data"))
+	{
+		std::cout<< "mo" << std::endl;
+
+		// move the points on the boundary inside the domain
+
+		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		{
+			// hmmm, so if we are on a boundary we may have difficulty...
+			double segment_length = (centreline_points[i][1] - centreline_points[i][0]).size();
+			std::cout << "segment_length = " << segment_length << std::endl;
+			// if we don't have a parent then move point a small distance
+			if(centreline_element_data[i][0] == -1)
+			{
+				unsigned int boundary_id = 0;
+				Point normal = surface_boundaries[0]->get_normal();
+				// move point backwards along normal
+				Point adjusted_point = centreline_points[i][0] - 1e-3*segment_length*normal;
+				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
+				centreline_points[i][0] = adjusted_point;
+			}
+
+			if(centreline_element_data[i][1] == -1)
+			{
+				unsigned int boundary_id = tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]];
+				Point normal = surface_boundaries[boundary_id]->get_normal();
+				// move point backwards along normal
+				Point adjusted_point = centreline_points[i][1] - 1e-3*segment_length*normal;
+				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
+				centreline_points[i][1] = adjusted_point;
+			}
+
+		}
+
+		// find out what element the points are in
+		std::vector<std::vector<unsigned int> > centreline_points_elements(centreline_points.size(),std::vector<unsigned int>(2));
+		
+		el     = mesh.active_elements_begin();
+		const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
+
+		unsigned int count = 0;
+		// note this is not a parallel loop cause i am lazy
+		for ( ; el != end_el; ++el)
+		{
+			const Elem* elem = *el;
+			if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
+			{
+				for(unsigned int i=0; i<centreline_points.size(); i++)
+				{
+					//check point 1
+					if(elem->contains_point(centreline_points[i][0]))
+					{
+						std::cout << "point 0 " << i << ": " << centreline_points[i][0] << " found in elem " << elem->id() << std::endl;
+						centreline_points_elements[i][0] = elem->id();
+						count++;
+					}
+
+					//check point 1
+					if(elem->contains_point(centreline_points[i][1]))
+					{
+						std::cout << "point 1 " << i << ": " << centreline_points[i][1] <<  " found in elem " << elem->id() << std::endl;
+						centreline_points_elements[i][1] = elem->id();
+						count++;
+					}
+				}
+			}
+
+		}
+
+		std::cout << "num_points found = " << count << std::endl;
+
+
+		std::cout<< "centreline" << centreline_element_data.size() << std::endl;
+
+		
+		// calculate the fluxes by going up from each terminal branch
+		// calculate the pressures, only want to do this once per point, 
+		// but it's okay only double the calculation
+		std::vector<double> flux_per_3d_element(centreline_element_data.size());
+		std::vector<double> pressure_diff_per_3d_element(centreline_element_data.size());
+		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		{
+			std::cout << "1" << std::endl;
+			//loop over terminal elements, terminal element when has no daughter 1
+			if(centreline_element_data[i][1] == -1)
+			{
+				// okay, so we need to know what 1d elements this goes into, because
+				double flux_in_terminal_element = flux_values_3d[tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]]];
+				flux_in_terminal_element *= flow_scale;
+
+			std::cout << "2" << std::endl;
+				// generation of this element
+				unsigned int generation = centreline_element_data[i][7];
+
+				//go up all the generations
+				int next_element = i;
+				for(unsigned int j=generation; j>-1; j--)
+				{
+					//add the flux to the
+					flux_per_3d_element[next_element] += flux_in_terminal_element;
+					next_element = centreline_element_data[next_element][0];	// make the next element the parent
+				}
+			}
+
+			std::cout << "3" << std::endl;
+			// calculate the pressure difference
+			// calculate the pressure at the start point
+			// use centreline_points..			
+			std::cout << "trying to calc pressure at " << centreline_points[i][0] << std::endl;
+			double start_pressure = system_threed->point_value(p_var_threed,centreline_points[i][0],*mesh.elem(centreline_points_elements[i][0]));
+
+			std::cout << "4" << std::endl;
+			// calculate the pressure at the end point
+			// use centreline_points..			
+			std::cout << "trying to calc pressure at " << centreline_points[i][1] << std::endl;
+			double end_pressure = system_threed->point_value(p_var_threed,centreline_points[i][1],*mesh.elem(centreline_points_elements[i][1]));
+
+
+			double pressure_diff = start_pressure - end_pressure;
+			// convert pressure to SI units
+			pressure_diff *= mean_pressure_scale;
+
+			std::cout << "5" << std::endl;
+			pressure_diff_per_3d_element[i] = pressure_diff;
+		}
+		
+		
+
+	std::cout<< "hey there poo" << std::endl;
+		
+		//calculate the resistance and add to the vector
+		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		{
+			// generation of this element
+			unsigned int generation = centreline_element_data[i][7];
+
+			std::cout << "1" << std::endl;
+			//calculate the resistance
+			double resistance = pressure_diff_per_3d_element[i] / flux_per_3d_element[i];
+
+			//add to the correct tree
+			if(!per_order)
+			{
+				total_num_edges_per_generation[generation] += 1;
+				total_resistance_per_generation[generation] += resistance;
+			}
+			else
+			{
+				/*
+				if(order > num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()].size())
+				{
+					num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()].resize(order);
+					resistance_per_order[elem->subdomain_id() - subdomains_1d.front()].resize(order);
+				}
+				
+				num_edges_per_order[elem->subdomain_id() - subdomains_1d.front()][order - 1] +=1;
+				resistance_per_order[elem->subdomain_id() - subdomains_1d.front()][order - 1] += resistance;
+				*/
+
+
+			}
+			
+			std::cout << "2" << std::endl;
+		}
+		
+		
+	}
+
 	std::cout<< "hey there, max_gerertaion = " << max_generation << std::endl;
 
 		
 
-	// get average
-	total_num_edges_per_generation.resize(max_generation+1,0);
-	total_resistance_per_generation.resize(max_generation+1,0);
 	
 	// loop over all the trees
 	for(unsigned int i=0; i<num_edges_per_generation.size(); i++)

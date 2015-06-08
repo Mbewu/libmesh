@@ -337,6 +337,7 @@ private:
 
 	unsigned int sim_type;	//0 - 3d, 1 - 1d, 2 - uncoupled, 3 - expl coupled
 	std::vector<std::vector<double> > element_data;
+	std::vector<std::vector<double> > centreline_element_data;	//element data of centrelines
 	Mesh mesh;
 	MeshData mesh_data;
 	MeshRefinement mesh_refinement;
@@ -435,6 +436,9 @@ private:
 	std::vector<int> tree_id_to_boundary_id;
 	std::vector<double> coupling_pressure_values_1d;
 	std::vector<double> coupling_flux_values_1d;
+
+	std::vector<int> centreline_terminal_id_to_tree_id;
+	std::vector<std::vector<Point> > centreline_points;
 
 	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
 	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation
