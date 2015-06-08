@@ -648,6 +648,17 @@ void NavierStokesCoupled::read_1d_mesh ()
 	{
 		std::cout << "subtree_starting_elements[" << i << "] = " << subtree_starting_elements[i] << std::endl;
 	}
+
+	
+	std::cout << "CENTRELINE DATA" << std::endl;
+	for(unsigned int i=0; i<centreline_element_data.size(); i++)
+	{
+		std::cout << "i = " << i << std::endl;
+		for(unsigned int j=0; j<centreline_element_data[i].size(); j++)
+		{
+			std::cout << " " << centreline_element_data[i][j] << std::endl;
+		}
+	}
 	
 	std::cout << " finished setting up 1d mesh from file" << std::endl;
 }
@@ -2122,41 +2133,48 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		// but it's okay only double the calculation
 		std::vector<double> flux_per_3d_element(centreline_element_data.size());
 		std::vector<double> pressure_diff_per_3d_element(centreline_element_data.size());
+
+
+
 		for(unsigned int i=0; i<centreline_element_data.size(); i++)
 		{
 			std::cout << "1" << std::endl;
 			//loop over terminal elements, terminal element when has no daughter 1
+			std::cout << "centreline_element_data[" <<  i << "][1] = " << centreline_element_data[i][1] << std::endl;
 			if(centreline_element_data[i][1] == -1)
 			{
 				// okay, so we need to know what 1d elements this goes into, because
 				double flux_in_terminal_element = flux_values_3d[tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]]];
 				flux_in_terminal_element *= flow_scale;
 
-			std::cout << "2" << std::endl;
+			std::cout << "glux = " << flux_in_terminal_element << std::endl;
 				// generation of this element
 				unsigned int generation = centreline_element_data[i][7];
 
 				//go up all the generations
 				int next_element = i;
-				for(unsigned int j=generation; j>-1; j--)
+				std::cout << "generation = " << generation <<std::endl;
+				for(int j=generation; j>-1; j--)
 				{
+					std::cout << "got here" << std::endl;
 					//add the flux to the
 					flux_per_3d_element[next_element] += flux_in_terminal_element;
 					next_element = centreline_element_data[next_element][0];	// make the next element the parent
+					std::cout << "next_element = " << next_element << std::endl;
 				}
 			}
 
-			std::cout << "3" << std::endl;
+			//std::cout << "3" << std::endl;
 			// calculate the pressure difference
 			// calculate the pressure at the start point
 			// use centreline_points..			
-			std::cout << "trying to calc pressure at " << centreline_points[i][0] << std::endl;
+			//std::cout << "trying to calc pressure at " << centreline_points[i][0] << std::endl;
 			double start_pressure = system_threed->point_value(p_var_threed,centreline_points[i][0],*mesh.elem(centreline_points_elements[i][0]));
 
-			std::cout << "4" << std::endl;
+			//std::cout << "4" << std::endl;
 			// calculate the pressure at the end point
 			// use centreline_points..			
-			std::cout << "trying to calc pressure at " << centreline_points[i][1] << std::endl;
+			//std::cout << "trying to calc pressure at " << centreline_points[i][1] << std::endl;
 			double end_pressure = system_threed->point_value(p_var_threed,centreline_points[i][1],*mesh.elem(centreline_points_elements[i][1]));
 
 
@@ -2164,7 +2182,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			// convert pressure to SI units
 			pressure_diff *= mean_pressure_scale;
 
-			std::cout << "5" << std::endl;
+			//std::cout << "5" << std::endl;
 			pressure_diff_per_3d_element[i] = pressure_diff;
 		}
 		
@@ -2180,6 +2198,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 			std::cout << "1" << std::endl;
 			//calculate the resistance
+			std::cout << "pressure_diff_per_3d_element[i] = " << pressure_diff_per_3d_element[i] << std::endl;
+			std::cout << "flux_per_3d_element[i] = " << flux_per_3d_element[i] << std::endl;
 			double resistance = pressure_diff_per_3d_element[i] / flux_per_3d_element[i];
 
 			//add to the correct tree
