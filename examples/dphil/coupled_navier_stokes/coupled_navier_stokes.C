@@ -732,6 +732,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						{
 							nonlinear_iteration++;
 							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
+							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration;
 
 							calculate_1d_boundary_values();
 							picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
@@ -1465,6 +1466,8 @@ void NavierStokesCoupled::read_parameters()
 
   set_double_parameter(infile,"nonlinear_tolerance_1d",1e-4);
   set_bool_parameter(infile,"nonlinear_1d",false);
+
+  set_bool_parameter(infile,"use_centreline_data",false);
 
 
 
