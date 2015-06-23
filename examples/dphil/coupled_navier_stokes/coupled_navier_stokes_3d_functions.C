@@ -1363,8 +1363,9 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 		pressure_values_3d[0] = picard->calculate_pressure(0);
 		for(unsigned int i=1; i< flux_values_3d.size(); i++)
 		{
-			flux_values_3d[i] = picard->calculate_flux(i);
-			pressure_values_3d[i] = picard->calculate_pressure(i);
+
+			flux_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_flux(i);
+			pressure_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_pressure(i);
 		}
 	}
 	else
@@ -1416,7 +1417,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	// exodus file writer
 	ExodusII_IO_Extended exo = ExodusII_IO_Extended(mesh);
 
-	exo.set_var_scalings(var_scalings);
+	exo.set_var_scalings(var_scalings_3D);
 
 	std::vector<std::string> variables_3d;
 	variables_3d.push_back("u");

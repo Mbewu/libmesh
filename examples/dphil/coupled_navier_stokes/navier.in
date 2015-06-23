@@ -63,7 +63,9 @@ old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcati
 
 _read_1d_mesh = true
 # file is appended with .edge .node + numbers etc
-input_1d_file = meshes/APLE0027688_truncated/output_airways_full_new #meshes/APLE0027688_truncated/Novartis002_remeshed #meshes/APLE0027688_truncated/output_airways_full #meshes/APLE0099627/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
+# input_1d_file = meshes/APLE0027688_truncated/output_airways_full_new #meshes/APLE0027688_truncated/Novartis002_remeshed #meshes/APLE0027688_truncated/output_airways_full #meshes/APLE0099627/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
+
+input_1d_file = meshes/APLE0027688_truncated/output_airways_full_james_labelled
 
 input_1d_edge_file_2 = meshes/APLE0036266/output_airways_full_raf.edge #meshes/APLE0081560/output_airways_full.edge #meshes/APLE0036266/output_airways_full.edge
 input_1d_node_file_2 = meshes/APLE0036266/output_airways_full_raf.node #meshes/APLE0081560/output_airways_full.node #meshes/APLE0036266/output_airways_full.node
@@ -436,16 +438,18 @@ numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 1000.0
 element_length_scaling = 1.25
 output_nondim = false
-sim_type = 5
+sim_type = 1
 reynolds_number_calculation = false
-match_1d_mesh_to_3d_mesh = true
+match_1d_mesh_to_3d_mesh = false
 num_1d_trees = 1
 assume_symmetric_tree = false
-calculate_1d_info_at_coupling_nodes = false
-radius_on_edge = false
-resistance_type_1d = 1
+calculate_1d_info_at_coupling_nodes = true
+radius_on_edge = true
+resistance_type_1d = 0
 nonlinear_1d = 1e-4
-output_folder = results/3d1d/nonlinear_crap/
-flow_mag_1d = 0.0425e-3 #0.83e-3#1.67e-3 #1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
+output_folder = results/some_tests/1d/
+input_1d_file = meshes/APLE0027688_truncated/unknown/output_airways_full_new
+flow_mag_1d = 3.77346e-05 # 0.0425e-3 #0.83e-3#1.67e-3 #1 # 0.1e-3#0.5e-3#2.0e-3		#SI units
 flow_mag_3d = 0.0425e-3 # 1.67e-3		#this is 30L/min, can get up to 120L/min
-use_centreline_data = true
+use_centreline_data = false
+output_flux_per_3d_edge = false

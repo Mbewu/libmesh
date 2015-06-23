@@ -222,7 +222,7 @@ void NSAssembler3D::find_1d_boundary_nodes()
 			// need to figure out whether we are on daughter 1 or daughter 2			
 			const int current_el_idx = elem->id();
 			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-			int is_daughter_1 = (int)element_data[current_1d_el_idx][4];	//this is a bool duh!
+			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
 
       //const unsigned int n_dofs   = 4;
       //const unsigned int n_p_dofs = 2;

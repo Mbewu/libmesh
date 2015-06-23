@@ -38,17 +38,11 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 	unsigned int num_1d_elements = 0;	
 
-	pressure_values_1d.push_back(-1.0);	//inflow
+	pressure_values_1d.push_back(0.0);	//inflow
 	flux_values_1d.push_back(0.0);	//inflow
 
 	std::cout << "calculate_1d_info_at_coupling_nodes = " << es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes") << std::endl;
 	std::cout << "num_1d_trees = " << es->parameters.get<unsigned int> ("num_1d_trees") << std::endl;
-
-	if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
-	{
-		coupling_flux_values_1d.push_back(0.);
-		coupling_pressure_values_1d.push_back(0.);
-	}
 
 
 	// number of 1d meshes is all the boundaries minus the inflow boundary
@@ -92,7 +86,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 		std::ifstream infile_edge(edge_file.str().c_str());
 
 	
-		std::cout << "1";	
+		std::cout << "1";
 		// okay need to parse into a vector
 
 		//node num is idx, 0-xcoord 1-ycoord 2-zcoord 3-radius
@@ -147,6 +141,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 				node_data.push_back(sub_tree_number);
 
 				node_1d_data.push_back(node_data);
+
 			}
 		}
 
@@ -341,7 +336,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 		// we can also get the point at which 
 
 		Point coupling_point;
-		std::vector<std::vector<double> > element_data_temp(edge_1d_data.size(),std::vector<double>(12,-1));
+		std::vector<Airway> airway_data_temp(edge_1d_data.size(),Airway());
 		for(unsigned int i=0; i<edge_1d_data.size(); i++)
 		{
 			unsigned int elem_number = (unsigned int)edge_1d_data[i][0];
@@ -349,6 +344,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 			unsigned int order = (unsigned int)edge_1d_data[i][5];
 			unsigned int node_1 = (unsigned int)edge_1d_data[i][1];
 			unsigned int node_2 = (unsigned int)edge_1d_data[i][2];
+			airway_data_temp[elem_number].set_local_elem_number(elem_number);
 
 			//okay let us find the parent number
 			if(generation > min_generation)	//has a parent
@@ -358,72 +354,117 @@ void NavierStokesCoupled::read_1d_mesh ()
 					//if first node same as second node then parent
 					if(node_1 == (unsigned int)edge_1d_data[j][2])
 					{
-						element_data_temp[elem_number][0] = (unsigned int)edge_1d_data[j][0];
+						airway_data_temp[elem_number].set_parent((unsigned int)edge_1d_data[j][0]);
 					}
 				}
 			}
-			else
+			else	//has no parent
 			{
-				//has no parent
-				element_data_temp[elem_number][0] = -1;
 
 				// we should check whether it has a sibling, check in it's own generation, but not itself
 				// we can also set whether it is daughter 1 in a first come first serve manner
+				// okay so this now needs to be able to handle any number of sibling
+				std::vector<unsigned int> siblings;
+				unsigned int min_sibling_idx = 99999999;	// large number
 				for(int j=generation_start[generation-min_generation]; j<generation_start[generation-min_generation+1]; j++)
 				{
 					if(node_1 == (unsigned int)edge_1d_data[j][1] && elem_number != (unsigned int)edge_1d_data[j][0])
 					{
-						// set the sibling
-						element_data_temp[elem_number][3] = (unsigned int)edge_1d_data[j][0];
-					
-						// the coupling point
-						coupling_point = Point(node_1d_data[node_1][0],node_1d_data[node_1][1],node_1d_data[node_1][2]);
-						std::cout << "coupling_point [" << m << "] = " << coupling_point << std::endl;
-
-						// is daughter 1 if has a lower elem_number
-						if(elem_number < (unsigned int)edge_1d_data[j][0])
+						// add this sibling to the list
+						siblings.push_back(j);
+						if((unsigned int)edge_1d_data[j][0] < min_sibling_idx)
 						{
-							element_data_temp[elem_number][4] = 1;
-							//std::cout << "hi, elem_number = " << elem_number << std::endl;
-							//std::cout << "hi, other elem_number = " << edge_1d_data[j][0] << std::endl;
+							min_sibling_idx = (unsigned int)edge_1d_data[j][0];
 						}
-						else	// is not daughter 1
-							element_data_temp[elem_number][4] = 0;
 					}
 				}
+
+				// check whether is daughter 1, has an elem number lower than the rest
+				// also set the sibling data
+				if(elem_number < min_sibling_idx)
+				{
+					airway_data_temp[elem_number].set_is_daughter_1(true);	//give it the number of siblings or just 1 if no siblings	
+
+					// if we are daughter 1 then we need to set all the siblings at the end of element_data_temp
+					for(unsigned int j=0; j<siblings.size(); j++)
+					{
+						// set the sibling
+						airway_data_temp[elem_number].add_sibling((unsigned int)edge_1d_data[siblings[j]][0]);
+					}
+
+				}
+				else
+				{
+
+					airway_data_temp[elem_number].set_is_daughter_1(false);
+
+					// if we are daughter 2 then we just need to set the sibling to the one immediately before it
+					// don't need the first one
+					for(unsigned int j=siblings.size()-1; j>=0; j--)
+					{
+						airway_data_temp[elem_number].add_sibling((unsigned int)edge_1d_data[siblings[j]][0]);
+						// set the sibling to the one just before we went past it...
+						if((unsigned int)edge_1d_data[siblings[j]][0] < elem_number && !airway_data_temp[elem_number].has_primary_sibling())
+						{
+							airway_data_temp[elem_number].set_primary_sibling((unsigned int)edge_1d_data[siblings[j]][0]);
+							break;
+						}
+					}
+
+				}
+			
+				// the coupling point because this has no parent
+				coupling_point = Point(node_1d_data[node_1][0],node_1d_data[node_1][1],node_1d_data[node_1][2]);
+				std::cout << "coupling_point [" << m << "] = " << coupling_point << std::endl;
 			
 			}
+
 
 			//okay let us find the daughter numbers
 			//generation size is like one more than you'd expect so that 
 			if(generation-min_generation < generation_start.size() - 2)
 			{
 
+				std::vector<unsigned int> daughters;	// a full list of the daughters of this airway
 				for(int j=generation_start[generation-min_generation+1]; j<generation_start[generation-min_generation+2]; j++)
 				{
 					//if second node same as first node then daughter. daughter 1 is the first in the list
 					if(node_2 == (unsigned int)edge_1d_data[j][1])
 					{
-						if(element_data_temp[elem_number][1] == -1)
+						daughters.push_back((unsigned int)edge_1d_data[j][0]);
+						airway_data_temp[elem_number].add_daughter(daughters.back());
+						//if given daughter 1 status let us also tell that daughter it is daughter 1 and set daughter 1
+						if(daughters.size() == 1)
 						{
-							element_data_temp[elem_number][1] = (unsigned int)edge_1d_data[j][0];
-							//if given daughter 1 status let us also tell that daughter it is daughter 1
-							element_data_temp[(unsigned int)edge_1d_data[j][0]][4] = 1;
+							airway_data_temp[daughters[0]].set_is_daughter_1(true);
 						}
 						else
 						{
-							element_data_temp[elem_number][2] = (unsigned int)edge_1d_data[j][0];
-							//if given daughter 1 status let us also tell that daughter it is not daughter 1
-							element_data_temp[(unsigned int)edge_1d_data[j][0]][4] = 0;
+							airway_data_temp[daughters.back()].set_is_daughter_1(false);
 						}
 					}
 				
 				}
+
+				
 				// once the daughters have been set (if), tell them they are siblings
-				if(element_data_temp[elem_number][1] != -1)
+				if(daughters.size() > 0)
 				{
-					element_data_temp[element_data_temp[elem_number][1]][3] = element_data_temp[elem_number][2];
-					element_data_temp[element_data_temp[elem_number][2]][3] = element_data_temp[elem_number][1];
+					// give daughter 1 her siblings
+					for(unsigned int j=1; j<daughters.size(); j++)
+					{
+						airway_data_temp[daughters[0]].add_sibling(daughters[j]);
+					}
+
+					// now let us tell the rest of the daughters who their primary siblings are, should be in order already
+					for(unsigned int j=1; j<daughters.size(); j++)
+					{
+						airway_data_temp[daughters[j]].set_primary_sibling(daughters[j-1]);
+						for(unsigned int k=0; k<daughters.size(); k++)
+							if(j != k)
+								airway_data_temp[daughters[j]].add_sibling(daughters[k]);
+								
+					}
 				}
 
 			}
@@ -438,12 +479,6 @@ void NavierStokesCoupled::read_1d_mesh ()
 			Point point_2(node_1d_data[node_2][0],node_1d_data[node_2][1],node_1d_data[node_2][2]);
 			Point difference = point_1 - point_2;
 			double length = difference.size();
-
-			//if(generation < 6)
-			//	length *= 1.5;
-
-			//if(generation < 6)
-			//	length *= 1.5;
 
 			// set the radius to the average
 			double radius = 0.;
@@ -467,23 +502,21 @@ void NavierStokesCoupled::read_1d_mesh ()
 				radius = 0.5 * (node_1d_data[node_1][3] + node_1d_data[node_2][3]);
 
 			}
-			
-			element_data_temp[elem_number][5] = length;
-			element_data_temp[elem_number][6] = radius;
+
+			airway_data_temp[elem_number].set_node_1(point_1);
+			airway_data_temp[elem_number].set_node_2(point_2);
+
+			airway_data_temp[elem_number].set_length(length);
+			airway_data_temp[elem_number].set_radius(radius);
 
 			// set the generation and order of the airway
-			element_data_temp[elem_number][7] = generation;
-			element_data_temp[elem_number][8] = order;
-
-			//particle deposition stuff
-			element_data_temp[elem_number][9] = 0;	//the flow rate in this tube for the current time step
-			element_data_temp[elem_number][10] = 0;	//the efficiency in this tube for the current time step
-
-			//num alveolar generations
-			element_data_temp[elem_number][11] = 0;	//number of alveolar generations emanating from this branch
+			airway_data_temp[elem_number].set_generation(generation);
+			airway_data_temp[elem_number].set_order(order);
 
 
-			//check if this is the terminating edge.
+
+
+			//check if this is the terminating edge between 3d and 1d, imaging and generated data
 			if(es->parameters.set<unsigned int> ("num_1d_trees") == 1 && es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
 			{
 				unsigned int subtree_number_1 = (unsigned int)node_1d_data[node_1][4];
@@ -496,13 +529,29 @@ void NavierStokesCoupled::read_1d_mesh ()
 						subtree_starting_elements.resize(subtree_number_2+1,-1);
 					}
 					subtree_starting_elements[subtree_number_2] = elem_number;
-					coupling_flux_values_1d.push_back(0.);
-					coupling_pressure_values_1d.push_back(0.);
+					flux_values_1d.push_back(0.);
+					pressure_values_1d.push_back(0.);
+
+					// add the coupling point to the array
+					if(coupling_points.size() < subtree_number_2+1)
+						coupling_points.resize(subtree_number_2+1);				// resize to subtree_number_2+1 because have point for inflow boundary
+
+					coupling_points[subtree_number_2] = point_2;
+
+
+
 					std::cout << "coupling_point[" << subtree_number_2 << "] = " << point_2 << std::endl;
 					std::cout << "subtree_starting_elements[" << subtree_number_2 << "] = " << subtree_starting_elements[subtree_number_2] << std::endl;
 
+
+
+
 				}
 			}
+
+
+
+
 
 			// if this is the 3d centreline data then we need to populate the 
 			// centreline_terminal_id_to_boundary_id vector
@@ -511,13 +560,13 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 				unsigned int subtree_number_2 = (unsigned int)node_1d_data[node_2][4];
 
-				centreline_terminal_id_to_tree_id.resize(element_data_temp.size(),-1);	
+				centreline_terminal_id_to_tree_id.resize(airway_data_temp.size(),-1);	
 				if(subtree_number_2 > 0)
 				{
 					centreline_terminal_id_to_tree_id[elem_number] = subtree_number_2;
 				}
 
-				centreline_points.resize(element_data_temp.size());
+				centreline_points.resize(airway_data_temp.size());
 				std::vector<Point> points;
 				points.push_back(point_1);
 				points.push_back(point_2);
@@ -528,13 +577,25 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 		}
 
+		// okay if we are doing a 3d1d then the coupling points
+		if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
+		{
+			// add the coupling point to the array
+			if(coupling_points.size() < m+1)
+				coupling_points.resize(m+1);				// resize to subtree_number_2+1 because have point for inflow boundary
+
+			coupling_points[m] = coupling_point;
+		}
+
+		std::cout << "humm" << std::endl;
+
 
 
 		
 		// if we are reading in the data from the 3d part then we just need to put it in centreline_element_data
 		if(m == 0 && es->parameters.get<bool> ("use_centreline_data"))
 		{
-			centreline_element_data = element_data_temp;
+			centreline_airway_data = airway_data_temp;
 
 		}
 		else
@@ -554,41 +615,30 @@ void NavierStokesCoupled::read_1d_mesh ()
 			*/
 
 
+			//airway_data_temp.
 
 			// move all the indices of element data up by num_1d_elements
-			for(unsigned int i=0; i<element_data_temp.size();i++)
+			for(unsigned int i=0; i<airway_data_temp.size();i++)
 			{
-				//parent
-				if(element_data_temp[i][0] > -1)
-					element_data_temp[i][0] += num_1d_elements;
-
-				//daughter 1
-				if(element_data_temp[i][1] > -1)
-					element_data_temp[i][1] += num_1d_elements;
-
-				//daughter 2
-				if(element_data_temp[i][2] > -1)
-					element_data_temp[i][2] += num_1d_elements;
-
-				//sibling
-				if(element_data_temp[i][3] > -1)
-					element_data_temp[i][3] += num_1d_elements;
-
+				airway_data_temp[i].move_element_numbers(num_1d_elements);
 			}
 
+			std::cout << "num_1d_elements = " << num_1d_elements << std::endl;
 
-			element_data.insert( element_data.end(), element_data_temp.begin(), element_data_temp.end() );
 
-			num_1d_elements += element_data_temp.size();
+			airway_data.insert( airway_data.end(), airway_data_temp.begin(), airway_data_temp.end() );
+
+			num_1d_elements += airway_data_temp.size();
 
 	
 			unsigned int subdomain_id = m;
 
 			// if there is a 3D subdomain, give the 1D tree a subdomain starting after the last 3D
 			if(subdomains_3d.size() > 0)
-				subdomain_id += subdomains_3d.back()  + 1;
+				subdomain_id += subdomains_3d.back();
 
-			unsigned int boundary_id = 1;
+			// make boundary id 0 by default, i.e. only 1d mesh
+			unsigned int boundary_id = 0;
 			// here we need to figure out what boundary to give it by comparing to centroid of something.
 			if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
 			{
@@ -602,6 +652,9 @@ void NavierStokesCoupled::read_1d_mesh ()
 					centroid = surface_boundaries[i]->get_centroid();
 					max_radius = surface_boundaries[i]->get_max_radius();
 					double distance = (centroid - coupling_point).size();
+
+					std::cout << "distance = " << distance << std::endl;
+					std::cout << "max_radius = " << max_radius << std::endl;
 					if(distance < max_radius)
 					{
 						std::cout << "coupling surface found = " << i << std::endl;
@@ -628,9 +681,11 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 			// well although the 1d stuff doesn't actually have a boundary at 0
 			// we still consider it
-			pressure_values_1d.push_back(1.0);	//inflow
-
-			flux_values_1d.push_back(0.0);	//inflow
+			if(!es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			{
+				pressure_values_1d.push_back(0.0);	//inflow
+				flux_values_1d.push_back(0.0);	//inflow
+			}
 		}
 
 
@@ -649,17 +704,33 @@ void NavierStokesCoupled::read_1d_mesh ()
 		std::cout << "subtree_starting_elements[" << i << "] = " << subtree_starting_elements[i] << std::endl;
 	}
 
-	
+	/*
 	std::cout << "CENTRELINE DATA" << std::endl;
-	for(unsigned int i=0; i<centreline_element_data.size(); i++)
+	for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 	{
 		std::cout << "i = " << i << std::endl;
-		for(unsigned int j=0; j<centreline_element_data[i].size(); j++)
+		for(unsigned int j=0; j<centreline_airway_data[i].size(); j++)
 		{
-			std::cout << " " << centreline_element_data[i][j] << std::endl;
+			std::cout << " " << centreline_airway_data[i][j] << std::endl;
 		}
 	}
-	
+	*/
+
+	/*
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		std::cout << "i = " << i << std::endl;
+		airway_data[i].print_concise();
+	}
+	*/	
+
+	if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh") || es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+	{
+		std::cout << "about to output coupling points" << std::endl;
+		output_coupling_points();
+		std::cout << "outputted coupling points" << std::endl;
+	}
+
 	std::cout << " finished setting up 1d mesh from file" << std::endl;
 }
 
@@ -667,9 +738,9 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 void NavierStokesCoupled::calculate_num_alveloar_generations_for_tree()
 {
-	for(unsigned int i=0; i<element_data.size(); i++)
-		if((int)element_data[i][1] == -1 && (int)element_data[i][2] == -1)
-			element_data[i][11] = es->parameters.get<unsigned int> ("num_alveolar_generations");
+	for(unsigned int i=0; i<airway_data.size(); i++)
+		if(!airway_data[i].has_daughter_1())
+			airway_data[i].set_num_alveolar_generations(es->parameters.get<unsigned int> ("num_alveolar_generations"));
 }
 
 
@@ -1437,7 +1508,8 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 		system->add_variable ("P", FIRST,LAGRANGE,&active_subdomains);
 	}
 
-	int radius_var = radius_system->add_variable("radius", CONSTANT, MONOMIAL,&active_subdomains);
+	int radius_var = extra_1d_data_system->add_variable("radius", CONSTANT, MONOMIAL,&active_subdomains);
+	int pedley_var = extra_1d_data_system->add_variable("pedley", CONSTANT, MONOMIAL,&active_subdomains);
 
 	int efficiency_var = 0;
 	// variables for particle deposition system
@@ -1449,6 +1521,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	std::cout << "P_var = " << P_var << std::endl;
 	std::cout << "Q_var = " << Q_var << std::endl;
 	std::cout << "radius_var = " << radius_var << std::endl;
+	std::cout << "pedley_var = " << pedley_var << std::endl;
 	if(particle_deposition == 2)
 		std::cout << "efficiency_var = " << efficiency_var << std::endl;
 }
@@ -1470,22 +1543,40 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		previous_flux_values_3d = flux_values_3d;
 		previous_pressure_values_3d = pressure_values_3d;
 
-		for(unsigned int i=1; i< flux_values_1d.size(); i++)
+		// if we are running a 3d-1d then the flux values are the first elements
+		if(sim_type == 5 || sim_type == 3)
 		{
-			flux_values_1d[i] = ns_assembler->calculate_flux(i);
-			pressure_values_1d[i] = ns_assembler->calculate_pressure(i);
-			
-		}
 
-		for(unsigned int i=1; i<subtree_starting_elements.size();i++)
-		{
-			std::cout << "subtree_starting_elements[i] = " << subtree_starting_elements[i] << std::endl;
-			if(subtree_starting_elements[i] > -1)
+			// there is no 0 boundary flux
+			// i is the tree id, but we want to calculate on the boundary
+			for(unsigned int i=1; i< flux_values_1d.size(); i++)
 			{
-				coupling_flux_values_1d[i] = ns_assembler->calculate_flux(i,subtree_starting_elements[i]);
-				coupling_pressure_values_1d[i] = ns_assembler->calculate_pressure(i,subtree_starting_elements[i]);
+				flux_values_1d[i] = ns_assembler->calculate_flux(tree_id_to_boundary_id[i]);
+				pressure_values_1d[i] = ns_assembler->calculate_pressure(tree_id_to_boundary_id[i]);			
 			}
 		}
+		else
+		{
+
+			// hmmm why is this not working
+			flux_values_1d[0] = ns_assembler->calculate_flux(0);
+			pressure_values_1d[0] = ns_assembler->calculate_pressure(0);
+
+			// i is the tree id
+			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			{
+				for(unsigned int i=1; i<subtree_starting_elements.size();i++)
+				{
+					std::cout << "subtree_starting_elements[i] = " << subtree_starting_elements[i] << std::endl;
+					if(subtree_starting_elements[i] > -1)
+					{
+						flux_values_1d[i] = ns_assembler->calculate_flux(i,subtree_starting_elements[i]);
+						pressure_values_1d[i] = ns_assembler->calculate_pressure(i,subtree_starting_elements[i]);
+					}
+				}
+			}
+		}
+
 	}
 	else
 	{
@@ -1549,7 +1640,7 @@ void NavierStokesCoupled::write_1d_solution()
 
 	ExodusII_IO_Extended exo(mesh);
 
-	exo.set_var_scalings(var_scalings);
+	exo.set_var_scalings(var_scalings_1D);
 
 	std::vector<std::string> variables_1d;
 	variables_1d.push_back("P");
@@ -1625,7 +1716,7 @@ void NavierStokesCoupled::set_radii()
 	//create an equation system to hold data like the radius of the element
 
 	
-	const DofMap& dof_map = radius_system->get_dof_map();
+	const DofMap& dof_map = extra_1d_data_system->get_dof_map();
 
 	MeshBase::const_element_iterator       el     =
 		mesh.active_local_elements_begin();
@@ -1633,7 +1724,7 @@ void NavierStokesCoupled::set_radii()
 		mesh.active_local_elements_end();
 
 	std::vector<dof_id_type> dof_indices;
-	const unsigned int rad_var = radius_system->variable_number ("radius");
+	const unsigned int rad_var = extra_1d_data_system->variable_number ("radius");
 
 	for ( ; el != end_el; ++el)
 	{
@@ -1642,15 +1733,19 @@ void NavierStokesCoupled::set_radii()
 		{
 			dof_map.dof_indices (elem, dof_indices,rad_var);
 			const dof_id_type elem_id = elem->id() - es->parameters.get<unsigned int>("n_initial_3d_elem");
+
+
+			if(airway_data[elem_id].get_generation() < 5)
+				std::cout << "radius at gen " << airway_data[elem_id].get_generation() << " = " << airway_data[elem_id].get_radius() << std::endl;
 			
 			for(unsigned int i=0; i < dof_indices.size(); i++)
-				radius_system->solution->set(dof_indices[i], element_data[elem_id][6]);
+				extra_1d_data_system->solution->set(dof_indices[i], airway_data[elem_id].get_radius());
 		}
 	}
 
 	//must close the vector after editing it
 
-	radius_system->solution->close();
+	extra_1d_data_system->solution->close();
 }
 
 
@@ -1861,8 +1956,10 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	{
 		system =
 		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
-		system_threed =
-		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
+
+		if(sim_3d)
+			system_threed =
+			  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
 
@@ -1873,7 +1970,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
   const unsigned int q_var = system->variable_number ("Q");
 
 
-  const unsigned int p_var_threed = system_threed->variable_number ("p");
+  unsigned int p_var_threed = 0;
+	if(sim_3d)
+	  p_var_threed = system_threed->variable_number ("p");
 	
   const DofMap & dof_map = system->get_dof_map();
   // This vector will hold the degree of freedom indices for
@@ -1972,14 +2071,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
       dof_map.dof_indices (elem, dof_indices_p, p_var);
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
-			//const double L = element_data[current_1d_el_idx][5];	//length
-			//const double r = element_data[current_1d_el_idx][6]; //radius
-			//double R = 8*L*viscosity/(M_PI*pow(r,4.0));	//dunno why this is pow 4??
-
-			//double radius = element_data[current_1d_el_idx][6];
-			//double length = element_data[current_1d_el_idx][5];
-			int generation = element_data[current_1d_el_idx][7];
-			unsigned int order = element_data[current_1d_el_idx][8];
+			int generation = airway_data[current_1d_el_idx].get_generation();
+			unsigned int order = airway_data[current_1d_el_idx].get_order();
 			//if(order < 1)
 			//{
 				//std::cout << "order = " << order << std::endl;
@@ -2050,7 +2143,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	//do a loop over the 3d section
 	//we add this to the total
 
-	
+	// need outside cause may want to output
+	std::vector<double> flux_per_3d_element(centreline_airway_data.size());
 
 	
 	if(es->parameters.get<bool>("use_centreline_data"))
@@ -2059,13 +2153,13 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 		// move the points on the boundary inside the domain
 
-		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// hmmm, so if we are on a boundary we may have difficulty...
 			double segment_length = (centreline_points[i][1] - centreline_points[i][0]).size();
 			std::cout << "segment_length = " << segment_length << std::endl;
 			// if we don't have a parent then move point a small distance
-			if(centreline_element_data[i][0] == -1)
+			if(!centreline_airway_data[i].has_parent())
 			{
 				unsigned int boundary_id = 0;
 				Point normal = surface_boundaries[0]->get_normal();
@@ -2075,7 +2169,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				centreline_points[i][0] = adjusted_point;
 			}
 
-			if(centreline_element_data[i][1] == -1)
+			if(!centreline_airway_data[i].has_daughter_1())
 			{
 				unsigned int boundary_id = tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]];
 				Point normal = surface_boundaries[boundary_id]->get_normal();
@@ -2125,23 +2219,22 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		std::cout << "num_points found = " << count << std::endl;
 
 
-		std::cout<< "centreline" << centreline_element_data.size() << std::endl;
+		std::cout<< "centreline" << centreline_airway_data.size() << std::endl;
 
 		
 		// calculate the fluxes by going up from each terminal branch
 		// calculate the pressures, only want to do this once per point, 
 		// but it's okay only double the calculation
-		std::vector<double> flux_per_3d_element(centreline_element_data.size());
-		std::vector<double> pressure_diff_per_3d_element(centreline_element_data.size());
+		std::vector<double> pressure_diff_per_3d_element(centreline_airway_data.size());
 
 
 
-		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			std::cout << "1" << std::endl;
 			//loop over terminal elements, terminal element when has no daughter 1
-			std::cout << "centreline_element_data[" <<  i << "][1] = " << centreline_element_data[i][1] << std::endl;
-			if(centreline_element_data[i][1] == -1)
+			std::cout << "centreline_airway_data[" <<  i << "].get_daughter_1() = " << centreline_airway_data[i].get_daughter_1() << std::endl;
+			if(!centreline_airway_data[i].has_daughter_1())
 			{
 				// okay, so we need to know what 1d elements this goes into, because
 				double flux_in_terminal_element = flux_values_3d[tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]]];
@@ -2149,7 +2242,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 			std::cout << "glux = " << flux_in_terminal_element << std::endl;
 				// generation of this element
-				unsigned int generation = centreline_element_data[i][7];
+				unsigned int generation = centreline_airway_data[i].get_generation();
 
 				//go up all the generations
 				int next_element = i;
@@ -2159,7 +2252,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 					std::cout << "got here" << std::endl;
 					//add the flux to the
 					flux_per_3d_element[next_element] += flux_in_terminal_element;
-					next_element = centreline_element_data[next_element][0];	// make the next element the parent
+					next_element = centreline_airway_data[next_element].get_parent();	// make the next element the parent
 					std::cout << "next_element = " << next_element << std::endl;
 				}
 			}
@@ -2191,10 +2284,10 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	std::cout<< "hey there poo" << std::endl;
 		
 		//calculate the resistance and add to the vector
-		for(unsigned int i=0; i<centreline_element_data.size(); i++)
+		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// generation of this element
-			unsigned int generation = centreline_element_data[i][7];
+			unsigned int generation = centreline_airway_data[i].get_generation();
 
 			std::cout << "1" << std::endl;
 			//calculate the resistance
@@ -2401,7 +2494,40 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		}
 		
 
-		//resistance_output_file.close();
+		resistance_output_file.close();
+
+		if(es->parameters.get<bool>("output_flux_per_3d_edge"))
+		{
+
+			std::cout << "boo" << std::endl;
+			std::ostringstream flux_data_file_name;
+			std::ofstream flux_output_file;
+
+			std::cout << "boo" << std::endl;
+			flux_data_file_name << output_folder.str() << "flux_per_3d_edge.dat";
+			std::cout << "boo " << flux_data_file_name.str() << std::endl;
+			flux_output_file.open(flux_data_file_name.str().c_str());
+
+		
+
+			std::cout<< "boo" << std::endl;
+			flux_output_file << "# flux per 3d edge" << std::endl;
+			// write geometry variables later when reading meta data file
+			// write boundary conditions later with Picard class
+			flux_output_file << "# Results" << std::endl;
+			flux_output_file << "# edge_num";
+		
+			std::cout<< "boo" << std::endl;
+			for(unsigned int i=0; i < flux_per_3d_element.size(); i++)
+			{
+				flux_output_file << std::endl;
+				flux_output_file <<	i;
+				flux_output_file <<	"\t";
+				flux_output_file <<	flux_per_3d_element[i];					
+			}
+			
+			flux_output_file.close();
+		}
 
 	}
 	else
@@ -2500,7 +2626,7 @@ void NavierStokesCoupled::write_efficiency_solution()
 
 	ExodusII_IO_Extended exo(mesh);
 
-	exo.set_var_scalings(var_scalings);
+	exo.set_var_scalings(var_scalings_1D);
 
 	std::vector<std::string> variables_1d;
 	variables_1d.push_back("efficiency");
