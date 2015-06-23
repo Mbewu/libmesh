@@ -765,16 +765,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			
 					perf_log.push("output");
+
+					std::cout << "yeah" << std::endl;
 					// ************ WRITE OUTPUT *************** //								
 					if((!reduce_dt || !unsteady) && !refine_mesh)
 					{
+					std::cout << "yeah" << std::endl;
 						output_sim_data(false);
+					std::cout << "yeah" << std::endl;
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
 							if(sim_3d) {write_3d_solution(true);}
 							if(sim_1d) {write_1d_solution();}
 						}
+					std::cout << "yeah" << std::endl;
 					}
 			
 					perf_log.pop("output");
@@ -2419,11 +2424,16 @@ void NavierStokesCoupled::output_sim_data(bool header)
 	}
 	else
 	{
+
+		std::cout << "k" << std::endl;
+
 		output_file << t_step << "\t" << time;
 
 		if(sim_3d)
 		{
+		std::cout << "k" << std::endl;
 			calculate_3d_boundary_values();
+		std::cout << "k" << std::endl;
 			if(boundary_id_to_tree_id.size() == 0)
 			{
 				for(unsigned int i=0; i < flux_values_3d.size(); i++)
@@ -2441,6 +2451,7 @@ void NavierStokesCoupled::output_sim_data(bool header)
 				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
 					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
 			}
+		std::cout << "k" << std::endl;
 		}
 		
 		if(sim_1d)
@@ -2460,6 +2471,7 @@ void NavierStokesCoupled::output_sim_data(bool header)
 
 		output_file << std::endl;
 
+		std::cout << "k" << std::endl;
 		print_flux_and_pressure();
 
 			std::cout << "flux, pressure etc output for timestep " << t_step
