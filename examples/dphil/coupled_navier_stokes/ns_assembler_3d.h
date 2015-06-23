@@ -44,6 +44,7 @@
 #include "surface_boundary.h"
 
 #include "forcing_function.h"
+#include "airway.h"
 
 #include "exact_solution_velocity.h"
 #include "exact_solution_pressure.h"
@@ -97,7 +98,7 @@ class NSAssembler3D : public System::Assembly
 		virtual void find_1d_boundary_nodes();	//here we set the primary_pressure_boundary_nodes_1d etc
 		virtual void estimate_error(ErrorVector& _error_vector);	//here we set the primary_pressure_boundary_nodes_1d etc
 		virtual void set_subdomains_1d (std::vector<unsigned int> _subdomains_1d) { subdomains_1d = _subdomains_1d;};
-		virtual void set_element_data (std::vector<std::vector<double> >& _element_data) { element_data = _element_data;};
+		virtual void set_airway_data (std::vector<Airway>& _airway_data) { airway_data = _airway_data;};
 	
 	protected:
 		EquationSystems* es;
@@ -119,7 +120,7 @@ class NSAssembler3D : public System::Assembly
 		std::vector<unsigned int> subdomains_1d;
 		int n_initial_3d_elem;
 
-		std::vector<std::vector<double> > element_data;
+		std::vector<Airway> airway_data;
 
 };
 

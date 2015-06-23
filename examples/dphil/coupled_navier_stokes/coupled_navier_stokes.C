@@ -148,6 +148,10 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(particle_deposition == 1)
 		read_timesteps();
 
+	//Airway new_airway;
+	//new_airway.set_generation(5);
+	//std::cout << "generation of new airway = " << new_airway.get_generation() << std::endl;
+	//std::exit(0);
 
 
 
@@ -201,7 +205,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_1d && sim_type != 5)
 	{
 		system_1d = &es->add_system<TransientLinearImplicitSystem> ("ns1d");
-		radius_system = &es->add_system<ExplicitSystem> ("Radius");
+		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
 
 		if(particle_deposition == 2)
 			particle_deposition_system_1d = &es->add_system<ExplicitSystem> ("Particle-Deposition-1D");
@@ -212,7 +216,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	{
 		system_coupled = &es->add_system<TransientLinearImplicitSystem> ("ns3d1d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		radius_system = &es->add_system<ExplicitSystem> ("Radius");
+		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
 	}
 
 
@@ -252,7 +256,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		setup_1d_mesh();
 		ns_assembler = AutoPtr<NavierStokesAssembler>
-								(new NavierStokesAssembler(*es,element_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+								(new NavierStokesAssembler(*es,airway_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
 		if(sim_type == 5)
 		{
@@ -268,7 +272,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			//get the extra couplings sorted for the matrix, maybe don't need this?
 			augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-										(new AugmentSparsityOnInterface(*es,element_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+										(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
 	}
@@ -282,16 +286,20 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		//get the extra couplings sorted for the matrix
 		augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-									(new AugmentSparsityOnInterface(*es,element_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
+									(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
 		system_coupled->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 
 		picard->set_subdomains_1d(subdomains_1d);
-		picard->set_element_data(element_data);
+		picard->set_airway_data(airway_data);
 
 	}
 
 	// after things have been setup let us set up the variable scalings for output
-	setup_variable_scalings();
+	if(sim_3d)
+		setup_variable_scalings_3D();
+
+	if(sim_1d)
+		setup_variable_scalings_1D();
 	std::cout << std::endl;
 	
 	//init the equation systems
@@ -668,11 +676,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							inflow = es->parameters.get<double>("flow_mag_1d") / 
 											(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
 
-						input_flux_values[0] = 0.0;
+						//input_flux_values[0] = 0.0;
 						std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
 						std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
 						std::cout << "inflow = " << inflow  << std::endl;
-						for(unsigned int i=1; i<input_flux_values.size(); i++)
+						for(unsigned int i=0; i<input_flux_values.size(); i++)
 						{
 							input_flux_values[i] = inflow;
 							std::cout << "inflow = " << inflow << std::endl;
@@ -1094,7 +1102,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	else if (particle_deposition == 2)
 	{
 
-		HofmannParticleDeposition particle_deposition_object(*es,element_data,num_generations[0],subdomains_1d);
+		HofmannParticleDeposition particle_deposition_object(*es,airway_data,num_generations[0],subdomains_1d);
 
 		std::cout << "oh and hey babe" << std::endl;
 
@@ -1468,6 +1476,7 @@ void NavierStokesCoupled::read_parameters()
   set_bool_parameter(infile,"nonlinear_1d",false);
 
   set_bool_parameter(infile,"use_centreline_data",false);
+  set_bool_parameter(infile,"output_flux_per_3d_edge",false);
 
 
 
@@ -2067,31 +2076,14 @@ void NavierStokesCoupled::print_flux_and_pressure()
 			total_daughter_flux_1d += flux_values_1d[i];
 
 		std::cout << "1D flux values:    " << std::endl;
-		for(unsigned int i=1; i < flux_values_1d.size(); i++)
+		for(unsigned int i=0; i < flux_values_1d.size(); i++)
 			std::cout << " " << flux_values_1d[i] << " (" << 
 								flux_values_1d[i] * flux_scaling << " m^3/s)" << std::endl;
 
-		if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
-		{
-			std::cout << "1D coupling flux values:    " << std::endl;
-			for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
-				std::cout << " " << coupling_flux_values_1d[i] << " (" << 
-									coupling_flux_values_1d[i] * flux_scaling << " m^3/s)" << std::endl;
-		}
-
 		std::cout << "1D pressure values:    " << std::endl;
-		for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+		for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 			std::cout << " " << pressure_values_1d[i] << " (" <<
 								pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
-
-		if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
-		{
-			std::cout << "1D coupling pressure values:    " << std::endl;
-			for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
-				std::cout << " " << coupling_pressure_values_1d[i] << " (" <<
-									coupling_pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
-			std::cout << "total daughter flux 1D = " << total_daughter_flux_1d * flux_scaling << " m^3/s)" << std::endl;
-		}
 	}
 }
 
@@ -2413,17 +2405,11 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		}
 		if(sim_1d)
 		{
-			for(unsigned int i=1; i < flux_values_1d.size(); i++)
+			for(unsigned int i=0; i < flux_values_1d.size(); i++)
 				output_file <<	"\t1d_flux_value_" << i;
 
-			for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
-				output_file <<	"\t1d_coupling_flux_value_" << i;
-
-			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+			for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 				output_file <<	"\t1d_press_value_" << i;
-
-			for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
-				output_file <<	"\t1d_coupling_pressure_value_" << i;
 		}
 
 		if(sim_3d)
@@ -2448,12 +2434,12 @@ void NavierStokesCoupled::output_sim_data(bool header)
 			}
 			else
 			{
-				// output in order of tree id
+				// output should be in order
 				for(unsigned int i=0; i < flux_values_3d.size(); i++)
-					output_file << "\t" << flux_values_3d[tree_id_to_boundary_id[i]] * flux_scaling;
+					output_file << "\t" << flux_values_3d[i] * flux_scaling;
 
 				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
-					output_file << "\t" << pressure_values_3d[tree_id_to_boundary_id[i]] * pressure_scaling;
+					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
 			}
 		}
 		
@@ -2461,26 +2447,12 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		{
 			calculate_1d_boundary_values();
 			// always in order of tree id
-			for(unsigned int i=1; i < flux_values_1d.size(); i++)
+			for(unsigned int i=0; i < flux_values_1d.size(); i++)
 				output_file << "\t" << flux_values_1d[i] * flux_scaling;
 
-			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
-			{
-				std::cout << "1D coupling flux values:    " << std::endl;
-				for(unsigned int i=1; i < coupling_flux_values_1d.size(); i++)
-					output_file << "\t" << coupling_flux_values_1d[i] * flux_scaling;
-			}
-
-
-			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+			for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 				output_file << "\t" << pressure_values_1d[i] * pressure_scaling;
 
-			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
-			{
-				std::cout << "1D coupling pressure values:    " << std::endl;
-				for(unsigned int i=1; i < coupling_pressure_values_1d.size(); i++)
-					output_file << "\t" << coupling_pressure_values_1d[i] * pressure_scaling;
-			}
 		}
 
 		if(sim_3d)
@@ -2501,6 +2473,26 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		std::cout << "bye" << std::endl;
 	}
 }
+
+
+void NavierStokesCoupled::output_coupling_points()
+{
+
+	// output the parameters used to file and the header of the out.dat file
+	std::ostringstream coupling_points_file_name;
+
+	coupling_points_file_name << output_folder.str() << "coupling_points.csv";
+	std::ofstream coupling_points_file;
+	coupling_points_file.open(coupling_points_file_name.str().c_str());
+
+	coupling_points_file << "x_coord y_coord z_coord coupling_point_id" << std::endl;
+	for(unsigned int i=1; i < coupling_points.size(); i++)
+		coupling_points_file << coupling_points[i](0) << " " << coupling_points[i](1) << " " << coupling_points[i](2) <<  " "  << i << std::endl;
+
+	coupling_points_file.close();
+
+}
+
 
 
 void NavierStokesCoupled::output_linear_iteration_count(bool header)
@@ -2595,16 +2587,16 @@ void NavierStokesCoupled::output_deposition_data(bool header)
 		std::vector<double> efficiency_per_generation(num_generations[0],0.);
 		std::vector<double> efficiency_per_order(num_generations[0],0.);
 		double complete_efficiency = 0.;
-		for(unsigned int i=0; i<element_data.size(); i++)
+		for(unsigned int i=0; i<airway_data.size(); i++)
 		{
 			//gen
-			unsigned int generation = element_data[i][7];
+			unsigned int generation = airway_data[i].get_generation();
 			if(generation+1 > efficiency_per_generation.size())
 				efficiency_per_generation.resize(generation+1,0.);
 			efficiency_per_generation[generation] += total_efficiency[i];
 
 			//order
-			unsigned int order = element_data[i][8];
+			unsigned int order = airway_data[i].get_order();
 			if(order > efficiency_per_order.size())
 				efficiency_per_order.resize(order+1,0.);
 
@@ -3144,78 +3136,18 @@ void NavierStokesCoupled::write_particles()
 
 // here we setup the variable scalings that we want to use. 
 // the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
-void NavierStokesCoupled::setup_variable_scalings()
+void NavierStokesCoupled::setup_variable_scalings_3D()
 {
 
-	std::cout << "Setting up variable scalings." << std::endl;
-
-	TransientLinearImplicitSystem * system_3d;
-	TransientLinearImplicitSystem * system_1d;
-	TransientLinearImplicitSystem * system_neumann;
-	ExplicitSystem * system_radius;
-
-	std::vector<unsigned int> vars_per_system;
-	
-	if(sim_type == 5)
-	{
-		system_3d =
-		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
-
-		system_1d =
-		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
-		vars_per_system.push_back(system_3d->n_vars());
-
-	  system_neumann = 
-			&es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		vars_per_system.push_back(system_neumann->n_vars());
-
-		system_radius =
-		  &es->get_system<ExplicitSystem> ("Radius");
-		vars_per_system.push_back(system_radius->n_vars());
-	}
-	else
-	{
-
-		if(sim_3d)
-		{
-			system_3d =
-			  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
-			vars_per_system.push_back(system_3d->n_vars());
-
-
-			system_neumann = 
-				&es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-			vars_per_system.push_back(system_neumann->n_vars());
-		}
-
-		if(sim_1d)
-		{
-			system_1d =
-			  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
-
-			vars_per_system.push_back(system_1d->n_vars());
-			system_radius =
-			  &es->get_system<ExplicitSystem> ("Radius");
-
-			vars_per_system.push_back(system_radius->n_vars());
-		}
-
-
-	}
+	std::cout << "Setting up 3D variable scalings." << std::endl;
 
 	double velocity_scale = es->parameters.get<double>("velocity_scale");
 	double pressure_scale = es->parameters.get<double>("density") *	pow(es->parameters.get<double>("velocity_scale"),2.0);
-	double flow_scale = es->parameters.get<double>("velocity_scale") * 
-										pow(es->parameters.get<double>("length_scale"),2.0);
-	double mean_pressure_scale = es->parameters.get<double>("density") *
-													pow(es->parameters.get<double>("velocity_scale"),2.0);
 
 	if(es->parameters.get<bool>("output_nondim"))
 	{
 		velocity_scale = 1.0;
 		pressure_scale = 1.0;
-		flow_scale = 1.0;
-		mean_pressure_scale = 1.0;
 		std::cout << "using nondim output" << std::endl;
 	}
 
@@ -3223,87 +3155,83 @@ void NavierStokesCoupled::setup_variable_scalings()
 	{
 		double velocity_scale = 1.0;
 		double pressure_scale = 1.0;
+
+	}
+
+
+	// these indices are based on the order in which they are given to exodus
+	if(!threed)
+	{
+		var_scalings_3D.resize(3);
+		var_scalings_3D[0] = velocity_scale;	// u
+		var_scalings_3D[1] = velocity_scale;	// v
+		var_scalings_3D[2] = pressure_scale;	// p
+	}
+	else
+	{
+		var_scalings_3D.resize(4);
+		var_scalings_3D[0] = velocity_scale;	// u
+		var_scalings_3D[1] = velocity_scale;	// v
+		var_scalings_3D[2] = velocity_scale;	// w
+		var_scalings_3D[3] = pressure_scale;	// p
+	}
+
+
+	if(es->parameters.get<bool>("optimisation_stabilised"))
+	{
+		if(!threed)
+		{
+			var_scalings_3D.resize(6);
+			var_scalings_3D[3] = velocity_scale;	// u_adj
+			var_scalings_3D[4] = velocity_scale;	// v_adj
+			var_scalings_3D[5] = pressure_scale;	// p_adj
+		}
+		else
+		{		
+			var_scalings_3D.resize(8);
+			var_scalings_3D[4] = velocity_scale;	// u_adj
+			var_scalings_3D[5] = velocity_scale;	// v_adj
+			var_scalings_3D[6] = velocity_scale;	// w_adj
+			var_scalings_3D[7] = pressure_scale;	// p_adj
+		}
+	}
+
+
+}
+
+
+// here we setup the variable scalings that we want to use. 
+// the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
+void NavierStokesCoupled::setup_variable_scalings_1D()
+{
+
+	std::cout << "Setting up 1D variable scalings." << std::endl;
+
+	double flow_scale = es->parameters.get<double>("velocity_scale") * 
+										pow(es->parameters.get<double>("length_scale"),2.0);
+	double mean_pressure_scale = es->parameters.get<double>("density") *
+													pow(es->parameters.get<double>("velocity_scale"),2.0);
+
+	if(es->parameters.get<bool>("output_nondim"))
+	{
+		flow_scale = 1.0;
+		mean_pressure_scale = 1.0;
+		std::cout << "using nondim output" << std::endl;
+	}
+
+	if(es->parameters.get<bool>("reynolds_number_calculation"))
+	{
 		double flow_scale = 1.0;
 		double mean_pressure_scale = 1.0;
 
 	}
 
-	if(sim_3d)
-	{
-			
-		
-		// in 3D system we have u,v,w,p,u_adj,v_adj,w_adj,p_adj
-		add_to_variable_scalings(system_3d->variable_number ("u"),velocity_scale);
-		add_to_variable_scalings(system_3d->variable_number ("v"),velocity_scale);
-		if(threed)
-			add_to_variable_scalings(system_3d->variable_number ("w"),velocity_scale);
-
-		add_to_variable_scalings(system_3d->variable_number ("p"),pressure_scale);
-
-
-		if(es->parameters.get<bool>("optimisation_stabilised"))
-		{
-			add_to_variable_scalings(system_3d->variable_number ("u_adj"),velocity_scale);
-			add_to_variable_scalings(system_3d->variable_number ("v_adj"),velocity_scale);
-			if(threed)
-				add_to_variable_scalings(system_3d->variable_number ("w_adj"),velocity_scale);
-
-			add_to_variable_scalings(system_3d->variable_number ("p_adj"),pressure_scale);
-
-		}
-		
-
-	}
-
-	if(sim_1d)
-	{
-
-		unsigned int var_offset;
-		if(system_1d->number() == 0)
-			var_offset = 0;
-		else if(system_1d->number() == 1)
-			var_offset = vars_per_system[0];
-
-		//std::cout << "system_1d->number() = " << system_1d->number() << std::endl;
-
-		add_to_variable_scalings(system_1d->variable_number ("P") + var_offset,mean_pressure_scale);
-		add_to_variable_scalings(system_1d->variable_number ("Q") + var_offset,flow_scale);
-
-		if(system_radius->number() == 0)
-			var_offset = 0;
-		else if(system_radius->number() == 1)
-			var_offset = vars_per_system[0];
-		else if(system_radius->number() == 2)
-			var_offset = vars_per_system[0] + vars_per_system[1];
-
-		//std::cout << "radius system no = " << system_radius->number() << std::endl;
-		//std::cout << "radius var no = " << system_radius->variable_number ("radius") << std::endl;
-
-		add_to_variable_scalings(system_radius->variable_number ("radius") + var_offset,1.0);
-	}
-
-
+	var_scalings_1D.resize(3);
+	var_scalings_1D[0] = mean_pressure_scale;	// P
+	var_scalings_1D[1] = flow_scale;	// Q
+	var_scalings_1D[2] = 1.0;	// radius
 
 
 }
-
-// here we setup the variable scalings that we want to use. 
-// the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
-void NavierStokesCoupled::add_to_variable_scalings(unsigned int var, double scaling)
-{
-
-	if(var_scalings.size() < var + 1)
-		var_scalings.resize(var+1,1.0);
-
-	var_scalings[var] = scaling;
-
-
-	//for(unsigned int i=0; i<var_scalings.size(); i++)
-	//	std::cout << "var_scalings[i] = " << var_scalings[i] << std::endl;
-
-}
-
-
-
 
 

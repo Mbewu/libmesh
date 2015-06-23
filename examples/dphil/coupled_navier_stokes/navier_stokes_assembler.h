@@ -38,6 +38,7 @@
 //include for general assembly class
 #include "libmesh/system.h"
 
+#include "airway.h"
 
 
 // Bring in everything from the libMesh namespace
@@ -50,8 +51,8 @@ using namespace libMesh;
 class NavierStokesAssembler : public System::Assembly
 {
 	public:
-		NavierStokesAssembler (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in,	std::vector<unsigned int> _subdomains_1d, unsigned int _n_initial_3d_elem) :
-			es (&es_in), subdomains_1d(_subdomains_1d), element_data(element_data_in), n_initial_3d_elem(_n_initial_3d_elem), coupled(false)
+		NavierStokesAssembler (EquationSystems& es_in, std::vector<Airway>& _airway_data,	std::vector<unsigned int> _subdomains_1d, unsigned int _n_initial_3d_elem) :
+			es (&es_in), subdomains_1d(_subdomains_1d), airway_data(_airway_data), n_initial_3d_elem(_n_initial_3d_elem), coupled(false)
 		{
 		}
 
@@ -66,7 +67,7 @@ class NavierStokesAssembler : public System::Assembly
 	
 	private:
 		EquationSystems* es;
-		std::vector<std::vector<double> >& element_data;
+		std::vector<Airway>& airway_data;
 		int n_initial_3d_elem;
 		std::vector<double> pressure_values;
 		std::vector<double> flux_values;

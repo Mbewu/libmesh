@@ -136,6 +136,7 @@
 
 #include "exact_solution_velocity.h"
 #include "exact_solution_pressure.h"
+#include "airway.h"
 #include "libmesh/exact_solution.h"
 
 #include "particle.h"
@@ -324,9 +325,13 @@ public:
 
 	void move_particles();
 
-	void setup_variable_scalings();
 
-	void add_to_variable_scalings(unsigned int var, double scaling);
+	void setup_variable_scalings_3D();
+
+	void setup_variable_scalings_1D();
+
+	void output_coupling_points();
+
 
 	//PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
 
@@ -337,7 +342,9 @@ private:
 
 	unsigned int sim_type;	//0 - 3d, 1 - 1d, 2 - uncoupled, 3 - expl coupled
 	std::vector<std::vector<double> > element_data;
+	std::vector<Airway> airway_data;
 	std::vector<std::vector<double> > centreline_element_data;	//element data of centrelines
+	std::vector<Airway> centreline_airway_data;
 	Mesh mesh;
 	MeshData mesh_data;
 	MeshRefinement mesh_refinement;
@@ -346,7 +353,7 @@ private:
 	TransientLinearImplicitSystem * system_1d;
 	TransientLinearImplicitSystem * system_coupled;
 	TransientLinearImplicitSystem * system_neumann;
-	ExplicitSystem * radius_system;
+	ExplicitSystem * extra_1d_data_system;
 	ExplicitSystem * particle_deposition_system_1d;
 	unsigned int t_step;	
 	double time;
@@ -428,7 +435,8 @@ private:
 	std::vector<double> timestep_sizes;	//vector of timestep sizes, 1st timestep is 0th element obv
 	std::vector<Particle> particles_3D;
 
-	std::vector<double> var_scalings;
+	std::vector<double> var_scalings_3D;
+	std::vector<double> var_scalings_1D;
 	std::vector<double> total_efficiency;
 
 	std::vector<int> subtree_starting_elements;	//ending elements of the 3d mesh and the subtree that they go to
@@ -439,6 +447,9 @@ private:
 
 	std::vector<int> centreline_terminal_id_to_tree_id;
 	std::vector<std::vector<Point> > centreline_points;
+
+	// this is a vector of the coupling points for each tree
+	std::vector<Point> coupling_points;
 
 	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
 	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation

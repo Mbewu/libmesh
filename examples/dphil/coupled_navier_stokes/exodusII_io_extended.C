@@ -720,6 +720,12 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
 	if(var_scalings.size() < num_vars)
 		var_scalings.resize(num_vars,1.0);
 
+	std::cout << "WRITING NODAL DATA" << std::endl;
+	for(unsigned int i=0; i<var_scalings.size(); i++)
+		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
+
+	std::cout << "num_vars = " << num_vars << std::endl; 
+
   // This will count the number of variables actually output
   for (int c=0; c<num_vars; c++)
     {
@@ -752,7 +758,7 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
 
       // Copy out this variable's solution
       for(dof_id_type i=0; i<num_nodes; i++)
-        cur_soln[i] = soln[i*num_vars + c] * var_scalings[c];		//JAMES: we scale the 
+        cur_soln[i] = soln[i*num_vars + c] * var_scalings[variable_name_position];		//JAMES: we scale the 
 
 			// JAMES EDIT - may alsoo need a counter...
       exio_helper->write_nodal_values(variable_name_position+1,cur_soln,_timestep);
@@ -931,6 +937,12 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 	if(var_scalings.size() < num_vars)
 		var_scalings.resize(num_vars,1.0);
 
+	std::cout << "WRITING NODAL DATA DISCONTINUOUS" << std::endl;
+	for(unsigned int i=0; i<var_scalings.size(); i++)
+		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
+
+	std::cout << "num_vars = " << num_vars << std::endl; 
+
   if (mesh.processor_id())
     {
       STOP_LOG("write_nodal_data_discontinuous()", "ExodusII_IO");
@@ -949,8 +961,12 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 	    if (pos == output_names.end())
 	      continue;
 
+
 	    unsigned int variable_name_position =
 				libmesh_cast_int<unsigned int>(pos - output_names.begin());
+
+			std::cout << "names[" << c << "] = " << names[c] << std::endl;
+			std::cout << "variable_name_position = " << variable_name_position << std::endl;
 
 #ifdef LIBMESH_USE_COMPLEX_NUMBERS
       std::vector<Real> real_parts(num_nodes);
@@ -972,8 +988,10 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 
       for(int i=0; i<num_nodes; i++)
 			{
-        cur_soln[i] = soln[i*num_vars + c] * var_scalings[c];
+        cur_soln[i] = soln[i*num_vars + c] * var_scalings[variable_name_position];
+				//std::cout << "cur_soln[" << i << "] = " << cur_soln[i] << std::endl;
 			}
+
 
 
       exio_helper->write_nodal_values(variable_name_position+1,cur_soln,_timestep);

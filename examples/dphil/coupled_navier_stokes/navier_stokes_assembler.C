@@ -105,8 +105,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   std::vector<dof_id_type> dof_indices_parent_p;
   std::vector<dof_id_type> dof_indices_parent_q;
   std::vector<dof_id_type> dof_indices_daughter_1_p;
-  std::vector<dof_id_type> dof_indices_sibling_q;
-  std::vector<dof_id_type> dof_indices_sibling_p;
+  std::vector<std::vector<dof_id_type> > dof_indices_siblings_q;
+  std::vector<std::vector<dof_id_type> > dof_indices_siblings_p;
 
   // Now we will loop over all the elements in the mesh that
   // live on the local processor. We will compute the element
@@ -128,36 +128,56 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 			const int current_el_idx = elem->id();
 			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-			int parent_el_idx = (int)element_data[current_1d_el_idx][0] + n_initial_3d_elem;
-			int daughter_1_el_idx = (int)element_data[current_1d_el_idx][1] + n_initial_3d_elem;
-			int daughter_2_el_idx = (int)element_data[current_1d_el_idx][2] + n_initial_3d_elem;
-			int sibling_el_idx = (int)element_data[current_1d_el_idx][3] + n_initial_3d_elem;
-			int is_daughter_1 = (int)element_data[current_1d_el_idx][4];	//this is a bool duh!
-			const double l = element_data[current_1d_el_idx][5];	//nondimensionalised length
-			const double r = element_data[current_1d_el_idx][6]; //nondimensionalised radius
-			int generation = element_data[current_1d_el_idx][7];
+			bool has_parent = airway_data[current_1d_el_idx].has_parent();
+			int parent_el_idx = 0;
+			if(has_parent)
+				parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+			std::vector<unsigned int> daughter_el_ids = airway_data[current_1d_el_idx].get_daughters();
+			int daughter_1_el_idx = -1;
+			if(daughter_el_ids.size() > 0)
+				daughter_1_el_idx = daughter_el_ids[0] + n_initial_3d_elem;
+			
+			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+			std::vector<unsigned int> sibling_el_ids = airway_data[current_1d_el_idx].get_siblings();
+			for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+			{
+				sibling_el_ids[i] += n_initial_3d_elem;
+				//std::cout << "sibling_el_ids = " << sibling_el_ids[i] << std::endl;
+			}
+
+			int primary_sibling_el_idx = -1;
+			if(!is_daughter_1)
+				primary_sibling_el_idx = airway_data[current_1d_el_idx].get_primary_sibling() + n_initial_3d_elem;
+			
+			const double l = airway_data[current_1d_el_idx].get_length();	//nondimensionalised length
+			const double r = airway_data[current_1d_el_idx].get_radius(); //nondimensionalised radius
+			int generation = airway_data[current_1d_el_idx].get_generation();
 
 			bool has_sibling = false;
-			if((int)element_data[current_1d_el_idx][3] > -1)
+			if(sibling_el_ids.size() > 0)
 				has_sibling = true;
 
 			//very dirty hack
-			if(parent_el_idx < n_initial_3d_elem)
+			if(!has_parent)
 				parent_el_idx = current_el_idx;
 
+			if(primary_sibling_el_idx  < n_initial_3d_elem)
+				primary_sibling_el_idx  = current_el_idx;
+
+			// don't need cause we check with size of sibling_el_ids
 			if(daughter_1_el_idx  < n_initial_3d_elem)
 				daughter_1_el_idx  = current_el_idx;
 
-			if(daughter_2_el_idx  < n_initial_3d_elem)
-				daughter_2_el_idx  = current_el_idx;
-
-			if(sibling_el_idx  < n_initial_3d_elem)
-				sibling_el_idx  = current_el_idx;
 			
 			const Elem* parent_elem = mesh.elem(parent_el_idx);
 			const Elem* daughter_1_elem = mesh.elem(daughter_1_el_idx);
-			const Elem* daughter_2_elem = mesh.elem(daughter_2_el_idx);
-			const Elem* sibling_elem = mesh.elem(sibling_el_idx);
+
+			std::vector<const Elem*> sibling_elems;
+			for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+				sibling_elems.push_back(mesh.elem(sibling_el_ids[i]));
+
+			const Elem* primary_sibling_elem = mesh.elem(primary_sibling_el_idx);
+			//const Elem* sibling_elem = mesh.elem(sibling_el_idx);
 
 			/*
 			if(parent_el_idx >= 0)
@@ -180,8 +200,15 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
       dof_map.dof_indices (parent_elem, dof_indices_parent_p, p_var);
       dof_map.dof_indices (parent_elem, dof_indices_parent_q, q_var);
       dof_map.dof_indices (daughter_1_elem, dof_indices_daughter_1_p, p_var);
-      dof_map.dof_indices (sibling_elem, dof_indices_sibling_q, q_var);
-      dof_map.dof_indices (sibling_elem, dof_indices_sibling_p, p_var);
+
+			dof_indices_siblings_q.resize(sibling_el_ids.size());
+			dof_indices_siblings_p.resize(sibling_el_ids.size());
+
+			for(unsigned int i=0; i< sibling_el_ids.size(); i++)
+			{
+		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_q[i], q_var);
+		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_p[i], p_var);
+			}
 
       const unsigned int n_dofs   = 4;
       const unsigned int n_p_dofs = 2;
@@ -221,6 +248,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			{
 				//poiseuille resistance
 				R=R;
+				airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
 			else if(resistance_type_1d == 1)
 			{
@@ -234,14 +262,20 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				}
 
 				//pedley resistance
+				// we also want to set here whether we used a pedley model
 				if((es->parameters.get<unsigned int> ("t_step") != 1 || es->parameters.get<unsigned int> ("nonlinear_iteration_1d") != 1) && 0.327 * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
 				{
 					
 					R = 0.327 * sqrt(reynolds_number_0d*2.*r/l) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+					//std::cout << "gen = " << generation << ", using pedley" << std::endl;
 
 				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else if(resistance_type_1d == 2)
 			{
@@ -255,9 +289,15 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 				// van ertbruggen resistance
 				if(es->parameters.get<unsigned int> ("t_step") != 1 && gamma * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
+				{
 					R = gamma * sqrt(reynolds_number_0d*2.*r/l) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else if(resistance_type_1d == 3)
 			{
@@ -406,7 +446,13 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 							
 							system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
 							if(has_sibling)
-								system->matrix->add (eqn_3_dof,dof_indices_sibling_q[0],-1.0);
+							{
+								std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+								std::cout << "sibling id daughter1 = " << sibling_el_ids[0] << std::endl;
+								std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+								for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+									system->matrix->add (eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
+							}
 			
 							// boundary condition should be on side 0
 							std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
@@ -428,7 +474,19 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						else	// if we are a daughter 2 then we have a sibling and need to apply the pressure continuity condition
 						{
 							system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
-							system->matrix->add (eqn_3_dof,dof_indices_sibling_p[0],-1.0);
+							std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+							std::cout << "sibling id daughter2 = " << sibling_el_ids[0] << std::endl;
+//							std::cout << "actual val = " << (int)airway_data[current_1d_el_idx][3] + n_initial_3d_elem << std::endl;
+							std::cout << "n_initial_3d_elem = " << n_initial_3d_elem << std::endl;
+							std::cout << "is_daughter_1 = " << is_daughter_1 << std::endl;
+							std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+							if(!(bool)is_daughter_1)
+								std::cout << "cool" << std::endl;
+							else
+								std::cout << "couldn't get in" << std::endl;
+
+							for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+								system->matrix->add (eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
 						}
 					}
 					// pressure
@@ -446,7 +504,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						// conservation of flux
 						system->matrix->add (eqn_3_dof,dof_indices_parent_q[1],1.0);
 						system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
-						system->matrix->add (eqn_3_dof,dof_indices_sibling_q[0],-1.0);
+						for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+							system->matrix->add (eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
 					}
 					else
 					{
