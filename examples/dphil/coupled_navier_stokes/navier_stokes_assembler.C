@@ -268,7 +268,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					
 					R = 0.327 * sqrt(reynolds_number_0d*2.*r/l) * R;
 					airway_data[current_1d_el_idx].set_poiseuille(false);
-					//std::cout << "gen = " << generation << ", using pedley" << std::endl;
+					std::cout << "gen = " << generation << ", using pedley" << std::endl;
 
 				}
 				else
@@ -447,9 +447,9 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 							system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
 							if(has_sibling)
 							{
-								std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
-								std::cout << "sibling id daughter1 = " << sibling_el_ids[0] << std::endl;
-								std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+								//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+								//std::cout << "sibling id daughter1 = " << sibling_el_ids[0] << std::endl;
+								//std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
 								for(unsigned int i=0; i<sibling_el_ids.size(); i++)
 									system->matrix->add (eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
 							}
@@ -466,7 +466,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 								// if there is a bifurcation at the inflow then daughter_1 can add it
 								if(is_daughter_1)
 								{
-									std::cout << "double oopsie" << std::endl;
+									//std::cout << "double oopsie" << std::endl;
 									system->rhs->add (eqn_3_dof,-flux_values[boundary_ids[0]]);
 								}
 							}
@@ -474,16 +474,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						else	// if we are a daughter 2 then we have a sibling and need to apply the pressure continuity condition
 						{
 							system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
-							std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
-							std::cout << "sibling id daughter2 = " << sibling_el_ids[0] << std::endl;
+							//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+							//std::cout << "sibling id daughter2 = " << sibling_el_ids[0] << std::endl;
 //							std::cout << "actual val = " << (int)airway_data[current_1d_el_idx][3] + n_initial_3d_elem << std::endl;
-							std::cout << "n_initial_3d_elem = " << n_initial_3d_elem << std::endl;
-							std::cout << "is_daughter_1 = " << is_daughter_1 << std::endl;
-							std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
-							if(!(bool)is_daughter_1)
-								std::cout << "cool" << std::endl;
-							else
-								std::cout << "couldn't get in" << std::endl;
+							//std::cout << "n_initial_3d_elem = " << n_initial_3d_elem << std::endl;
+							//std::cout << "is_daughter_1 = " << is_daughter_1 << std::endl;
+							//std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+							//if(!(bool)is_daughter_1)
+							//	std::cout << "cool" << std::endl;
+							//else
+							//	std::cout << "couldn't get in" << std::endl;
 
 							for(unsigned int i=0; i<sibling_el_ids.size(); i++)
 								system->matrix->add (eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
@@ -947,7 +947,7 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id, const int m
 	//std::cout << "flux calculated is " << flux << std::endl;
 
 	es->comm().sum(flux);
-	std::cout << "flux calculated is " << flux << std::endl;
+	//std::cout << "flux calculated is " << flux << std::endl;
 			
 	return flux;
 }
@@ -1056,8 +1056,8 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id, const i
 	// get the average pressure of course ;) total_nodes should be 1
 	pressure = pressure/total_nodes;
 
-	std::cout << "total_nodes = " << total_nodes << std::endl;
-	std::cout << "pressure_calculated = " << pressure << std::endl;
+	//std::cout << "total_nodes = " << total_nodes << std::endl;
+	//std::cout << "pressure_calculated = " << pressure << std::endl;
 
 			
 	return pressure;

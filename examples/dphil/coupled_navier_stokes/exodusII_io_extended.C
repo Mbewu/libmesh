@@ -717,17 +717,21 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
     }
 
 	//JAMES: make sure var_scalings has been initialised
-	if(var_scalings.size() < num_vars)
-		var_scalings.resize(num_vars,1.0);
+	if(var_scalings.size() < output_names.size())
+		var_scalings.resize(output_names.size(),1.0);
 
 	std::cout << "WRITING NODAL DATA" << std::endl;
-	for(unsigned int i=0; i<var_scalings.size(); i++)
+	for(unsigned int i=0; i<output_names.size(); i++)
 		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
 
-	std::cout << "num_vars = " << num_vars << std::endl; 
+	std::cout << "num output vars = " << output_names.size() << std::endl; 
 
   // This will count the number of variables actually output
-  for (int c=0; c<num_vars; c++)
+
+	// on the root process we loop over all variables and put the values from each
+	// need to 
+
+    for (int c=0; c<num_vars; c++)
     {
       std::stringstream name_to_find;
 
@@ -934,14 +938,14 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
   this->write_nodal_data_common(fname, output_names, /*continuous=*/false);
 #endif
 
-	if(var_scalings.size() < num_vars)
-		var_scalings.resize(num_vars,1.0);
+	if(var_scalings.size() < output_names.size())
+		var_scalings.resize(output_names.size(),1.0);
 
 	std::cout << "WRITING NODAL DATA DISCONTINUOUS" << std::endl;
-	for(unsigned int i=0; i<var_scalings.size(); i++)
+	for(unsigned int i=0; i<output_names.size(); i++)
 		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
 
-	std::cout << "num_vars = " << num_vars << std::endl; 
+	std::cout << "num output vars = " << output_names.size() << std::endl; 
 
   if (mesh.processor_id())
     {

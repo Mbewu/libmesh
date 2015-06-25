@@ -228,17 +228,21 @@ void System::init ()
 {
   // First initialize any required data:
   // either only the basic System data
+
+	std::cout << "before init basic" << std::endl;
   if (_basic_system_only)
     System::init_data();
   // or all the derived class' data too
   else
     this->init_data();
 
+	std::cout << "before extra init" << std::endl;
   // If no variables have been added to this system
   // don't do anything
   if(!this->n_vars())
     return;
 
+	std::cout << "before user init" << std::endl;
   // Then call the user-provided intialization function
   this->user_initialization();
 }

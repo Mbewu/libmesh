@@ -7,17 +7,22 @@
 //
 // setup_1d_mesh
 // read_1d_mesh
+// calculate_num_alveloar_generations_for_tree
 // generate_1d_mesh
 // create_1d_tree
 // add_1d_tree_to_mesh
 // setup_1d_system
-// calculate_3d_boundary_values
-// write_3d_solution
+// calculate_1d_boundary_values
+// write_1d_solution
 // solve_1d_system
 // set_radii
 // convert_1d_monomial_to_nodal
 // convert_1d_nodal_to_monomial
 // scale_1d_solution_vector
+// output_poiseuille_resistance_per_generation
+// write_elem_pid_1d
+// write_efficiency_solution
+// set_efficiency
 //
 // *********************************************************** //
 
@@ -587,7 +592,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 			coupling_points[m] = coupling_point;
 		}
 
-		std::cout << "humm" << std::endl;
+		//std::cout << "humm" << std::endl;
 
 
 
@@ -653,8 +658,8 @@ void NavierStokesCoupled::read_1d_mesh ()
 					max_radius = surface_boundaries[i]->get_max_radius();
 					double distance = (centroid - coupling_point).size();
 
-					std::cout << "distance = " << distance << std::endl;
-					std::cout << "max_radius = " << max_radius << std::endl;
+					//std::cout << "distance = " << distance << std::endl;
+					//std::cout << "max_radius = " << max_radius << std::endl;
 					if(distance < max_radius)
 					{
 						std::cout << "coupling surface found = " << i << std::endl;
@@ -674,10 +679,10 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 			// give it boundary id 1
 			add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id,boundary_id);
+			mesh.prepare_for_use (/*skip_renumber =*/ false);
 
 			subdomains_1d.push_back(subdomain_id);
 
-			mesh.prepare_for_use (/*skip_renumber =*/ false);
 
 			// well although the 1d stuff doesn't actually have a boundary at 0
 			// we still consider it
@@ -1492,6 +1497,9 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	for(unsigned int i=0; i<subdomains_1d.size(); i++)
 		active_subdomains.insert(subdomains_1d[i]);
 
+	for(unsigned int i=0; i<subdomains_1d.size(); i++)
+		std::cout << "subdomains_1d = " << subdomains_1d[i] << std::endl;
+
 	int P_var = 0;
 	int Q_var = 0;
 	//int radius_var = 0;
@@ -1935,6 +1943,7 @@ void NavierStokesCoupled::scale_1d_solution_vector(double flux_scaling=1.0,doubl
 }
 
 
+// okay so 
 void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 {
 
@@ -2233,7 +2242,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		{
 			std::cout << "1" << std::endl;
 			//loop over terminal elements, terminal element when has no daughter 1
-			std::cout << "centreline_airway_data[" <<  i << "].get_daughter_1() = " << centreline_airway_data[i].get_daughter_1() << std::endl;
+			//std::cout << "centreline_airway_data[" <<  i << "].get_daughter_1() = " << centreline_airway_data[i].get_daughter_1() << std::endl;
 			if(!centreline_airway_data[i].has_daughter_1())
 			{
 				// okay, so we need to know what 1d elements this goes into, because
@@ -2252,8 +2261,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 					std::cout << "got here" << std::endl;
 					//add the flux to the
 					flux_per_3d_element[next_element] += flux_in_terminal_element;
-					next_element = centreline_airway_data[next_element].get_parent();	// make the next element the parent
-					std::cout << "next_element = " << next_element << std::endl;
+					if(centreline_airway_data[next_element].has_parent())
+						next_element = centreline_airway_data[next_element].get_parent();	// make the next element the parent
+					//std::cout << "next_element = " << next_element << std::endl;
 				}
 			}
 
