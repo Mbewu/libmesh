@@ -305,6 +305,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	//init the equation systems
 	std::cout << "Init equation systems." << std::endl;
 	es->init ();
+	std::cout << "done initing equation systems" << std::endl;
 	init_dof_variable_vectors();
 
 	if(restart)
@@ -327,16 +328,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
 	{
-		//dimensionalise the variables if not doing reynolds number simulation
-		if(!es->parameters.get<bool>("reynolds_number_calculation"))
-		{
-			scale_3d_solution_vector(1.0/es->parameters.get<double>("velocity_scale"),
-														1.0/(es->parameters.get<double>("density") *
-														pow(es->parameters.get<double>("velocity_scale"),2.0)) );
-
-			es->update();
-		}
-
+		es->update();
+		
 		if(sim_type == 5)
 		{
 			last_nonlinear_soln = system_coupled->solution->clone();
@@ -744,7 +737,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 							calculate_1d_boundary_values();
 							picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+							std::cout << "about to calculate 3d boundary values" << std::endl;
 							calculate_3d_boundary_values();
+							std::cout << "done about to calculating 3d boundary values" << std::endl;
 							ns_assembler->init_bc(flux_values_3d);
 
 							if(solve_3d_system_iteration(system_coupled))
@@ -2683,7 +2678,8 @@ void NavierStokesCoupled::init_dof_variable_vectors()
 
 void NavierStokesCoupled::init_dof_variable_vector(TransientLinearImplicitSystem * system, std::vector<int>& _dof_variable_type)
 {
-	
+
+	std::cout << "initing dof variable vector" << std::endl;	
 
 	// DofMap things
   std::vector<dof_id_type> dof_indices_var;

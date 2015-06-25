@@ -25,131 +25,70 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	std::cout << std::endl;
 	std::cout << "Setting up 2D/3D mesh." << std::endl;
 	
-	// need to scale the mesh by the length scale and/or the incoming scaling
-	if(!restart)
+	// always reread in the mesh. forget about mesh refinement for now.
+	// if we are doing a 2D simulation we need to change mesh back to having dimension 2
+	if(!_es->parameters.get<bool> ("threed"))
+		_mesh.set_mesh_dimension(2);
+
+	// both the cylindrical pipe and bifurcating pipe require input mesh as well as bifurcating pipe
+	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<unsigned int> ("geometry_type") == 1 
+			|| _es->parameters.get<unsigned int> ("geometry_type") == 4  || _es->parameters.get<bool> ("expanding_pipe"))
 	{
-		// if we are doing a 2D simulation we need to change mesh back to having dimension 2
-		if(!_es->parameters.get<bool> ("threed"))
-			_mesh.set_mesh_dimension(2);
+		std::cout << "Reading mesh." << std::endl;
+		_mesh.read(_es->parameters.get<std::string> ("mesh_file"));
 
-		// both the cylindrical pipe and bifurcating pipe require input mesh as well as bifurcating pipe
-		if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<unsigned int> ("geometry_type") == 1 
-				|| _es->parameters.get<unsigned int> ("geometry_type") == 4  || _es->parameters.get<bool> ("expanding_pipe"))
-		{
-			std::cout << "Reading mesh." << std::endl;
-			_mesh.read(_es->parameters.get<std::string> ("mesh_file"));
-
-			
 		
-			//scale the mesh to make SI units
-			if(!_es->parameters.get<bool>("linear_shape_functions"))
-					_mesh.all_second_order();
-
-			std::cout << "Refining mesh." << std::endl;
-			mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
-
-			std::cout << "Scaling mesh." << std::endl;
-			double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
-			MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
-
-		}
-		// the cubioids can be auto generated
-		else if(es->parameters.get<unsigned int> ("geometry_type") == 2 || es->parameters.get<unsigned int> ("geometry_type") == 3
-						|| _es->parameters.get<unsigned int> ("geometry_type") == 5)
-		{
-
-			if(threed){
-				if(_es->parameters.get<bool>("quads"))
-					MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),HEX8);
-				else
-					MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),TET4);					
-			}
-			else
-			{
-				if(_es->parameters.get<bool>("quads"))
-					MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
-																								0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),QUAD4);
-				else
-					MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
-																								0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),TRI3);
-			}
-
-
-
-			double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
-			MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
-
-			if(!_es->parameters.get<bool>("linear_shape_functions"))
+	
+		//scale the mesh to make SI units
+		if(!_es->parameters.get<bool>("linear_shape_functions"))
 				_mesh.all_second_order();
 
-			mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
+		std::cout << "Refining mesh." << std::endl;
+		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
 
-		}
+		std::cout << "Scaling mesh." << std::endl;
+		double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
+		MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
 
-		//scale the mesh to make length scale
-	
-		double length_scale = _es->parameters.get<double>("length_scale");
-		MeshTools::Modification::scale(_mesh,1./length_scale,1./length_scale,1./length_scale);
-		
 	}
-	else		// no scaling necessary
+	// the cubioids can be auto generated
+	else if(es->parameters.get<unsigned int> ("geometry_type") == 2 || es->parameters.get<unsigned int> ("geometry_type") == 3
+					|| _es->parameters.get<unsigned int> ("geometry_type") == 5)
 	{
-		std::ostringstream file_name;
-		std::ostringstream file_name_es;
-		std::ostringstream file_name_mesh;
 
-		file_name << output_folder.str() << "out_3D";
- 
-		if(particle_deposition == 1)
-		{
-			std::cout << "particle_deposition_start_time_step = " << 	_es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << std::endl;
-
-			if(_es->parameters.get<bool> ("unsteady_from_steady"))
-			{
-				  		// We write the file in the ExodusII format.
-				file_name_es << file_name.str() << "_es_" << std::setw(4) 
-					<< std::setfill('0') << 1 << ".xda";
-
-				std::cout << "new_filename = " << file_name_es.str() << std::endl;
-
-				file_name_mesh << file_name.str() << "_mesh_" << std::setw(4) 
-					<< std::setfill('0') << 1 << ".xda";
-
-			}
+		if(threed){
+			if(_es->parameters.get<bool>("quads"))
+				MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),HEX8);
 			else
-			{
-				  		// We write the file in the ExodusII format.
-				file_name_es << file_name.str() << "_es_" << std::setw(4) 
-					<< std::setfill('0') << _es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << ".xda";
-
-				std::cout << "new_filename = " << file_name_es.str() << std::endl;
-
-				file_name_mesh << file_name.str() << "_mesh_" << std::setw(4) 
-					<< std::setfill('0') << _es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << ".xda";
-			}
-
+				MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),TET4);					
 		}
-		else	//normal restart
+		else
 		{
-			std::cout << "restart_time_step = " << 	_es->parameters.get<unsigned int> ("restart_time_step") << std::endl;
-
-		    		// We write the file in the ExodusII format.
-			file_name_es << file_name.str() << "_es_" << std::setw(4) 
-				<< std::setfill('0') << _es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
-
-			std::cout << "new_filename = " << file_name_es.str() << std::endl;
-
-			file_name_mesh << file_name.str() << "_mesh_" << std::setw(4) 
-				<< std::setfill('0') << _es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
+			if(_es->parameters.get<bool>("quads"))
+				MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
+																							0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),QUAD4);
+			else
+				MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
+																							0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),TRI3);
 		}
 
-		_mesh.read(file_name_mesh.str());
-		//_es->read(file_name_es.str(), libMeshEnums::READ);
 
-		// after reading we need to rescale, but only after dof_variable_type_3d has been set
-		
-		
+
+		double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
+		MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
+
+		if(!_es->parameters.get<bool>("linear_shape_functions"))
+			_mesh.all_second_order();
+
+		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
+
 	}
+
+	//scale the mesh to make length scale
+
+	double length_scale = _es->parameters.get<double>("length_scale");
+	MeshTools::Modification::scale(_mesh,1./length_scale,1./length_scale,1./length_scale);
+	
 
 	//********* RENAME THE BOUNDARIES AND SUBDOMAINS FOR ALL DIFF PROBLEMS *****//
   //
@@ -169,21 +108,18 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	// the pipe geometry or the expanding_pipe geometry
 	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<bool> ("expanding_pipe"))
 	{
-		if(!restart)
+		MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
+
+		MeshTools::Modification::change_boundary_id(_mesh,1011,0);			//inflow
+		MeshTools::Modification::change_boundary_id(_mesh,1012,1);			//outflows
+
+		MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
+
+		if(es->parameters.get<unsigned int> ("old_geometry") == 1)
 		{
-			MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
-
-			MeshTools::Modification::change_boundary_id(_mesh,1011,0);			//inflow
-			MeshTools::Modification::change_boundary_id(_mesh,1012,1);			//outflows
-
-			MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
-
-			if(es->parameters.get<unsigned int> ("old_geometry") == 1)
-			{
-				MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
-				MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
-				MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
-			}
+			MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
+			MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
+			MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
 		}
 		
 		// minus 1 because of the wall bc
@@ -233,108 +169,111 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	}
 	else if(es->parameters.get<unsigned int> ("geometry_type") == 1 || es->parameters.get<unsigned int> ("geometry_type") == 4)	// bifurcating pipe
 	{
-		if(!restart)
+
+		std::set<boundary_id_type> bdyids = _mesh.boundary_info->get_boundary_ids();
+		std::set<subdomain_id_type> subids;
+		_mesh.subdomain_ids(subids);
+		std::cout << "hye there" << std::endl;
+		std::cout << "bdyids.size = " << bdyids.size() << std::endl;
+
+		// we wanna do this relabelling automagically, and yes sets are ordered in a particular way
+		if(true)//_es->parameters.get<std::string> ("mesh_file").compare("meshes/coarse_mesh_truncated_labelled.msh") == 0)
 		{
-
-			std::set<boundary_id_type> bdyids = _mesh.boundary_info->get_boundary_ids();
-			std::set<subdomain_id_type> subids;
-			_mesh.subdomain_ids(subids);
-			std::cout << "hye there" << std::endl;
-			std::cout << "bdyids.size = " << bdyids.size() << std::endl;
-
-			// we wanna do this relabelling automagically, and yes sets are ordered in a particular way
-			if(true)//_es->parameters.get<std::string> ("mesh_file").compare("meshes/coarse_mesh_truncated_labelled.msh") == 0)
+			int count = 0;
+			for (std::set<boundary_id_type>::iterator it=bdyids.begin(); it!=bdyids.end(); ++it)
 			{
-				int count = 0;
-				for (std::set<boundary_id_type>::iterator it=bdyids.begin(); it!=bdyids.end(); ++it)
+				if(es->parameters.get<int> ("inflow_bdy_id") > 0)
 				{
-					if(es->parameters.get<int> ("inflow_bdy_id") > 0)
+					if(count == 0)
 					{
-						if(count == 0)
-						{
-							MeshTools::Modification::change_boundary_id(_mesh,*it,-1);		//walls
-							std::cout << "old bdy id = " << *it << std::endl;
-							std::cout << "new bdy id = " << -1 << std::endl;
-							count++;
+						MeshTools::Modification::change_boundary_id(_mesh,*it,-1);		//walls
+						std::cout << "old bdy id = " << *it << std::endl;
+						std::cout << "new bdy id = " << -1 << std::endl;
+						count++;
 
-						}
-						else if(*it == es->parameters.get<int> ("inflow_bdy_id"))
-						{
-							MeshTools::Modification::change_boundary_id(_mesh,*it,0);		//inflow
-							std::cout << "old bdy id = " << *it << std::endl;
-							std::cout << "new bdy id = " << 0 << std::endl;					
-						}
-						else
-						{
-							MeshTools::Modification::change_boundary_id(_mesh,*it,count);		//outlets
-							std::cout << "old bdy id = " << *it << std::endl;
-							std::cout << "new bdy id = " << count << std::endl;		
-							count++;			
-						}
+					}
+					else if(*it == es->parameters.get<int> ("inflow_bdy_id"))
+					{
+						MeshTools::Modification::change_boundary_id(_mesh,*it,0);		//inflow
+						std::cout << "old bdy id = " << *it << std::endl;
+						std::cout << "new bdy id = " << 0 << std::endl;					
 					}
 					else
 					{
-						MeshTools::Modification::change_boundary_id(_mesh,*it,count - 1);		//walls
+						MeshTools::Modification::change_boundary_id(_mesh,*it,count);		//outlets
 						std::cout << "old bdy id = " << *it << std::endl;
-						std::cout << "new bdy id = " << count << std::endl;
-						count++;
-					
+						std::cout << "new bdy id = " << count << std::endl;		
+						count++;			
 					}
 				}
-
-				/*
-				MeshTools::Modification::change_boundary_id(_mesh,19,0);			//inflow
-				MeshTools::Modification::change_boundary_id(_mesh,20,1);			//outflow
-				MeshTools::Modification::change_boundary_id(_mesh,21,2);			//outflow
-				MeshTools::Modification::change_boundary_id(_mesh,22,3);			//outflow
-				MeshTools::Modification::change_boundary_id(_mesh,23,4);			//outflow
-				MeshTools::Modification::change_boundary_id(_mesh,24,5);			//outflow
-
-				MeshTools::Modification::change_subdomain_id(_mesh,3,0);		//volume
-				*/
-
-				// should only be one i hope...
-				MeshTools::Modification::change_subdomain_id(_mesh,*subids.begin(),0);		//volume
-
-				if(es->parameters.get<unsigned int> ("old_geometry") == 1)
+				else
 				{
-					MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
-					MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
-					MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
-				}
-				else if(es->parameters.get<unsigned int> ("old_geometry") == 2)
-				{
-					MeshTools::Modification::change_boundary_id(_mesh,0,-1);			// walls
-					MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
-					MeshTools::Modification::change_boundary_id(_mesh,2,1);			//outflows
-					MeshTools::Modification::change_boundary_id(_mesh,3,2);			//outflows
+					MeshTools::Modification::change_boundary_id(_mesh,*it,count - 1);		//walls
+					std::cout << "old bdy id = " << *it << std::endl;
+					std::cout << "new bdy id = " << count << std::endl;
+					count++;
+				
 				}
 			}
-			else
+
+			/*
+			MeshTools::Modification::change_boundary_id(_mesh,19,0);			//inflow
+			MeshTools::Modification::change_boundary_id(_mesh,20,1);			//outflow
+			MeshTools::Modification::change_boundary_id(_mesh,21,2);			//outflow
+			MeshTools::Modification::change_boundary_id(_mesh,22,3);			//outflow
+			MeshTools::Modification::change_boundary_id(_mesh,23,4);			//outflow
+			MeshTools::Modification::change_boundary_id(_mesh,24,5);			//outflow
+
+			MeshTools::Modification::change_subdomain_id(_mesh,3,0);		//volume
+			*/
+
+			// should only be one i hope...
+			MeshTools::Modification::change_subdomain_id(_mesh,*subids.begin(),0);		//volume
+
+			if(es->parameters.get<unsigned int> ("old_geometry") == 1)
 			{
-				MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
-
-				MeshTools::Modification::change_boundary_id(_mesh,1011,0);			//inflow
-				MeshTools::Modification::change_boundary_id(_mesh,1012,1);			//outflows
-
-				MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
-
-				if(es->parameters.get<unsigned int> ("old_geometry") == 1)
-				{
-					MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
-					MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
-					MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
-				}
+				MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
+				MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
+				MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
+			}
+			else if(es->parameters.get<unsigned int> ("old_geometry") == 2)
+			{
+				MeshTools::Modification::change_boundary_id(_mesh,0,-1);			// walls
+				MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
+				MeshTools::Modification::change_boundary_id(_mesh,2,1);			//outflows
+				MeshTools::Modification::change_boundary_id(_mesh,3,2);			//outflows
 			}
 		}
+		else
+		{
+			MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
+
+			MeshTools::Modification::change_boundary_id(_mesh,1011,0);			//inflow
+			MeshTools::Modification::change_boundary_id(_mesh,1012,1);			//outflows
+
+			MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
+
+			if(es->parameters.get<unsigned int> ("old_geometry") == 1)
+			{
+				MeshTools::Modification::change_boundary_id(_mesh,0,500);			//inflow
+				MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
+				MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
+			}
+		}
+
+
+
 
 
 		_mesh.print_info();
 
 		// so this has the boundary ids of the inflows and outflows, not the walls
 		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
-
+		
+		// all 3d outlets not inlet
 		_es->parameters.set<unsigned int> ("num_1d_trees") = boundary_ids.size() - 1;
+		
+
 
 
 		
@@ -346,17 +285,22 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 		for(unsigned int i=0; i < boundary_ids.size(); i++)
 		{
-			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-			surface_boundaries.push_back(surface_boundary);
-			surface_boundaries[i]->init(_mesh,i,0);
 
-			std::cout << "surface " << i << ":" << std::endl;
-			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
-			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-			std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
-			std::cout << std::endl;
+			// don't wanna do the possible 1d boundary at 1000
+			if(boundary_ids[i] < 100)
+			{
+				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+				surface_boundaries.push_back(surface_boundary);
+				surface_boundaries[i]->init(_mesh,i,0);
+
+				std::cout << "surface " << i << ":" << std::endl;
+				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+				std::cout << std::endl;
+			}
 		}
 
 
@@ -387,39 +331,35 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	else if(_es->parameters.get<unsigned int> ("geometry_type") == 2)
 	{
 
-		if(!restart)
+	
+		if(!threed)
 		{
-			
-		
-			if(!threed)
-			{
-				// for some odd reason, applying dirichlet conditions on one of the walls doesn't work?
-				MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,1,1);		//inflow	//should be x=0
-				MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,3,0);		//outflow	//should be x=L
+			// for some odd reason, applying dirichlet conditions on one of the walls doesn't work?
+			MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,1,1);		//inflow	//should be x=0
+			MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,3,0);		//outflow	//should be x=L
 
-			}
-			else
-			{
-				MeshTools::Modification::change_boundary_id(_mesh,0,0);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,3,-1);		//walls
-
-
-				MeshTools::Modification::change_boundary_id(_mesh,4,-1);			//inflow
-				MeshTools::Modification::change_boundary_id(_mesh,5,1);			//outflows
-			}
-		
-			// subdomain id 0 by default
-			//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
-
-
-			// hmmm how many fn boundary ids do we actually have??
-			// haven't added the 
-			
 		}
+		else
+		{
+			MeshTools::Modification::change_boundary_id(_mesh,0,0);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,3,-1);		//walls
+
+
+			MeshTools::Modification::change_boundary_id(_mesh,4,-1);			//inflow
+			MeshTools::Modification::change_boundary_id(_mesh,5,1);			//outflows
+		}
+	
+		// subdomain id 0 by default
+		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
+
+
+		// hmmm how many fn boundary ids do we actually have??
+		// haven't added the 
+			
 
 		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
 
@@ -471,33 +411,28 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	else if(_es->parameters.get<unsigned int> ("geometry_type") == 5)
 	{
 
-		if(!restart)
+	
+		if(!threed)
 		{
-			
-		
-			if(!threed)
-			{
-				// for some odd reason, applying dirichlet conditions on one of the walls doesn't work?
-				MeshTools::Modification::change_boundary_id(_mesh,0,-2);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,1,1);		//inflow	//should be x=0
-				MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//axis
-				MeshTools::Modification::change_boundary_id(_mesh,3,0);		//outflow	//should be x=L
+			// for some odd reason, applying dirichlet conditions on one of the walls doesn't work?
+			MeshTools::Modification::change_boundary_id(_mesh,0,-2);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,1,1);		//inflow	//should be x=0
+			MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//axis
+			MeshTools::Modification::change_boundary_id(_mesh,3,0);		//outflow	//should be x=L
 
-			}
-			else
-			{
-				std::cout << "axisymmetric geometry cuboid not physical in 3D" << std::endl;
-				std::exit(0);
-			}
-		
-			// subdomain id 0 by default
-			//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
-
-
-			// hmmm how many fn boundary ids do we actually have??
-			// haven't added the 
-			
 		}
+		else
+		{
+			std::cout << "axisymmetric geometry cuboid not physical in 3D" << std::endl;
+			std::exit(0);
+		}
+	
+		// subdomain id 0 by default
+		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
+
+
+		// hmmm how many fn boundary ids do we actually have??
+		// haven't added the 
 
 		// now we have two wall boundaries we need to get rid of two of them
 		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 2);
@@ -546,31 +481,28 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	else if(_es->parameters.get<unsigned int> ("geometry_type") == 3)
 	{
 
-		if(!restart)
+		if(!threed)
 		{
-			if(!threed)
-			{
-				MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,2,0);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,3,-1);		//walls	
-			}
-			else
-			{
-
-				MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
-				MeshTools::Modification::change_boundary_id(_mesh,3,0);		//walls	
-				MeshTools::Modification::change_boundary_id(_mesh,4,-1);			//inflow
-				MeshTools::Modification::change_boundary_id(_mesh,5,-1);			//outflows
-			}
-			
-			// subdomain id 0 by default
-			//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
-
-
+			MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,2,0);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,3,-1);		//walls	
 		}
+		else
+		{
+
+			MeshTools::Modification::change_boundary_id(_mesh,0,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,1,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,2,-1);		//walls
+			MeshTools::Modification::change_boundary_id(_mesh,3,0);		//walls	
+			MeshTools::Modification::change_boundary_id(_mesh,4,-1);			//inflow
+			MeshTools::Modification::change_boundary_id(_mesh,5,-1);			//outflows
+		}
+		
+		// subdomain id 0 by default
+		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
+
+
 
 		// hmmm how many fn boundary ids do we actually have??
 		// haven't added the 
@@ -620,9 +552,14 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	// *************** SET UP SUBDOMAINS IN 3D **************** //
 	// can have any number of types of elements each with a different subdomainid
 	// we start at 0
+	// if restart then we want to do something slightly different and find out what 
+	// 3D elements were used and 
 
 	//  assign different subdomain id to different element types
 	// Loop over all elements.
+
+	std::cout << "num subdomains before = " <<	_mesh.n_subdomains () << std::endl;
+	std::cout << "num subdomains before = " <<	mesh.n_subdomains () << std::endl;
 	
 	std::vector<libMesh::ElemType> elem_types;	// temporary variable storing the types of elements encountered
 	MeshBase::element_iterator       elem_it  = mesh.elements_begin();
@@ -643,14 +580,15 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			elem_types.push_back(current_elem_type);
 			elem->subdomain_id() = count;
 			count++;
-					
+				
 		}
 		else
 		{
 			elem->subdomain_id() = it - elem_types.begin();
-			count++;
+			//count++;	// not sure if this is right but makes sense
 		}
 	}
+	
 
 	std::cout << std::endl;
 	std::cout << "Subdomain identification summary:" << std::endl;
@@ -665,6 +603,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	//populate subdomains_3d
 	for(unsigned int i=0; i<elem_types.size(); i++)
 		subdomains_3d.push_back(i);
+
 
 
 }

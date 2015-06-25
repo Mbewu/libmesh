@@ -117,8 +117,10 @@ void EquationSystems::init ()
       (*elem_it)->set_n_systems(n_sys);
   }
 
+	std::cout << "before init systems" << std::endl;
   for (unsigned int i=0; i != this->n_systems(); ++i)
     this->get_system(i).init();
+	std::cout << "after init systems" << std::endl;
 
 #ifdef LIBMESH_ENABLE_AMR
   MeshRefinement mesh_refine(_mesh);
