@@ -85,6 +85,7 @@ public:
 			std::cout << "1" << std::endl;
 
 			int count = 0;
+			// note we may be reading in a 3d1d mesh so we need to exclude the 1d elements
 			for ( ; el != end_el; ++el)
 			{
 
@@ -92,33 +93,37 @@ public:
 				//if(count%100 == 0)
 				//	std::cout << "count = " << count << std::endl;
 
-			  const Elem* elem = *el;
-
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+				const Elem* elem = *el;
+	
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
 						
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+							// now we know we are on a boundary, are we on the edge of a boundary
+							AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
 
-			      // Loop over the nodes on the side.
-			      for (unsigned int ns=0; ns<side->n_nodes(); ns++)
-			      {
-							std::vector<boundary_id_type> side_boundary_ids = mesh.boundary_info->boundary_ids(side->get_node(ns));
+							// Loop over the nodes on the side.
+							for (unsigned int ns=0; ns<side->n_nodes(); ns++)
+							{
+								std::vector<boundary_id_type> side_boundary_ids = mesh.boundary_info->boundary_ids(side->get_node(ns));
 
-							// if node has multiple boundary ids then it is on the edge and we add it to the list.
-							if(side_boundary_ids.size() > 1)
-								boundary_points.push_back(*side->get_node(ns));
+								// if node has multiple boundary ids then it is on the edge and we add it to the list.
+								if(side_boundary_ids.size() > 1)
+									boundary_points.push_back(*side->get_node(ns));
+							}
+
+
+							std::vector<Point> random_point(1,side->centroid());
+							normal += side->volume() * face_normals[0];
 						}
-
-
-						std::vector<Point> random_point(1,side->centroid());
-						normal += side->volume() * face_normals[0];
 					}
 				}
 			}
@@ -401,20 +406,23 @@ public:
 			for ( ; el != end_el; ++el)
 			{
 
-			  const Elem* elem = *el;
-
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+				const Elem* elem = *el;
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-						normal += side->volume() * face_normals[0];
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary, are we on the edge of a boundary
+							AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
+
+							normal += side->volume() * face_normals[0];
+						}
 					}
 				}
 			}
@@ -437,22 +445,25 @@ public:
 			for ( ; el != end_el; ++el)
 			{
 
-			  const Elem* elem = *el;
-
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+			  	const Elem* elem = *el;
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-						Point elem_centroid = side->centroid();
-						centroid += side->volume() * elem_centroid;
-						total_area += side->volume();
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary, are we on the edge of a boundary
+							AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
+
+							Point elem_centroid = side->centroid();
+							centroid += side->volume() * elem_centroid;
+							total_area += side->volume();
+						}
 					}
 				}
 			}
@@ -498,26 +509,29 @@ public:
 		{
 
 			const Elem* elem = *el;
-
-			for (unsigned int s=0; s<elem->n_sides(); s++)
+			// 0,1,2 are edge elements -- 27 is a nodeelem
+			if(elem->type() > 2 && elem->type() != 27)
 			{
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-				//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
-
-				if(boundary_ids.size() > 0) 
+				for (unsigned int s=0; s<elem->n_sides(); s++)
 				{
-					if(boundary_ids[0] == surface_boundary_id) 
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+					//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
+
+					if(boundary_ids.size() > 0) 
 					{
-						// now we know we are on a boundary integrate over the dofs
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						if(boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary integrate over the dofs
+							AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
 	
 						
-						for (unsigned int qp=0; qp<qrule.n_points(); qp++)
-						{
-							area += JxW_face[qp];
+							for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+							{
+								area += JxW_face[qp];
+							}
 						}
 					}
 				}
@@ -533,33 +547,36 @@ public:
 		{
 
 			const Elem* elem = *el;
-
-			for (unsigned int s=0; s<elem->n_sides(); s++)
+			// 0,1,2 are edge elements -- 27 is a nodeelem
+			if(elem->type() > 2 && elem->type() != 27)
 			{
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-				//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
-
-				if(boundary_ids.size() > 0) 
+				for (unsigned int s=0; s<elem->n_sides(); s++)
 				{
-					if(boundary_ids[0] == surface_boundary_id) 
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+					//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
+
+					if(boundary_ids.size() > 0) 
 					{
-						// now we know we are on a boundary integrate over the dofs
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						if(boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary integrate over the dofs
+							AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
 	
 						
-						for (unsigned int qp=0; qp<qrule.n_points(); qp++)
-						{
-							double r = get_normalised_distance_from_centroid (q_point[qp]);
-							double radius = 1.0;
-							double parabola_value = (pow(radius,2)-pow(r,2));
-							parabolic_integral += parabola_value * JxW_face[qp];
+							for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+							{
+								double r = get_normalised_distance_from_centroid (q_point[qp]);
+								double radius = 1.0;
+								double parabola_value = (pow(radius,2)-pow(r,2));
+								parabolic_integral += parabola_value * JxW_face[qp];
+							}
 						}
 					}
 				}
-			}
+			}					
 
 			//if axisym then need to double the parabolic integral calculated
 			// but not in use currently

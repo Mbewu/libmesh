@@ -748,6 +748,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							calculate_3d_boundary_values();
 							ns_assembler->init_bc(flux_values_3d);
 
+							write_3d_solution(true);
+
 							if(solve_3d_system_iteration(system_coupled))
 								break;
 			
@@ -766,10 +768,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					std::cout << "hmmmm" << std::endl;
 			
 					perf_log.push("output");
+
+					std::cout << "yeah" << std::endl;
 					// ************ WRITE OUTPUT *************** //								
 					if((!reduce_dt || !unsteady) && !refine_mesh)
 					{
+					std::cout << "yeah" << std::endl;
 						output_sim_data(false);
+					std::cout << "yeah" << std::endl;
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
@@ -777,6 +783,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							if(sim_3d && !es->parameters.get<bool>("no_output")) {write_3d_solution(true);}
 							if(sim_1d && !es->parameters.get<bool>("no_output")) {write_1d_solution();}
 						}
+					std::cout << "yeah" << std::endl;
 					}
 					std::cout << "hi" << std::endl;
 			
@@ -2429,11 +2436,16 @@ void NavierStokesCoupled::output_sim_data(bool header)
 	}
 	else
 	{
+
+		std::cout << "k" << std::endl;
+
 		output_file << t_step << "\t" << time;
 
 		if(sim_3d)
 		{
+		std::cout << "k" << std::endl;
 			calculate_3d_boundary_values();
+		std::cout << "k" << std::endl;
 			if(boundary_id_to_tree_id.size() == 0)
 			{
 				for(unsigned int i=0; i < flux_values_3d.size(); i++)
@@ -2451,6 +2463,7 @@ void NavierStokesCoupled::output_sim_data(bool header)
 				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
 					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
 			}
+		std::cout << "k" << std::endl;
 		}
 		
 		if(sim_1d)
@@ -2470,14 +2483,17 @@ void NavierStokesCoupled::output_sim_data(bool header)
 
 		output_file << std::endl;
 
+		std::cout << "k" << std::endl;
 		print_flux_and_pressure();
 
 			std::cout << "flux, pressure etc output for timestep " << t_step
 							<< " written." << std::endl;
 
 		std::cout << "hi" << std::endl;
+		/*
 		if(sim_1d)
 			output_poiseuille_resistance_per_generation();
+		*/
 
 
 		std::cout << "bye" << std::endl;

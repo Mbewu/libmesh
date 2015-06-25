@@ -1363,9 +1363,16 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 		pressure_values_3d[0] = picard->calculate_pressure(0);
 		for(unsigned int i=1; i< flux_values_3d.size(); i++)
 		{
-
-			flux_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_flux(i);
-			pressure_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_pressure(i);
+			if(es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh") && sim_1d)
+			{
+				flux_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_flux(i);
+				pressure_values_3d[boundary_id_to_tree_id[i]] = picard->calculate_pressure(i);
+			}
+			else
+			{
+				flux_values_3d[i] = picard->calculate_flux(i);
+				pressure_values_3d[i] = picard->calculate_pressure(i);
+			}
 		}
 	}
 	else
