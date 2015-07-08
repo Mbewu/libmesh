@@ -265,6 +265,8 @@ public:
 
 	void set_radii();
 
+	void set_poiseuille();
+
 	void set_efficiency();
 
 	void calculate_1d_boundary_values();

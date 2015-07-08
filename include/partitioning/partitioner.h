@@ -52,7 +52,7 @@ public:
   /**
    * Constructor.
    */
-  Partitioner ():_weights(NULL) {}
+  Partitioner ():_weights(NULL),custom_partitioning(false) {}
 
   /**
    * Destructor. Virtual so that we can derive from this class.
@@ -130,6 +130,8 @@ public:
    */
   virtual void attach_weights(ErrorVector * /*weights*/) { libmesh_not_implemented(); }
 
+  void set_custom_partitioning(bool _custom_partitioning) { custom_partitioning = _custom_partitioning; }
+
 protected:
 
   /**
@@ -166,6 +168,12 @@ protected:
    * The weights that might be used for partitioning.
    */
   ErrorVector * _weights;
+
+  /**
+   * whether we are doing 3d1d partitioning where 1d elements are on one node
+	 * and 3d elements are on the other nodes
+   */
+  bool custom_partitioning;
 };
 
 

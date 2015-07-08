@@ -350,6 +350,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 			unsigned int node_1 = (unsigned int)edge_1d_data[i][1];
 			unsigned int node_2 = (unsigned int)edge_1d_data[i][2];
 			airway_data_temp[elem_number].set_local_elem_number(elem_number);
+			airway_data_temp[elem_number].set_tree_number(m);
 
 			//okay let us find the parent number
 			if(generation > min_generation)	//has a parent
@@ -1517,7 +1518,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	}
 
 	int radius_var = extra_1d_data_system->add_variable("radius", CONSTANT, MONOMIAL,&active_subdomains);
-	int pedley_var = extra_1d_data_system->add_variable("pedley", CONSTANT, MONOMIAL,&active_subdomains);
+	int poiseuille_var = extra_1d_data_system->add_variable("poiseuille", CONSTANT, MONOMIAL,&active_subdomains);
 
 	int efficiency_var = 0;
 	// variables for particle deposition system
@@ -1529,7 +1530,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	std::cout << "P_var = " << P_var << std::endl;
 	std::cout << "Q_var = " << Q_var << std::endl;
 	std::cout << "radius_var = " << radius_var << std::endl;
-	std::cout << "pedley_var = " << pedley_var << std::endl;
+	std::cout << "poiseuille_var = " << poiseuille_var << std::endl;
 	if(particle_deposition == 2)
 		std::cout << "efficiency_var = " << efficiency_var << std::endl;
 }
@@ -1654,6 +1655,7 @@ void NavierStokesCoupled::write_1d_solution()
 	variables_1d.push_back("P");
 	variables_1d.push_back("Q");
 	variables_1d.push_back("radius");
+	variables_1d.push_back("poiseuille");
 	exo.set_output_variables(variables_1d);
 
 	//std::cout << "before write disc" << std::endl;
@@ -1692,6 +1694,9 @@ void NavierStokesCoupled::solve_1d_system()
 	std::string prefix_1d = "ns1d_";
 	system_linear_solver->set_prefix(prefix_1d);
 	system_linear_solver->init();	// set the name
+
+	// set the poiseuille data
+	set_poiseuille();
 
 
 	// Assemble & solve the linear system.
@@ -1748,6 +1753,48 @@ void NavierStokesCoupled::set_radii()
 			
 			for(unsigned int i=0; i < dof_indices.size(); i++)
 				extra_1d_data_system->solution->set(dof_indices[i], airway_data[elem_id].get_radius());
+		}
+	}
+
+	//must close the vector after editing it
+
+	extra_1d_data_system->solution->close();
+}
+
+
+void NavierStokesCoupled::set_poiseuille()
+{
+
+	//add the radius variable
+	// i'm sure we only need to do this once!
+	//create an equation system to hold data like the radius of the element
+
+	
+	const DofMap& dof_map = extra_1d_data_system->get_dof_map();
+
+	MeshBase::const_element_iterator       el     =
+		mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el =
+		mesh.active_local_elements_end();
+
+	std::vector<dof_id_type> dof_indices;
+	const unsigned int rad_var = extra_1d_data_system->variable_number ("poiseuille");
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+			dof_map.dof_indices (elem, dof_indices,rad_var);
+			const dof_id_type elem_id = elem->id() - es->parameters.get<unsigned int>("n_initial_3d_elem");
+
+			for(unsigned int i=0; i < dof_indices.size(); i++)
+			{
+				if(airway_data[elem_id].get_poiseuille())
+					extra_1d_data_system->solution->set(dof_indices[i], 1);
+				else
+					extra_1d_data_system->solution->set(dof_indices[i], 0);
+			}
 		}
 	}
 
@@ -1943,7 +1990,9 @@ void NavierStokesCoupled::scale_1d_solution_vector(double flux_scaling=1.0,doubl
 }
 
 
-// okay so 
+// okay so we want to output the poiseuille per generation, but also we want to 
+// output the data on for each airway so that we can supplement it with 3d data
+// later possibly.
 void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 {
 
@@ -1995,31 +2044,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	// trees are gonna be numbered by their subdomain_id
 	unsigned int num_1d_trees = es->parameters.get<unsigned int>("num_1d_trees");
 
-	/*
-	//vector of edges per generation to calc average
-	std::vector<std::vector<unsigned int> > num_edges_per_generation(subdomains_1d.back());
-	for(unsigned int i=0; i<subdomains_1d.back(); i++)
-		num_edges_per_generation[i] = std::vector<unsigned int> (num_generations[i],0);
-
-	//vector of resistance per generation
-	std::vector<std::vector<double> > resistance_per_generation(subdomains_1d.back());
-	for(unsigned int i=0; i<subdomains_1d.back(); i++)
-		resistance_per_generation[i] = std::vector<double> (num_generations[i],0.);
-
-	//vector of average_pressure_diff per generation
-	std::vector<std::vector<double> > average_pressure_diff_per_generation(subdomains_1d.back());
-	for(unsigned int i=0; i<subdomains_1d.back(); i++)
-		average_pressure_diff_per_generation[i] = std::vector<double> (num_generations[i],0.);
-
-
-	//vector of resistance per generation, not sized
-	std::vector<std::vector<double> > resistance_per_order(subdomains_1d.back());
-	std::vector<std::vector<double> > num_edges_per_order(subdomains_1d.back());
-	*/
-
 	for(unsigned int i=0; i<num_generations.size(); i++)
 	{
-		std::cout << "num_generaions = " << num_generations[i] << std::endl;
+		std::cout << "num_generations = " << num_generations[i] << std::endl;
 	}
 
 
@@ -2050,15 +2077,18 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	std::vector<std::vector<double> > resistance_per_order(num_1d_trees);
 	std::vector<std::vector<double> > num_edges_per_order(num_1d_trees);
 
-  MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
-  const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
-
 	double flow_scale = es->parameters.get<double>("velocity_scale") * 
 										pow(es->parameters.get<double>("length_scale"),2.0);
 	double mean_pressure_scale = es->parameters.get<double>("density") *
 													pow(es->parameters.get<double>("velocity_scale"),2.0);
 
 	unsigned int max_generation = 0;
+
+
+	// ************* CALCULATE RESISTANCE AND PRESSURE/FLUX IN 1D TREE ******** //
+
+  MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
 
 	// note this is not a parallel loop cause i am lazy
   for ( ; el != end_el; ++el)
@@ -2110,18 +2140,15 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			double resistance = pressure_diff / flow;
 			//get average pressure drop but, total flow
 
+			airway_data[current_1d_el_idx].set_flow(flow);
+			airway_data[current_1d_el_idx].set_pressure_diff(pressure_diff);
+
 			
 			//add to the correct tree
 			if(!per_order)
 			{
-				//num_edges_per_generation[elem->subdomain_id() - 1][generation] += 1;
-				//resistance_per_generation[elem->subdomain_id() - 1][generation] += resistance;
 				num_edges_per_generation[elem->subdomain_id() - subdomains_1d.front()][generation] += 1;
 				resistance_per_generation[elem->subdomain_id() - subdomains_1d.front()][generation] += resistance;
-				//average_pressure_diff_per_generation[elem->subdomain_id() - 1][generation] += pressure_diff;
-				//parallel resistance
-
-				//resistance_per_generation[elem->subdomain_id() - 1][generation] += 1./resistance;
 			}
 			else
 			{
@@ -2139,15 +2166,10 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
     }// end of subdomain conditional
 	}// end of element loop
 
-	std::cout<< "hey there yeah" << std::endl;
 
 	// get average
 	total_num_edges_per_generation.resize(max_generation+1,0);
-	std::cout<< "ho" << std::endl;
 	total_resistance_per_generation.resize(max_generation+1,0);
-	std::cout<< "yo" << std::endl;
-
-
 
 	//do a loop over the 3d section
 	//we add this to the total
@@ -2155,25 +2177,28 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	// need outside cause may want to output
 	std::vector<double> flux_per_3d_element(centreline_airway_data.size());
 
+	// ************* CALCULATE RESISTANCE AND PRESSURE/FLUX IN 3D TREE ******** //
 	
 	if(es->parameters.get<bool>("use_centreline_data"))
 	{
-		std::cout<< "mo" << std::endl;
 
-		// move the points on the boundary inside the domain
 
+		// ******* MOVE POINTS SO THAT INSIDE DOMAIN ************************** //
+
+		// percentage of airway moved to get inside 3D airway
+		double tol = 1e-3;
 		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// hmmm, so if we are on a boundary we may have difficulty...
 			double segment_length = (centreline_points[i][1] - centreline_points[i][0]).size();
-			std::cout << "segment_length = " << segment_length << std::endl;
+
 			// if we don't have a parent then move point a small distance
 			if(!centreline_airway_data[i].has_parent())
 			{
 				unsigned int boundary_id = 0;
 				Point normal = surface_boundaries[0]->get_normal();
 				// move point backwards along normal
-				Point adjusted_point = centreline_points[i][0] - 1e-3*segment_length*normal;
+				Point adjusted_point = centreline_points[i][0] - tol*segment_length*normal;
 				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
 				centreline_points[i][0] = adjusted_point;
 			}
@@ -2183,14 +2208,15 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				unsigned int boundary_id = tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]];
 				Point normal = surface_boundaries[boundary_id]->get_normal();
 				// move point backwards along normal
-				Point adjusted_point = centreline_points[i][1] - 1e-3*segment_length*normal;
+				Point adjusted_point = centreline_points[i][1] - tol*segment_length*normal;
 				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
 				centreline_points[i][1] = adjusted_point;
 			}
 
 		}
 
-		// find out what element the points are in
+		// ******* FIND WHAT ELEMENT END POINTS ARE IN ************************** //
+
 		std::vector<std::vector<unsigned int> > centreline_points_elements(centreline_points.size(),std::vector<unsigned int>(2));
 		
 		el     = mesh.active_elements_begin();
@@ -2228,15 +2254,10 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		std::cout << "num_points found = " << count << std::endl;
 
 
-		std::cout<< "centreline" << centreline_airway_data.size() << std::endl;
-
 		
-		// calculate the fluxes by going up from each terminal branch
-		// calculate the pressures, only want to do this once per point, 
+		// 1.) calculate the fluxes by going up from each terminal branch
+		// 2.) calculate the pressures, only want to do this once per point, 
 		// but it's okay only double the calculation
-		std::vector<double> pressure_diff_per_3d_element(centreline_airway_data.size());
-
-
 
 		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
@@ -2260,40 +2281,28 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				{
 					std::cout << "got here" << std::endl;
 					//add the flux to the
-					flux_per_3d_element[next_element] += flux_in_terminal_element;
+					//flux_per_3d_element[next_element] += flux_in_terminal_element;
+					centreline_airway_data[next_element].set_flow(centreline_airway_data[next_element].get_flow() + flux_in_terminal_element);
 					if(centreline_airway_data[next_element].has_parent())
 						next_element = centreline_airway_data[next_element].get_parent();	// make the next element the parent
 					//std::cout << "next_element = " << next_element << std::endl;
 				}
 			}
 
-			//std::cout << "3" << std::endl;
-			// calculate the pressure difference
-			// calculate the pressure at the start point
-			// use centreline_points..			
-			//std::cout << "trying to calc pressure at " << centreline_points[i][0] << std::endl;
 			double start_pressure = system_threed->point_value(p_var_threed,centreline_points[i][0],*mesh.elem(centreline_points_elements[i][0]));
-
-			//std::cout << "4" << std::endl;
-			// calculate the pressure at the end point
-			// use centreline_points..			
-			//std::cout << "trying to calc pressure at " << centreline_points[i][1] << std::endl;
 			double end_pressure = system_threed->point_value(p_var_threed,centreline_points[i][1],*mesh.elem(centreline_points_elements[i][1]));
 
-
 			double pressure_diff = start_pressure - end_pressure;
+
 			// convert pressure to SI units
 			pressure_diff *= mean_pressure_scale;
 
-			//std::cout << "5" << std::endl;
-			pressure_diff_per_3d_element[i] = pressure_diff;
+			centreline_airway_data[i].set_pressure_diff(pressure_diff);
 		}
 		
 		
+		// calculate the resistance and add to the vector
 
-	std::cout<< "hey there poo" << std::endl;
-		
-		//calculate the resistance and add to the vector
 		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// generation of this element
@@ -2301,9 +2310,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 			std::cout << "1" << std::endl;
 			//calculate the resistance
-			std::cout << "pressure_diff_per_3d_element[i] = " << pressure_diff_per_3d_element[i] << std::endl;
-			std::cout << "flux_per_3d_element[i] = " << flux_per_3d_element[i] << std::endl;
-			double resistance = pressure_diff_per_3d_element[i] / flux_per_3d_element[i];
+			std::cout << "pressure_diff_per_3d_element[i] = " << centreline_airway_data[i].get_pressure_diff() << std::endl;
+			std::cout << "flux_per_3d_element[i] = " << centreline_airway_data[i].get_flow() << std::endl;
+			double resistance = centreline_airway_data[i].get_pressure_diff() / centreline_airway_data[i].get_flow();
 
 			//add to the correct tree
 			if(!per_order)
@@ -2336,6 +2345,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	std::cout<< "hey there, max_gerertaion = " << max_generation << std::endl;
 
 		
+
+
+	// ********** COMPILING RESISTANCES TOGETHER ***************************** //
 
 	
 	// loop over all the trees
@@ -2401,23 +2413,11 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	}
 
 	
-	
 
-	std::cout<< "hey there" << std::endl;
-	unsigned int max_num_order = 0;
-	
-	for(unsigned int i=0; i<num_edges_per_order.size(); i++)
-	{
-		if(num_edges_per_order[i].size() > max_num_order)
-			max_num_order = num_edges_per_order[i].size();
-	}
-	
 
-	std::cout<< "hey there" << std::endl;
-	// now output to a file
 
-	
 
+	// ****** OUTPUTTING RESISTANCE AND PRESSURE/FLUX DATA ***************** //
 	if(num_1d_trees > 0)
 	{
 
@@ -2443,10 +2443,13 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			resistance_output_file << "# order";
 		
 		std::cout<< "boo" << std::endl;
-		for(unsigned int i=0; i < num_1d_trees; i++)
+		if(es->parameters.get<bool>("output_resistance_for_each_tree"))
 		{
-			resistance_output_file <<	"\ttree_" << i+1;
-			resistance_output_file <<	"\tnum_edges";
+			for(unsigned int i=0; i < num_1d_trees; i++)
+			{
+				resistance_output_file <<	"\ttree_" << i+1;
+				resistance_output_file <<	"\tnum_edges";
+			}
 		}
 		//resistance_output_file <<	"\ttree_" << 1;
 		resistance_output_file <<	"\ttotal";
@@ -2465,19 +2468,23 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				resistance_output_file << std::endl;
 				resistance_output_file <<	i;
 				//for(unsigned int j=0; j < num_1d_trees; j++)
-				for(unsigned int j=0; j < num_1d_trees; j++)
-				{
-					if(i < num_generations[j])
-					{
-						resistance_output_file <<	"\t" << resistance_per_generation[j][i];
-						resistance_output_file <<	"\t" << num_edges_per_generation[j][i];
-					}
-					else
-					{
-						resistance_output_file <<	"\t" << 0.;
-						resistance_output_file <<	"\t" << 0.;
-					}
 
+				if(es->parameters.get<bool>("output_resistance_for_each_tree"))
+				{
+					for(unsigned int j=0; j < num_1d_trees; j++)
+					{
+						if(i < num_generations[j])
+						{
+							resistance_output_file <<	"\t" << resistance_per_generation[j][i];
+							resistance_output_file <<	"\t" << num_edges_per_generation[j][i];
+						}
+						else
+						{
+							resistance_output_file <<	"\t" << 0.;
+							resistance_output_file <<	"\t" << 0.;
+						}
+
+					}
 				}
 
 				resistance_output_file <<	"\t" << total_resistance_per_generation[i];
@@ -2488,6 +2495,14 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		}
 		else
 		{
+			unsigned int max_num_order = 0;
+
+			for(unsigned int i=0; i<num_edges_per_order.size(); i++)
+			{
+				if(num_edges_per_order[i].size() > max_num_order)
+					max_num_order = num_edges_per_order[i].size();
+			}
+
 			for(unsigned int i=0; i < max_num_order; i++)
 			{
 				resistance_output_file << std::endl;
@@ -2506,38 +2521,61 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 		resistance_output_file.close();
 
-		if(es->parameters.get<bool>("output_flux_per_3d_edge"))
+		// ************* THE FILE CONTAINING FLUX AND PRESSURE FOR EACH AIRWAY ******* //
+
+		std::ostringstream flux_data_file_name;
+		std::ofstream flux_output_file;
+		flux_data_file_name << output_folder.str() << "flux_and_pressure_per_airway.dat";
+		flux_output_file.open(flux_data_file_name.str().c_str());
+
+	
+
+		// write geometry variables later when reading meta data file
+		// write boundary conditions later with Picard class
+		flux_output_file << "# local_edge_num";
+		flux_output_file << "\ttree_no";
+		flux_output_file << "\tgeneration";
+		flux_output_file << "\torder";
+		flux_output_file << "\tpressure_diff";
+		flux_output_file << "\tflux";
+	
+		if(es->parameters.get<bool>("use_centreline_data"))
 		{
 
-			std::cout << "boo" << std::endl;
-			std::ostringstream flux_data_file_name;
-			std::ofstream flux_output_file;
-
-			std::cout << "boo" << std::endl;
-			flux_data_file_name << output_folder.str() << "flux_per_3d_edge.dat";
-			std::cout << "boo " << flux_data_file_name.str() << std::endl;
-			flux_output_file.open(flux_data_file_name.str().c_str());
-
-		
-
-			std::cout<< "boo" << std::endl;
-			flux_output_file << "# flux per 3d edge" << std::endl;
-			// write geometry variables later when reading meta data file
-			// write boundary conditions later with Picard class
-			flux_output_file << "# Results" << std::endl;
-			flux_output_file << "# edge_num";
-		
-			std::cout<< "boo" << std::endl;
-			for(unsigned int i=0; i < flux_per_3d_element.size(); i++)
+			for(unsigned int i=0; i < centreline_airway_data.size(); i++)
 			{
 				flux_output_file << std::endl;
-				flux_output_file <<	i;
+				flux_output_file <<	centreline_airway_data[i].get_local_elem_number();
 				flux_output_file <<	"\t";
-				flux_output_file <<	flux_per_3d_element[i];					
+				flux_output_file <<	centreline_airway_data[i].get_tree_number();
+				flux_output_file <<	"\t";
+				flux_output_file <<	centreline_airway_data[i].get_generation();
+				flux_output_file <<	"\t";
+				flux_output_file <<	centreline_airway_data[i].get_order();
+				flux_output_file <<	"\t";				
+				flux_output_file <<	centreline_airway_data[i].get_pressure_diff();
+				flux_output_file <<	"\t";
+				flux_output_file <<	centreline_airway_data[i].get_flow();
 			}
-			
-			flux_output_file.close();
 		}
+
+		for(unsigned int i=0; i < airway_data.size(); i++)
+		{
+			flux_output_file << std::endl;
+			flux_output_file <<	airway_data[i].get_local_elem_number();
+			flux_output_file <<	"\t";
+			flux_output_file <<	airway_data[i].get_tree_number();
+			flux_output_file <<	"\t";
+			flux_output_file <<	airway_data[i].get_generation();
+			flux_output_file <<	"\t";
+			flux_output_file <<	airway_data[i].get_order();
+			flux_output_file <<	"\t";				
+			flux_output_file <<	airway_data[i].get_pressure_diff();
+			flux_output_file <<	"\t";
+			flux_output_file <<	airway_data[i].get_flow();
+		}
+		
+		flux_output_file.close();
 
 	}
 	else
@@ -2557,6 +2595,7 @@ void NavierStokesCoupled::write_elem_pid_1d(ExodusII_IO_Extended& io)
 
   AutoPtr<MeshBase> meshptr = mesh.clone();
   MeshBase &temp_mesh = *meshptr;
+	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
   temp_mesh.all_first_order();
   EquationSystems temp_es (temp_mesh);
   ExplicitSystem& processor_system

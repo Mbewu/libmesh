@@ -58,13 +58,48 @@ namespace libMesh
 void MetisPartitioner::_do_partition (MeshBase& mesh,
                                       const unsigned int n_pieces)
 {
-  libmesh_assert_greater (n_pieces, 0);
+
+	std::cout << "in metis partitioner" << std::endl;
+
+	// if doing custom partitioning then we partition onto n_procs -1
+	// then reassign all the 1d elements onto the last processor
+	unsigned int var_n_pieces = n_pieces;
+	if(custom_partitioning)
+	{
+		std::cout << "var_n_pieces before = " << var_n_pieces << std::endl;
+		var_n_pieces -= 1;
+		std::cout << "using custom parititioning" << std::endl;
+		std::cout << "var_n_pieces after = " << var_n_pieces << std::endl;
+	}
+
+  libmesh_assert_greater (var_n_pieces, 0);
   libmesh_assert (mesh.is_serial());
 
   // Check for an easy return
-  if (n_pieces == 1)
+  if (var_n_pieces == 1)
     {
+			//if we get here and we had 2 cores then need to give the 1d the rest.
+			std::cout << "i'm not here?" << std::endl;
       this->single_partition (mesh);
+
+			// assign the 1d elements to the last processor
+			if(custom_partitioning)
+			{
+		
+				MeshBase::element_iterator       it  = mesh.active_elements_begin();
+				const MeshBase::element_iterator end = mesh.active_elements_end();
+
+				for (; it!=end; ++it)
+				{
+				  Elem* elem = *it;
+
+					if(elem->type() < 3 || elem->type() == 27)
+					{
+					  elem->processor_id() = var_n_pieces;	// should already be n_pieces - 1
+					}
+				}
+		
+			}
       return;
     }
 
@@ -78,7 +113,7 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 
   SFCPartitioner sfcp;
 
-  sfcp.partition (mesh, n_pieces);
+  sfcp.partition (mesh, var_n_pieces);
 
   // What to do if the Metis library IS present
 #else
@@ -98,7 +133,7 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
     //    wgtflag = 2,                          // weights on vertices only,
     //                                          //   none on edges
     //    numflag = 0,                          // C-style 0-based numbering
-    nparts  = static_cast<int>(n_pieces), // number of subdomains to create
+    nparts  = static_cast<int>(var_n_pieces), // number of subdomains to create
     edgecut = 0;                          // the numbers of edges cut by the
                                           //   resulting partition
 
@@ -322,7 +357,7 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
       // Select which type of partitioning to create
 
       // Use recursive if the number of partitions is less than or equal to 8
-      if (n_pieces <= 8)
+      if (var_n_pieces <= 8)
         Metis::METIS_PartGraphRecursive(&n, &ncon, &csr_graph.offsets[0], &csr_graph.vals[0], &vwgt[0], NULL,
                                         NULL, &nparts, NULL, NULL, NULL,
                                         &edgecut, &part[0]);
@@ -337,6 +372,8 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 
   // Broadcase the resutling partition
   mesh.comm().broadcast(part);
+
+	std::cout << "partition done" << std::endl;
 
   // Assign the returned processor ids.  The part array contains
   // the processor id for each active element, but in terms of
@@ -361,6 +398,30 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
         elem->processor_id() = elem_procid;
       }
   }
+
+	std::cout << "before custom partition" << std::endl;
+	std::cout << "var_n_pieces = " << var_n_pieces << std::endl;
+
+	// assign the 1d elements to the last processor
+	if(custom_partitioning)
+	{
+  
+    MeshBase::element_iterator       it  = mesh.active_elements_begin();
+    const MeshBase::element_iterator end = mesh.active_elements_end();
+
+    for (; it!=end; ++it)
+    {
+      Elem* elem = *it;
+
+			if(elem->type() < 3 || elem->type() == 27)
+			{
+	      elem->processor_id() = var_n_pieces;	// should already be n_pieces - 1
+			}
+    }
+  
+	}
+
+	std::cout << "done custom partition" << std::endl;
 
   STOP_LOG("partition()", "MetisPartitioner");
 #endif

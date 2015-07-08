@@ -310,13 +310,20 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 				// van ertbruggen resistance
 				if(es->parameters.get<unsigned int> ("t_step") != 1)
+				{
 					R = (constant + 2.1e-3 * reynolds_number_0d) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else
 			{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
 
 			double flow_scale = es->parameters.get<double>("velocity_scale") * 

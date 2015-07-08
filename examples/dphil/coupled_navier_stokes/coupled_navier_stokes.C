@@ -219,6 +219,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
 	}
 
+	mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
 
 	// ************** SET UP 3D STUFF **************** //
 	if(sim_3d)
@@ -1483,7 +1484,9 @@ void NavierStokesCoupled::read_parameters()
   set_bool_parameter(infile,"nonlinear_1d",false);
 
   set_bool_parameter(infile,"use_centreline_data",false);
-  set_bool_parameter(infile,"output_flux_per_3d_edge",false);
+
+  set_bool_parameter(infile,"custom_partitioning",false);
+  set_bool_parameter(infile,"output_resistance_for_each_tree",false);
 
 
 
@@ -2485,11 +2488,13 @@ void NavierStokesCoupled::output_sim_data(bool header)
 							<< " written." << std::endl;
 
 		std::cout << "hi" << std::endl;
-		/*
-		if(sim_1d)
-			output_poiseuille_resistance_per_generation();
-		*/
 
+		if(sim_1d)
+		{
+			output_poiseuille_resistance_per_generation();
+
+		}
+		
 
 		std::cout << "bye" << std::endl;
 	}
@@ -3248,10 +3253,11 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 
 	}
 
-	var_scalings_1D.resize(3);
+	var_scalings_1D.resize(4);
 	var_scalings_1D[0] = mean_pressure_scale;	// P
 	var_scalings_1D[1] = flow_scale;	// Q
 	var_scalings_1D[2] = 1.0;	// radius
+	var_scalings_1D[3] = 1.0;	// poiseuille
 
 
 }
