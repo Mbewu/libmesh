@@ -1455,6 +1455,7 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	}
 
 	//
+	std::cout << "before write pid" << std::endl;
 	write_elem_pid_3d(exo);
 
 
@@ -3121,9 +3122,15 @@ void NavierStokesCoupled::plot_error(ExodusII_IO_Extended& io)
 void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
 {
 
+	std::cout << "hi" << std::endl;
   AutoPtr<MeshBase> meshptr = mesh.clone();
+	std::cout << "hi" << std::endl;
   MeshBase &temp_mesh = *meshptr;
+	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
+	std::cout << "hi" << std::endl;
   temp_mesh.all_first_order();
+	std::cout << "hi" << std::endl;
+	std::cout << "hi" << std::endl;
   EquationSystems temp_es (temp_mesh);
   ExplicitSystem& processor_system
     = temp_es.add_system<ExplicitSystem> ("Processor");
@@ -3165,10 +3172,12 @@ void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
     temp_mesh.renumber_nodes_and_elements();
   }
 
+	std::cout << "about to write this shit" << std::endl;
   //ExodusII_IO io(mesh);
   //io.write(filename);
   //io.write_element_data(temp_es,time);
   io.write_element_data(temp_es);
+	std::cout << "written" << std::endl;
 
 }
 
