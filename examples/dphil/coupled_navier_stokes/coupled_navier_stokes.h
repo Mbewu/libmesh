@@ -448,7 +448,8 @@ private:
 	std::vector<double> coupling_flux_values_1d;
 
 	std::vector<int> centreline_terminal_id_to_tree_id;
-	std::vector<std::vector<Point> > centreline_points;
+	std::vector<Point> centreline_points_1;
+	std::vector<Point> centreline_points_2;
 
 	// this is a vector of the coupling points for each tree
 	std::vector<Point> coupling_points;

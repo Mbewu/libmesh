@@ -572,11 +572,10 @@ void NavierStokesCoupled::read_1d_mesh ()
 					centreline_terminal_id_to_tree_id[elem_number] = subtree_number_2;
 				}
 
-				centreline_points.resize(airway_data_temp.size());
-				std::vector<Point> points;
-				points.push_back(point_1);
-				points.push_back(point_2);
-				centreline_points[elem_number] = points;
+				centreline_points_1.resize(airway_data_temp.size());
+				centreline_points_2.resize(airway_data_temp.size());
+				centreline_points_1[elem_number] = point_1;
+				centreline_points_2[elem_number] = point_2;
 			}
 			
 
@@ -680,7 +679,9 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 			// give it boundary id 1
 			add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id,boundary_id);
-			mesh.prepare_for_use (/*skip_renumber =*/ false);
+
+			// can do this after all the 1d mesh has been added
+			//mesh.prepare_for_use (/*skip_renumber =*/ false);
 
 			subdomains_1d.push_back(subdomain_id);
 
@@ -698,6 +699,20 @@ void NavierStokesCoupled::read_1d_mesh ()
 	}
 	//pressure_values_1d.push_back(0.0);	//outflow
 	//flux_values_1d.push_back(0.0);	//outflow
+
+	mesh.prepare_for_use (/*skip_renumber =*/ false);
+
+	// ******************* SET THE PROC ID OF EACH AIRWAY ******************** //
+	// ideally the proc id of the 1d tree system should correspond with the 
+	// proc id of the boundary, so later we can give the boundary a proc and then
+	// manually or via partitioning assign the proc id. 
+	// anyway it should not change when we repartition, but need to be careful
+	// of that cause repartitioning may occur, like when we output proc_ids.
+	// loop over the 1d elements, find out their proc id and 
+
+
+
+	// ******************* OUTPUT SOME DATA FOR DEBUGGING ******************** //
 
 	for(unsigned int i=0; i<boundary_id_to_tree_id.size(); i++)
 	{
@@ -2076,6 +2091,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	//vector of resistance per generation, not sized
 	std::vector<std::vector<double> > resistance_per_order(num_1d_trees);
 	std::vector<std::vector<double> > num_edges_per_order(num_1d_trees);
+	std::vector<double> airway_data_pressure_diff(airway_data.size());
+	std::vector<double> airway_data_flow(airway_data.size());
 
 	double flow_scale = es->parameters.get<double>("velocity_scale") * 
 										pow(es->parameters.get<double>("length_scale"),2.0);
@@ -2087,10 +2104,12 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 	// ************* CALCULATE RESISTANCE AND PRESSURE/FLUX IN 1D TREE ******** //
 
-  MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
-  const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
+	std::cout<< "hey there" << std::endl;
 	// note this is not a parallel loop cause i am lazy
+	// note: we need to do this in parallel because the element data is in parallel
   for ( ; el != end_el; ++el)
   {
 		const Elem* elem = *el;
@@ -2098,7 +2117,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		{
 			//element data object starts numbering from 0
 			//and the values referenced in it also do so need to take this into account
-
+			
 			const int current_el_idx = elem->id();
 			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
 
@@ -2139,10 +2158,12 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 			double resistance = pressure_diff / flow;
 			//get average pressure drop but, total flow
-
+			
 			airway_data[current_1d_el_idx].set_flow(flow);
 			airway_data[current_1d_el_idx].set_pressure_diff(pressure_diff);
-
+			airway_data_flow[current_1d_el_idx] = flow;
+			airway_data_pressure_diff[current_1d_el_idx] = pressure_diff;
+			
 			
 			//add to the correct tree
 			if(!per_order)
@@ -2162,9 +2183,28 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				resistance_per_order[elem->subdomain_id() - subdomains_1d.front()][order - 1] += resistance;
 			}
 			
+			
 
     }// end of subdomain conditional
 	}// end of element loop
+
+	std::cout << "ya" << std::endl;
+
+	// get the max resistance from the processors
+	es->comm().max(max_generation);
+
+	// sum the resistance and edge numbers from all the processors
+	for(unsigned int i=0; i<num_edges_per_generation.size(); i++)
+	{
+		es->comm().sum(num_edges_per_generation[i]);
+		es->comm().sum(resistance_per_generation[i]);
+	}
+
+	// sum the pressures and fluxes from the different processes
+	es->comm().sum(airway_data_pressure_diff);
+	es->comm().sum(airway_data_flow);
+	
+	
 
 
 	// get average
@@ -2176,6 +2216,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 	// need outside cause may want to output
 	std::vector<double> flux_per_3d_element(centreline_airway_data.size());
+
+
+	std::cout << "yeah babe" << std::endl;
 
 	// ************* CALCULATE RESISTANCE AND PRESSURE/FLUX IN 3D TREE ******** //
 	
@@ -2190,7 +2233,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// hmmm, so if we are on a boundary we may have difficulty...
-			double segment_length = (centreline_points[i][1] - centreline_points[i][0]).size();
+			double segment_length = (centreline_points_2[i] - centreline_points_1[i]).size();
 
 			// if we don't have a parent then move point a small distance
 			if(!centreline_airway_data[i].has_parent())
@@ -2198,9 +2241,9 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				unsigned int boundary_id = 0;
 				Point normal = surface_boundaries[0]->get_normal();
 				// move point backwards along normal
-				Point adjusted_point = centreline_points[i][0] - tol*segment_length*normal;
+				Point adjusted_point = centreline_points_1[i] - tol*segment_length*normal;
 				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
-				centreline_points[i][0] = adjusted_point;
+				centreline_points_1[i] = adjusted_point;
 			}
 
 			if(!centreline_airway_data[i].has_daughter_1())
@@ -2208,19 +2251,21 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				unsigned int boundary_id = tree_id_to_boundary_id[centreline_terminal_id_to_tree_id[i]];
 				Point normal = surface_boundaries[boundary_id]->get_normal();
 				// move point backwards along normal
-				Point adjusted_point = centreline_points[i][1] - tol*segment_length*normal;
+				Point adjusted_point = centreline_points_2[i] - tol*segment_length*normal;
 				std::cout << "calculating pressure at adjusted point " << adjusted_point << std::endl;
-				centreline_points[i][1] = adjusted_point;
+				centreline_points_2[i] = adjusted_point;
 			}
 
 		}
 
-		// ******* FIND WHAT ELEMENT END POINTS ARE IN ************************** //
 
-		std::vector<std::vector<unsigned int> > centreline_points_elements(centreline_points.size(),std::vector<unsigned int>(2));
+		// ******* FIND WHAT ELEMENT END POINTS ARE IN ************************** //
+		// set default to large number so we can merge them nicely
+		std::vector<double> centreline_points_1_pressure(centreline_points_1.size(),-1e100);
+		std::vector<double> centreline_points_2_pressure(centreline_points_2.size(),-1e100);
 		
-		el     = mesh.active_elements_begin();
-		const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
+		el     = mesh.active_local_elements_begin();
+		const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
 		unsigned int count = 0;
 		// note this is not a parallel loop cause i am lazy
@@ -2229,21 +2274,26 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			const Elem* elem = *el;
 			if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 			{
-				for(unsigned int i=0; i<centreline_points.size(); i++)
+				for(unsigned int i=0; i<centreline_points_1.size(); i++)
 				{
 					//check point 1
-					if(elem->contains_point(centreline_points[i][0]))
+					if(elem->contains_point(centreline_points_1[i]))
 					{
-						std::cout << "point 0 " << i << ": " << centreline_points[i][0] << " found in elem " << elem->id() << std::endl;
-						centreline_points_elements[i][0] = elem->id();
+						std::cout << "point 0 " << i << ": " << centreline_points_1[i] << " found in elem " << elem->id() << std::endl;
+						centreline_points_1_pressure[i] = system_threed->point_value(p_var_threed,centreline_points_1[i],*mesh.elem(elem->id()));
+						std::cout << "yes" << std::endl;
 						count++;
 					}
+				}
 
+				for(unsigned int i=0; i<centreline_points_2.size(); i++)
+				{
 					//check point 1
-					if(elem->contains_point(centreline_points[i][1]))
+					if(elem->contains_point(centreline_points_2[i]))
 					{
-						std::cout << "point 1 " << i << ": " << centreline_points[i][1] <<  " found in elem " << elem->id() << std::endl;
-						centreline_points_elements[i][1] = elem->id();
+						std::cout << "point 0 " << i << ": " << centreline_points_2[i] << " found in elem " << elem->id() << std::endl;
+						centreline_points_2_pressure[i] = system_threed->point_value(p_var_threed,centreline_points_2[i],*mesh.elem(elem->id()));
+						std::cout << "yes" << std::endl;
 						count++;
 					}
 				}
@@ -2251,10 +2301,33 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 		}
 
+		std::cout << "phewie" << std::endl;
+
+		es->comm().sum(count);
+		
+
+		if(count < centreline_points_1.size() + centreline_points_2.size())
+		{
+			std::cout << "not all the points were found. EXITING" << std::endl;
+			std::exit(0);
+		}
+
+		// put all the pressure values on all processors
+		es->comm().max(centreline_points_1_pressure);
+		es->comm().max(centreline_points_2_pressure);
+
+		std::cout << "CENTRELINE PRESSURES" << std::endl;
+		for(unsigned int i=0; i<centreline_points_1_pressure.size(); i++)
+		{
+			std::cout << "1 = " << centreline_points_1_pressure[i] << std::endl;
+			std::cout << "2 = " << centreline_points_2_pressure[i] << std::endl;
+		}
 		std::cout << "num_points found = " << count << std::endl;
 
 
-		
+
+
+		// ******* GET THE PRESSURE AND FLUX AT THE CENTRELINE POINTS ********** //
 		// 1.) calculate the fluxes by going up from each terminal branch
 		// 2.) calculate the pressures, only want to do this once per point, 
 		// but it's okay only double the calculation
@@ -2289,8 +2362,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 				}
 			}
 
-			double start_pressure = system_threed->point_value(p_var_threed,centreline_points[i][0],*mesh.elem(centreline_points_elements[i][0]));
-			double end_pressure = system_threed->point_value(p_var_threed,centreline_points[i][1],*mesh.elem(centreline_points_elements[i][1]));
+			double start_pressure = centreline_points_1_pressure[i];
+			double end_pressure = centreline_points_2_pressure[i];
 
 			double pressure_diff = start_pressure - end_pressure;
 
@@ -2300,9 +2373,10 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			centreline_airway_data[i].set_pressure_diff(pressure_diff);
 		}
 		
-		
+		if(true)
+		{
 		// calculate the resistance and add to the vector
-
+		// we do this on all processors and then don't need to sum
 		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
 		{
 			// generation of this element
@@ -2313,6 +2387,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			std::cout << "pressure_diff_per_3d_element[i] = " << centreline_airway_data[i].get_pressure_diff() << std::endl;
 			std::cout << "flux_per_3d_element[i] = " << centreline_airway_data[i].get_flow() << std::endl;
 			double resistance = centreline_airway_data[i].get_pressure_diff() / centreline_airway_data[i].get_flow();
+
 
 			//add to the correct tree
 			if(!per_order)
@@ -2335,8 +2410,11 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 
 			}
+
 			
 			std::cout << "2" << std::endl;
+
+		}
 		}
 		
 		
@@ -2351,6 +2429,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 	
 	// loop over all the trees
+	if(true)
+	{
 	for(unsigned int i=0; i<num_edges_per_generation.size(); i++)
 	{
 		if(!per_order)
@@ -2411,7 +2491,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			}
 		}
 	}
-
+	}
 	
 
 
@@ -2463,7 +2543,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 		if(!per_order)
 		{
-			for(unsigned int i=0; i < max_generation; i++)
+			for(unsigned int i=0; i < max_generation+1; i++)
 			{
 				resistance_output_file << std::endl;
 				resistance_output_file <<	i;
@@ -2542,6 +2622,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		if(es->parameters.get<bool>("use_centreline_data"))
 		{
 
+			// these should be on all processors
 			for(unsigned int i=0; i < centreline_airway_data.size(); i++)
 			{
 				flux_output_file << std::endl;
@@ -2559,6 +2640,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			}
 		}
 
+		// these values are local
 		for(unsigned int i=0; i < airway_data.size(); i++)
 		{
 			flux_output_file << std::endl;
@@ -2570,9 +2652,11 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			flux_output_file <<	"\t";
 			flux_output_file <<	airway_data[i].get_order();
 			flux_output_file <<	"\t";				
-			flux_output_file <<	airway_data[i].get_pressure_diff();
+			//flux_output_file <<	airway_data[i].get_pressure_diff();
+			flux_output_file <<	airway_data_pressure_diff[i];
 			flux_output_file <<	"\t";
-			flux_output_file <<	airway_data[i].get_flow();
+			//flux_output_file <<	airway_data[i].get_flow();
+			flux_output_file <<	airway_data_flow[i];
 		}
 		
 		flux_output_file.close();
