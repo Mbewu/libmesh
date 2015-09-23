@@ -794,10 +794,31 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 	double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
 
+	// okay we want to make this general so that for a simulation in which it is 
+	// only a 1d simulation.
+
+	if(sim_type == 1)
+	{
+		// +1 cause we number the 1d trees from 1
+		tree_id_to_boundary_id.resize(es->parameters.get<unsigned int> ("num_1d_trees") + 1);
+		boundary_id_to_tree_id.resize(es->parameters.get<unsigned int> ("num_1d_trees") + 1);
+	}
+	else
+	{
+		// resize to all except
+		tree_id_to_boundary_id.resize(boundary_ids.size());
+		boundary_id_to_tree_id.resize(boundary_ids.size());
+		
+		//set number of 1d trees to boundary ids
+		es->parameters.set<unsigned int> ("num_1d_trees") = boundary_ids.size() - 1;
+	}
+
+
+
 	//we need to make this tree in dimensionless units, assume parameters are in SI units
 	
 	// if we are using an arbitrary tree mesh and 
-	if((es->parameters.get<unsigned int> ("geometry_type") == 4 || es->parameters.get<unsigned int> ("geometry_type") == 2) && sim_3d)
+	if((es->parameters.get<unsigned int> ("geometry_type") == 4 || es->parameters.get<unsigned int> ("geometry_type") == 2))// && sim_3d)
 	{
 
 		std::cout << "in generate_1d_mesh generating " << es->parameters.get<unsigned int> ("num_1d_trees") << " trees" << std::endl;
@@ -809,18 +830,34 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		if(subdomains_3d.size() > 0)
 			subdomain_id = subdomains_3d.back() + 1;
 
+	
+
 		// loop over all the boundaries except the inflow boundary
 		// now the subdomain ids won't match up with the boundary ids
-		for(unsigned int i=1; i < boundary_ids.size(); i++)
+		for(unsigned int i=1; i < es->parameters.get<unsigned int> ("num_1d_trees") + 1; i++)
 		{
 
 			vertices.clear();
 			cell_vertices.clear();
 			segment.clear();
 
-			Point normal = surface_boundaries[i]->get_normal();
-			Point centroid = surface_boundaries[i]->get_centroid();
-			double area = surface_boundaries[i]->get_area();
+
+			Point normal;
+			Point centroid;
+			double area;
+
+			if(sim_type == 1)
+			{
+				centroid = Point(0.,0.,0.);
+			}
+			else
+			{
+				normal = surface_boundaries[i]->get_normal();
+				centroid = surface_boundaries[i]->get_centroid();
+				area = surface_boundaries[i]->get_area();
+			}
+			tree_id_to_boundary_id[i] = i;
+			boundary_id_to_tree_id[i] = i;
 
 
 			// ********************************************************************* //
@@ -866,11 +903,15 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			// for each element/segment, assuming same numbering convention
 			// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
 			// 3 - sibling elem no, 4 - is daughter_1 bool 5 - length, 6 - radius
-			element_data.push_back(std::vector<double>(12,-1));
-			element_data[element_data.size() - 1][0] = -1;
-			element_data[element_data.size() - 1][5] = initial_segment_length;
 
-			double radius = element_data[element_data.size() - 1][5]/length_diam_ratio/2.0;
+			airway_data.push_back(Airway());
+			airway_data[airway_data.size() - 1].set_parent(-1);
+			airway_data[airway_data.size() - 1].set_length(initial_segment_length);
+			airway_data[airway_data.size() - 1].set_local_elem_number(airway_data.size() - 1);
+			airway_data[airway_data.size() - 1].set_tree_number(i);
+						
+
+			double radius = airway_data[airway_data.size() - 1].get_length()/length_diam_ratio/2.0;
 			if(es->parameters.get<bool> ("half_initial_length"))
 			{
 				radius *= 2.0;
@@ -880,13 +921,13 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			if(es->parameters.get<bool> ("twod_oned_tree"))
 				radius = pow(16/3/M_PI*pow(radius,3.0),1./4.0);
 
-			element_data[element_data.size() - 1][6] = radius;	//this is the radius no diameter
-			element_data[element_data.size() - 1][7] = 0;	//generation
-			element_data[element_data.size() - 1][8] = num_generations_local;	//generation
+			airway_data[airway_data.size() - 1].set_radius(radius);	//this is the radius no diameter
+			airway_data[airway_data.size() - 1].set_generation(0);	//generation
+			airway_data[airway_data.size() - 1].set_order(num_generations_local);	//generation
 			//particle deposition stuff
-			element_data[element_data.size() - 1][9] = 0;	//the flow rate in this tube for the current time step
-			element_data[element_data.size() - 1][10] = 0;	//the efficiency in this tube for the current time step
-			element_data[element_data.size() - 1][11] = 0;	//num alveolar generations
+			airway_data[airway_data.size() - 1].set_flow_rate(0.);	//the flow rate in this tube for the current time step
+			airway_data[airway_data.size() - 1].set_efficiency(0.);	//the efficiency in this tube for the current time step
+			airway_data[airway_data.size() - 1].set_num_alveolar_generations(0);	//num alveolar generations
 
 
 			create_1d_tree(vertices,cell_vertices,num_generations_local);
@@ -899,6 +940,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				num_generations.push_back(num_generations_local);
 
 	
+			
 			add_1d_tree_to_mesh(vertices,cell_vertices, subdomain_id, i);
 
 			subdomains_1d.push_back(subdomain_id);
@@ -911,6 +953,13 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			calculate_num_alveloar_generations_for_tree();
 		
 	}
+	else
+	{
+		std::cout << "Only doing general 1d tree generation. EXITING." << std::endl;
+		std::exit(0);
+	}
+
+	/*
 	else if(es->parameters.get<unsigned int> ("num_1d_trees") == 2)
 	{
 
@@ -1092,6 +1141,8 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		subdomains_1d.push_back(subdomain_id);
 	}
 
+	*/
+
   // Done building the mesh.  Now prepare it for use.
   mesh.prepare_for_use (/*skip_renumber =*/ false);
 
@@ -1130,7 +1181,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 	std::vector<unsigned int> segment(2);
 	unsigned int parent_start_node = 1;
 	unsigned int parent_segment = 0;
-	unsigned int element_offset = element_data.size() - 1;
+	unsigned int element_offset = airway_data.size() - 1;
 	Point p0,p1;
 
 	std::cout << "hey in create_1d_tree" << std::endl;
@@ -1172,8 +1223,8 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 				p1_direction(1) = -sin(-bifurcation_angle)*unit_direction(0) + cos(-bifurcation_angle)* unit_direction(1);
 			}
 
-			double length_1 = element_data[parent_segment + j + element_offset][5]*left_length_ratio;
-			double length_2 = element_data[parent_segment + j + element_offset][5]*right_length_ratio;
+			double length_1 = airway_data[parent_segment + j + element_offset].get_length()*left_length_ratio;
+			double length_2 = airway_data[parent_segment + j + element_offset].get_length()*right_length_ratio;
 
 			// if the first segment is a half segment then the next should double
 			if(i == 1 && es->parameters.get<bool> ("half_initial_length"))
@@ -1194,25 +1245,23 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			cell_vertices.push_back(segment);
 
 			//update the data
-			element_data[parent_segment + j + element_offset][1] = cell_vertices.size() - 1 + element_offset;
-			element_data.push_back(std::vector<double>(12,-1));
-			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
-			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() + element_offset;
-			element_data[cell_vertices.size() - 1 + element_offset][4] = 1;
-			element_data[cell_vertices.size() - 1 + element_offset][5] = length_1;
+			airway_data[parent_segment + j + element_offset].add_daughter(cell_vertices.size() - 1 + element_offset);
+			airway_data.push_back(Airway());
+			airway_data[cell_vertices.size() - 1 + element_offset].set_parent(parent_segment + j + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].add_sibling(cell_vertices.size() + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_primary_sibling(cell_vertices.size() + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_is_daughter_1(true);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_length(length_1);
 
 			double radius_1 = length_1/length_diam_ratio/2.0;
 			// if we are doing a twod approx then we need to change the radius
 			if(es->parameters.get<bool> ("twod_oned_tree"))
 				radius_1 = pow(16/3/M_PI*pow(radius_1,3.0),1./4.0);
 
-			element_data[cell_vertices.size() - 1 + element_offset][6] = radius_1; //radius not diam
-			element_data[cell_vertices.size() - 1 + element_offset][7] = i; //generation
-			element_data[cell_vertices.size() - 1 + element_offset][8] = num_generations - i; //order
-			//particle deposition stuff
-			element_data[cell_vertices.size() - 1 + element_offset][9] = 0;	//the flow rate in this tube for the current time step
-			element_data[cell_vertices.size() - 1 + element_offset][10] = 0;	//the efficiency in this tube for the current time step
-			element_data[cell_vertices.size() - 1 + element_offset][11] = 0;	//num_alveolar_generations
+			airway_data[cell_vertices.size() - 1 + element_offset].set_radius(radius_1); //radius not diam
+			airway_data[cell_vertices.size() - 1 + element_offset].set_generation(i); //generation
+			airway_data[cell_vertices.size() - 1 + element_offset].set_order(num_generations - i); //order
+			//particle deposition stuff - flow_rate, efficiency and num_alveolar_generations set to default
 
 			vertices.push_back(p1);
 			segment[0] = parent_start_node + j;
@@ -1220,25 +1269,23 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			cell_vertices.push_back(segment);
 
 			//update the data
-			element_data[parent_segment + j + element_offset][2] = cell_vertices.size() - 1 + element_offset;
-			element_data.push_back(std::vector<double>(12,-1));
-			element_data[cell_vertices.size() - 1 + element_offset][0] = parent_segment + j + element_offset;
-			element_data[cell_vertices.size() - 1 + element_offset][3] = cell_vertices.size() - 2 + element_offset;
-			element_data[cell_vertices.size() - 1 + element_offset][4] = 0;
-			element_data[cell_vertices.size() - 1 + element_offset][5] = length_2;
+			airway_data[parent_segment + j + element_offset].add_daughter(cell_vertices.size() - 1 + element_offset);
+			airway_data.push_back(Airway());			
+			airway_data[cell_vertices.size() - 1 + element_offset].set_parent(parent_segment + j + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].add_sibling(cell_vertices.size() - 2 + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_primary_sibling(cell_vertices.size() - 2 + element_offset);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_is_daughter_1(false);
+			airway_data[cell_vertices.size() - 1 + element_offset].set_length(length_2);
 
 			double radius_2 = length_2/length_diam_ratio/2.0;
 			// if we are doing a twod approx then we need to change the radius
 			if(es->parameters.get<bool> ("twod_oned_tree"))
 				radius_2 = pow(16/3/M_PI*pow(radius_2,3.0),1./4.0);
 
-			element_data[cell_vertices.size() - 1 + element_offset][6] = radius_2; //radius not diam
-			element_data[cell_vertices.size() - 1 + element_offset][7] = i; //generation
-			element_data[cell_vertices.size() - 1 + element_offset][8] = num_generations - i; //order
-			//particle deposition stuff
-			element_data[cell_vertices.size() - 1 + element_offset][9] = 0;	//the flow rate in this tube for the current time step
-			element_data[cell_vertices.size() - 1 + element_offset][10] = 0;	//the efficiency in this tube for the current time step
-			element_data[cell_vertices.size() - 1 + element_offset][11] = 0;	//num_alveolar_generations
+			airway_data[cell_vertices.size() - 1 + element_offset].set_radius(radius_2); //radius not diam
+			airway_data[cell_vertices.size() - 1 + element_offset].set_generation(i); //generation
+			airway_data[cell_vertices.size() - 1 + element_offset].set_order(num_generations - i); //order
+			//particle deposition stuff - flow_rate, efficiency and num_alveolar_generations set to default
 
 		}
 	
@@ -1559,7 +1606,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 void NavierStokesCoupled::calculate_1d_boundary_values()
 {
 	
-	std::cout << "yeah" << std::endl;
+	std::cout << "Calculating 1D boundary values... ";
 
 	if(sim_1d)
 	{
@@ -1570,6 +1617,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		// if we are running a 3d-1d then the flux values are the first elements
 		if(sim_type == 5 || sim_type == 3)
 		{
+			std::cout << "flux_values_1d.size() = " << flux_values_1d.size()<< std::endl;
 
 			// there is no 0 boundary flux
 			// i is the tree id, but we want to calculate on the boundary
@@ -1609,6 +1657,8 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		exit_program = true;
 		//exit(0);
 	}
+
+	std::cout << "Done calculating 1D boundary values." << std::endl;
 }
 
 

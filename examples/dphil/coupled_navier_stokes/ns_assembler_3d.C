@@ -266,6 +266,9 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
 	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
+
+
+
 	// clear the rhs before adding things in for flux
   system->rhs->zero ();
 	const MeshBase& mesh = es->get_mesh();

@@ -452,6 +452,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						{
 							
 							system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
+
+							std::cout << "flux dof in 0d = " << eqn_3_dof << std::endl;
 							if(has_sibling)
 							{
 								//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
@@ -473,7 +475,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 								// if there is a bifurcation at the inflow then daughter_1 can add it
 								if(is_daughter_1)
 								{
-									//std::cout << "double oopsie" << std::endl;
+									std::cout << "double oopsie" << std::endl;
 									system->rhs->add (eqn_3_dof,-flux_values[boundary_ids[0]]);
 								}
 							}
@@ -548,6 +550,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   // That's it.
 	//system->matrix->close();
 	//system->matrix->print();
+	//system->rhs->print();
+
+	//system->matrix->close();
+	//system->matrix->print();
+	//std::cout << "true rhs" << std::endl;
 	//system->rhs->print();
 
 	std::cout << "End 0D assembly" << std::endl;

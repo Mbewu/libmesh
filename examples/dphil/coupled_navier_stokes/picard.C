@@ -49,8 +49,11 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	double sd_param = 0.;
 
 	//
-	if(es->parameters.get<unsigned int> ("nonlinear_iteration") == 1
-		|| (es->parameters.get<unsigned int> ("nonlinear_iteration") > 1 && es->parameters.get<double> ("last_nonlinear_iterate") > 0.1) )
+	std::cout << "nonlin iteration = " << es->parameters.get<unsigned int> ("nonlinear_iteration") << std::endl;
+	std::cout << "num initial picard = " << es->parameters.get<unsigned int> ("num_initial_picard") << std::endl;
+	if((es->parameters.get<unsigned int> ("nonlinear_iteration") == 1
+		|| (es->parameters.get<unsigned int> ("nonlinear_iteration") > 1 && es->parameters.get<double> ("last_nonlinear_iterate") > 0.1)) 
+			&& es->parameters.get<unsigned int> ("nonlinear_iteration") <= es->parameters.get<unsigned int> ("num_initial_picard") )
 	{
 		std::cout << "Using Picard iteration because early in nonlinear iteration." << std::endl;
 		newton = false;
@@ -107,7 +110,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	std::cout << "quad_order = " << default_quad_order << std::endl; 
 	//QGauss qrule(dim, static_cast<Order>(default_quad_order));
 
-	QGauss qrule(dim, static_cast<Order>(default_quad_order));
+	QGauss qrule(dim, static_cast<Order>(default_quad_order+2));
 
 	//std::cout << "default quad order = " << fe_vel_type.default_quadrature_order() << std::endl;
 	//std::cout << "quad order used = " << qrule.get_order() << std::endl;
@@ -120,6 +123,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	AutoPtr<FEBase> fe_vel_face (FEBase::build(dim, fe_vel_type));
 	AutoPtr<FEBase> fe_pres_face (FEBase::build(dim, fe_pres_type));
 
+	//QGauss qface(dim-1, static_cast<Order>(default_quad_order+2));
 	QGauss qface(dim-1, static_cast<Order>(default_quad_order+2));
 	//QGauss qface(dim-1, static_cast<Order>(6));
 	fe_vel_face->attach_quadrature_rule (&qface);
@@ -250,6 +254,9 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 			count++;
+	
+			// ******************************************************************* //
+			// reinitialise and set some variables
 		  dof_map.dof_indices (elem, dof_indices);
 		  dof_map.dof_indices (elem, dof_indices_u, u_var);
 		  dof_map.dof_indices (elem, dof_indices_v, v_var);
@@ -284,6 +291,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 			pressure_dof = -1;
 			pressure_dofs_on_inflow_boundary.resize(0);
+
+			// **************************************************************** //
 
 			// ************* SET UP ELEMENT MATRICES ************ //
 
@@ -368,14 +377,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					JxW[qp] *= dt;
 				}
 			}	
-				
 
-			// calculate streamline_diffusion parameter
+			// ****************************************************************** //
+			// ***************** CALCULATE THE STREAMLINE DIFFUSION PARAM ******* //
+
 			double max_u_sd = 0.;
 			sd_param = 0.;
 			if(es->parameters.get<bool> ("streamline_diffusion") && !stokes)
 			{
-				// ******** Build volume contribution to element matrix and rhs ************** //
+				// calculate the maximum u at the gauss points
 				for (unsigned int qp=0; qp<qrule.n_points(); qp++)
 				{
 				  // Values to hold the solution & its gradient at the previous timestep.
@@ -415,6 +425,18 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				//sd_param *= 100.0;
 
 			}
+
+			// ***************************************************************** //
+
+
+
+
+
+
+
+
+			// ***************************************************************** //
+			// ************* CALCULATE THE STABILISATION PARAM ***************** //
 
 			max_u_sd = 0.;
 			if(es->parameters.get<bool> ("mesh_dependent_stab_param") && (stab  || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg)))
@@ -465,14 +487,20 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				alpha = es->parameters.get<Real>("alpha")*Re*h_T*h_T;
 			}
 
-			// *************************************************************************** //
-
+			// debugging
 			alpha_factor_sum += alpha/(Re*h_T*h_T);
 
+			// *************************************************************************** //
 
-		  // ******** Build volume contribution to element matrix and rhs ************** //
+
+
+			
+			// *************************************************************************** //
+		  // ******** BUILD VOLUME CONTRIBUTION TO ELEMENT MATRIX AND RHS ************* //
 		  for (unsigned int qp=0; qp<qrule.n_points(); qp++)
 		  {
+
+
 
 				
 				// ************* SET UP VARIABLES FROM PREVIOUS ITERATE/TIMESTEP ************* //
@@ -526,6 +554,24 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		      grad_p.add_scaled (dpsi[l][qp],system->current_solution (dof_indices_p[l]));
 				}
 
+				// vector forms of velocities
+		    NumberVectorValue U_old;
+				if(threed)
+					U_old = NumberVectorValue(u_old, v_old, w_old);
+				else
+					U_old = NumberVectorValue(u_old, v_old);
+
+
+		    NumberVectorValue U;
+				if(threed)
+					U = NumberVectorValue(u, v, w);
+				else
+					U = NumberVectorValue(u, v);
+
+
+
+				// SOME DEBUGGING
+
 				if(pow(pow(u,2.0) + pow(v,2.0),0.5) > max_u)
 					max_u = pow(pow(u,2.0) + pow(v,2.0),0.5);
 
@@ -543,30 +589,27 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				//if(fabs(u_old) > max_u)
 				//	max_u =fabs(u_old);
 
-		    NumberVectorValue U_old;
-				if(threed)
-					U_old = NumberVectorValue(u_old, v_old, w_old);
-				else
-					U_old = NumberVectorValue(u_old, v_old);
 
 
-		    NumberVectorValue U;
-				if(threed)
-					U = NumberVectorValue(u, v, w);
-				else
-					U = NumberVectorValue(u, v);
+				// *************************************************************** //
+
+
+
+
+
+
+
 
 			
 				
 				// *************************************************************************** //
-
 				// ********************* REGULAR NAVIER STOKES TERMS ************************* //
 
 		    // First, an i-loop over the velocity degrees of freedom.
 		    for (unsigned int i=0; i<n_u_dofs; i++)
 		    {
 
-					// *********** Unsteady term
+					// *********** Unsteady term ************* //
 					if(unsteady)
 					{
 		        Fu(i) -= -JxW[qp]/dt*(u_old*phi[i][qp]);
@@ -574,7 +617,11 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						if(threed) {	Fw(i) -= -JxW[qp]/dt*(w_old*phi[i][qp]); }
 					}
 
-					// ********** Forcing term
+
+
+
+
+					// ********** Forcing term ************** //
 				  DenseVector<Number> f;
 		  		f.resize (dim);
 					forcing_function(qpoint[qp],time,f);
@@ -586,8 +633,10 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						//if(threed) {	Fw(i) += JxW[qp]*(phi[i][qp]*f(2)); }
 					//}
 
-					// ********** Newton convection term
 
+
+
+					// ********** Newton convection term ************ //
 					if(!stokes && newton)
 					{
 						if(convective_form)
@@ -605,10 +654,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					}		
 
 
+
+
 		      // Matrix contributions for the uu and vv couplings. i.e. first equation
 		      for (unsigned int j=0; j<n_u_dofs; j++)
 		      {
-						// *************** Unsteady term i.e. mass matrix
+
+
+
+						// *************** Unsteady term i.e. mass matrix ************ //
 						if(unsteady)
 						{
 		        	Kuu(i,j) += JxW[qp]/dt*(phi[i][qp]*phi[j][qp]);                // mass matrix term
@@ -617,8 +671,12 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						}
 
 
-						// *************** Diffusion terms
 
+
+
+
+						// *************** Diffusion terms ************** //
+						// We can use the nonsymmetric gradient or the symmetrised gradient
 						if(!symmetric_gradient)
 						{
 			        Kuu(i,j) += JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
@@ -644,10 +702,16 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						}
 
 
-						// *************** Convection terms
+
+
+
+
+
+						// *************** Convection terms *************** //
 						if(!stokes)
 						{
-		                             
+		                            
+							// use convective or conservative form 
 							if(convective_form)
 							{
 				        Kuu(i,j) += JxW[qp]*((U*dphi[j][qp])*phi[i][qp]);  // convection
@@ -661,6 +725,11 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				        if(threed) { Kww(i,j) += -JxW[qp]*((U*dphi[i][qp])*phi[j][qp]);}   // convection
 							}
 
+
+
+							// *************** Streamline Diffusion Terms ************** //
+							// streamline diffusion term, this is nonlinear and done in a 
+							// picard sense so may hamper convergence.
 							if(es->parameters.get<bool> ("streamline_diffusion") && !stokes)
 							{
 								if(!convective_form)
@@ -677,6 +746,10 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 														
 
+
+
+							// **************** Newton Convection Terms ***************** //
+							// convective or conservative form.
 							if(newton)
 							{
 								if(convective_form)
@@ -708,7 +781,13 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 		      }
 
-		      // ************ Pressure gradient term
+
+
+
+
+
+
+		      // ************ Pressure gradient term *********************** //
 					// put the density in here
 		      for (unsigned int j=0; j<n_p_dofs; j++)
 		      {
@@ -718,16 +797,27 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		      }
 		    }
 
-		    // ************* Continuity equation - could possibly be NOT multiplied by negative.
-				// remember this equation has been multiplied by negative dt for purposes of symmetry
+
+
+
+
+
 		    for (unsigned int i=0; i<n_p_dofs; i++)
 		    {
+				  // ************* Continuity equation  ****************************** //
+					// could possibly be NOT multiplied by negative.
 		      for (unsigned int j=0; j<n_u_dofs; j++)
 		      {
 		        Kpu(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](0);
 		        Kpv(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](1);
 						if(threed) { Kpw(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](2); }
 		      }
+
+
+
+
+
+
 
 					// ************** Stabilisation term - should be opposite sign to continuity equation
 					// stabilisation depends on if using P1-P1 or P1-P0
@@ -741,12 +831,21 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		        }
 					}
 
+
+
+
+
+
+
+
+					// ***************** Preconditioner terms ************************ //
 	      	for (unsigned int j=0; j<n_p_dofs; j++)
 	        {
 
 							Kpp_pre_mass(i,j) -= JxW[qp]*psi[i][qp]*psi[j][qp];
 							Kpp_pre_laplacian(i,j) += JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
-							// don't think the convection diffusion operator should have a mass matrix corresponding to the unsteady termes
+							// I don't think the convection diffusion operator should have a 
+							// mass matrix corresponding to the unsteady terms.
 							if(!stokes)
 								Kpp_pre_convection_diffusion(i,j) += JxW[qp]*(U*dpsi[j][qp])*psi[i][qp];
 
@@ -762,6 +861,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 	        }
 		    }
 
+				// more preconditioner terms
 				for (unsigned int i=0; i<n_u_dofs; i++)
 	      {
 					for (unsigned int j=0; j<n_u_dofs; j++)
@@ -778,14 +878,19 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 
 
+
+
+
+
+
+
+
+
 				// ************************** SUPG/PSPG/LSIC TERMS *************************** //
 				// we only want to apply this if there is a nonzero velocity
 
 				if(supg || pspg || lsic)
 		    {
-					
-
-
 					double length_scale = es->parameters.get<double> ("length_scale");
 					double velocity_scale = es->parameters.get<double> ("velocity_scale");
 					double time_scale = length_scale/velocity_scale;
@@ -1522,15 +1627,24 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					}
 
 				}
-			
+				// ************** END SUPG TERMS ************************************//
 				// *************************************************************************** //
 
 		  } // end of the quadrature point qp-loop
 
+
+
+
+
+
+
+
+
+
 					
 	
 
-		  // Apply boundary terms/conditions
+		  // **************** BOUNDARY TERMS/CONDITIONS **************//
 		  {
 		    // The penalty value.  \f$ \frac{1}{\epsilon} \f$
 		    const Real penalty = 1.e10;
@@ -1540,14 +1654,22 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					//for some reason it is natural to have more than one boundary id per side or even node
 					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
+					// if there is a boundary id on this side
 					if(boundary_ids.size() > 0) 
-					{ 
-						int boundary_id = boundary_ids[0];	// should only have one
+					{
+						int boundary_id = boundary_ids[0];	// should only have one hopefully
  
+
+
+
+
+
+						// *********** PRECONDITIONER BOUNDARY CONDITIONS ************** //
 						// want to get the pressure dofs that are on the dirichlet inflow boundary
 						// we assume that the dirichlet boundary inflow has boundary id 0
 						// but dof_indices_p includes the dofs that are in the whole element.. hmmm
 						// use FEInterface::dofs_on_side
+
 						if((es->parameters.get<unsigned int>("preconditioner_type") == 4 || es->parameters.get<unsigned int>("preconditioner_type") == 5)
 							 && es->parameters.get<unsigned int>("problem_type") != 4)
 						{
@@ -1620,9 +1742,16 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							}
 						}
 
+
+
+
+
+
+						// *********** STRESS BOUNDARY CONDITIONS/TERMS **************** //
 						// stress boundary conditions/terms, which are only applied if not coupled
-						// otherwise we put these contributions 
+						// otherwise we put these contributions in the off diagonal block.
 						// will have to think about this wrt the stabilisation term on the boundary
+
 						if(!pressure_coupled)
 						{
 							// mean pressure conditions/terms
@@ -2092,7 +2221,13 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							}//end if(bc_type[boundary_id].compare("mean-flow") == 0)
 						}
 
-						//construct stuff to put into 1d matrix lines
+
+
+			
+
+
+						// ************** COUPLING BOUNDARY TERMS ********************* //
+						// construct stuff to put into 1d matrix lines
 						else
 						{
 
@@ -2141,6 +2276,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 								// for the pressure term in the 3d equations
 								// EQN IS + dt*Q_1d - dt*Q_3d = 0
+								// later on we eliminate the terms that correspond to the 
 								for (unsigned int qp=0; qp<qface.n_points(); qp++)
 								{
 									for (unsigned int i=0; i<n_u_dofs; i++)
@@ -2148,16 +2284,26 @@ void Picard::assemble(ErrorVector&)// error_vector)
 								    Fu_coupled_u(i) += JxW_face[qp]*phi_face[i][qp]*qface_normals[qp](0);
 								    Fv_coupled_u(i) += JxW_face[qp]*phi_face[i][qp]*qface_normals[qp](1);
 								    if(threed) { Fw_coupled_u(i) += JxW_face[qp]*phi_face[i][qp]*qface_normals[qp](2); }
-									}
 
+									}
+									//std::cout << "normal = " << qface_normals[qp] << std::endl;
+		
 								}//end face quad loop
+
+
 							}
-						}
+						}	// end coupling terms
+
 					}
 
 				}//end side loop
 
 
+
+
+
+
+				// ******************* PIN THE PRESSURE **************************** //
 		    // Pin the pressure to zero at global node number "pressure_node".
 		    // This effectively removes the non-trivial null space of constant
 		    // pressure solutions.
@@ -2180,7 +2326,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					}
 		    }
 				*/
-				/*
+				
 				if (pin_pressure)
 		    {
 		      const unsigned int pressure_node = 0;
@@ -2189,32 +2335,88 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					{
 		        if (elem->node(c) == pressure_node)
 		        {
-		          //Kpp(c,c) += penalty;
-		          //Fp(c)    += penalty*p_value;
+		          Kpp(c,c) += penalty;
+		          Fp(c)    += penalty*p_value;
 							if(es->parameters.get<unsigned int>("preconditioner_type"))
 							{
-								//Kpp_pre_laplacian(c,c) += penalty*Re;
-								//Kpp_pre_convection_diffusion(c,c) += penalty;
+								Kpp_pre_laplacian(c,c) += penalty*Re;
+								Kpp_pre_convection_diffusion(c,c) += penalty;
 							}
 		        }
 					}
 		    }
-				*/
+				
 				
 
 		  } // end boundary condition section
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+			// ********* ASSEMBLE AND APPLY DIRICHLET BOUNDARY CONDITIONS ******** //
 			// if we are estimating the error then calcalate relative contributions
-			if(estimating_error)
-			{
-			}
-			else
+			if(!estimating_error)
 			{
 
+				// ***************** INSERT COUPLING BOUNDARY CONDITIONS ********* //
+				// if we have pressure coupled, then we need and found a boundary
+				// the only problem is that we don't want the dofs that are on the 
+				// boundary to be affected. so we zero them out and assume that there
+				// is zero contribution from them, assumming a zero boundary condition
+				// this is fairly common especially in my applications.
+				if(pressure_coupled && pressure_1d_index != 0)
+				{
+					
+					// if one of the dofs is a 
+					// constrained dof then we zero it. otherwise we add it to the matrix
+					// problem is that the pressure integral should contain stuff from the boundary
+					// maybe it wil average? who knows... seems like it, but it isn't nice.				
+					for(unsigned int i=0; i< dof_indices.size(); i++)
+					{
+						//if not constrained dof
+						if(!dof_map.is_constrained_dof(dof_indices[i]))
+							system->matrix->add(dof_indices[i],pressure_1d_index,Fe_coupled_p(i));
+					}
 
+
+					//flux coupling - only in row corresponding to 1d dof is how it is defined
+					// this 1d dof is now pressure 0 so that getting towards symmetry
+
+					// if one of the dofs is a 
+					// constrained dof then we zero it. otherwise we add it to the matrix
+					for(unsigned int i=0; i< dof_indices.size(); i++)
+					{
+						//if not constrained dof
+						if(!dof_map.is_constrained_dof(dof_indices[i]))
+							system->matrix->add(flux_1d_index,dof_indices[i],Fe_coupled_u(i));
+					}
+
+					// reset to zero so that isn't used in next loop.
+					pressure_1d_index = 0;
+					flux_1d_index = 0;
+				}
+
+
+
+
+
+
+				// ************** INSERT LOCAL MATRICES INTO BIG MATRIX ************ //
 				// apply dirichlet conditions (e.g. wall and maybe inflow)
 				//hmm really not sure bout this last argument but it works
-				dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
+				//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
+				dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,true);
 				//dof_map.constrain_element_matrix (Ke_pre_velocity_mass, dof_indices,false);
 				//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);				
 
@@ -2229,27 +2431,18 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					system->get_matrix("Preconditioner").add_matrix (Ke, dof_indices);
 				}
 
-				// if we have pressure coupled, then we need and found a boundary
-				if(pressure_coupled && pressure_1d_index != 0)
-				{
-
-					for(unsigned int i=0; i< dof_indices.size(); i++)
-					{
-						system->matrix->add(dof_indices[i],pressure_1d_index,Fe_coupled_p(i));
-					}
+				// ***************************************************************** //
 
 
-					//flux coupling - only in row corresponding to 1d dof is how it is defined
-					// this 1d dof is now pressure 0 so that getting towards symmetry
-					for(unsigned int i=0; i< dof_indices.size(); i++)
-					{
-						system->matrix->add(flux_1d_index,dof_indices[i],Fe_coupled_u(i));
-					}
 
-					pressure_1d_index = 0;
-					flux_1d_index = 0;
-				}
 
+
+
+
+
+
+
+				// ****************** APPLY PRECONDITIONER BOUNDARY CONDITIONS ***** //
 				// if we have a pressure dof that needs to be constrained then make all
 				// row/ column zero apart from diag
 				/*
@@ -2365,6 +2558,10 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				}
 				
 			}
+			else
+			{
+				// estimate error TODO
+			}
 
 
 
@@ -2373,6 +2570,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
   } // end of element loop
 
+
+
+
+
+
+
+
+
+	// *********** APPLY THE AVERAGED PRECONDITIONER BOUNDARY CONDITION ****** //
 	//find the average value of
 	if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3)
 	{
@@ -2393,6 +2599,19 @@ void Picard::assemble(ErrorVector&)// error_vector)
 																																		all_global_pressure_dofs_on_inflow_boundary[i],Re*ave_fp_diag);
 		}
 	}
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 	if(threed)

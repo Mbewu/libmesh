@@ -597,6 +597,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(sim_3d && sim_type != 5)
 					{
 						nonlinear_iteration = 0;
+						unsigned int nonlinear_iteration_1d = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						local_linear_iterations = 0;
 					
@@ -622,6 +623,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							}
 							else if(sim_type == 3)
 							{
+								nonlinear_iteration_1d++;
+								es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
 								calculate_1d_boundary_values();
 								picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
 								if(solve_3d_system_iteration(system_3d))
@@ -728,7 +731,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(sim_type == 5)
 					{
 	
-						std::cout << "hi" << std::endl;
+						std::cout << "hiya" << std::endl;
 						nonlinear_iteration = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						while(true)
@@ -1487,6 +1490,10 @@ void NavierStokesCoupled::read_parameters()
 
   set_bool_parameter(infile,"custom_partitioning",false);
   set_bool_parameter(infile,"output_resistance_for_each_tree",false);
+  set_bool_parameter(infile,"output_resistance",true);
+
+  set_bool_parameter(infile,"increasing_residuals_exit",true);
+  set_unsigned_int_parameter(infile,"num_initial_picard",0);
 
 
 
@@ -2489,7 +2496,7 @@ void NavierStokesCoupled::output_sim_data(bool header)
 
 		std::cout << "hi" << std::endl;
 
-		if(sim_1d)
+		if(sim_1d && es->parameters.get<bool> ("output_resistance"))
 		{
 			output_poiseuille_resistance_per_generation();
 
