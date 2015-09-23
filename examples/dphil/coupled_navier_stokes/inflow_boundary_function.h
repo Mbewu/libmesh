@@ -95,6 +95,9 @@ public:
 			area = surface_boundary_object->get_area();
 			radius = 1.0;//surface_boundary_object->get_max_radius();
 
+			//std::cout << "r = " << r << std::endl;
+			//std::cout << "radius = " << radius << std::endl;
+
 			if(along_line)
 			{
 				//std::cout << "r_after = " << r << std::endl;
@@ -115,8 +118,13 @@ public:
 			{
 				radius = es->parameters.get<double> ("radius");
 				r = fabs(y - radius)/radius;
+				//r = fabs(y-radius);
+				//std::cout << "radius = " << radius << std::endl;
+				//std::cout << "r = " << r << std::endl;
 			}
 		}
+
+
 
 		//make nondimensional
 		double velocity_magnitude = 0.;
@@ -134,6 +142,8 @@ public:
 			
 		}
 			
+
+		
 
 
 		double direction = 1.0;
@@ -234,7 +244,6 @@ public:
 		   const Real time,
 		   DenseVector<Number>& output)
 	{
-
 		//we want the thing to go in the negative normal direction
 		double inflow_magnitude = (*this)(p,time);
 

@@ -130,7 +130,7 @@ public:
 			// rescale normal
 			normal = normal.unit();
 
-			std::cout << "2" << std::endl;;
+			std::cout << "2 yellow" << std::endl;
 
 /*
 			for(unsigned int i=0; i< boundary_points.size(); i++)
@@ -140,11 +140,15 @@ public:
 */			
 			//std::cout << "normal = " << normal << std::endl;
 
+
+			std::cout << "boundary_points.size() = " << boundary_points.size() << std::endl;
+
 			// sort the boundary points vector and remove duplicate boundary points
 			double tol = 1e-10;
 			std::vector<Point> sorted_boundary_points;
 			sorted_boundary_points.push_back(boundary_points[0]);
 			boundary_points.erase(boundary_points.begin() + 0);
+
 
 			for(unsigned int j=0; j < sorted_boundary_points.size(); j++)
 			{
@@ -469,8 +473,12 @@ public:
 				}
 			}
 
+
 			// rescale normal
 			centroid /= total_area;
+
+			std::cout << "total_area = " << total_area << std::endl;
+			std::cout << "centroid = " << centroid << std::endl;
 
 			//calculate
 
@@ -828,7 +836,10 @@ public:
 			}
 			
 			if(libmesh_geometry)
-				max_radius = es->parameters.get<double>("cube_width")/2.0;
+			{
+				//max_radius = es->parameters.get<double>("cube_width")/2.0;
+				max_radius = area/2.0;
+			}
 			else
 			{
 				max_radius = area/2.0;

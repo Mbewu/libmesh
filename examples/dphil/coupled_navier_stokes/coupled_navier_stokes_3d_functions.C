@@ -1624,7 +1624,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 	//std::cout << "KSPConvergedReason = " << converged_reason << std::endl;
 	
-	system->get_dof_map().enforce_constraints_exactly(*system);
+	//system->get_dof_map().enforce_constraints_exactly(*system);
 
 	std::vector<Real> weights;  // u, v
 	weights.push_back(1.0);
@@ -1713,7 +1713,8 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		}
 		return true;
 	}
-	if(current_nonlinear_residual > previous_nonlinear_residual && nonlinear_iteration > 2)	
+	if(es->parameters.get<bool>("increasing_residuals_exit") && 
+			(current_nonlinear_residual > previous_nonlinear_residual && nonlinear_iteration > 2))	
 	{
 		std::cout << " Nonlinear solver is not going to converge because "
           		<< "nonlinear residuals are increasing."
@@ -1943,6 +1944,11 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 */
 
 	//system->request_matrix("System Matrix")->print();
+
+	//std::ofstream matrix_to_print("results/matrix_gosh.txt");
+	//system->request_matrix("System Matrix")->print(matrix_to_print);
+	//matrix_to_print.close();
+
 	// create the schur complement matrix
 
 	Mat B;
@@ -2276,6 +2282,15 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	// 2.) No shell matrix, with or without user-supplied preconditioner
 	
+	/*
+	std::cout << "system matrix" << std::endl;
+	system->request_matrix("System Matrix")->print();
+	std::cout << "rhs" << std::endl;
+	system->rhs->print();
+	std::cout << "solution" << std::endl;
+	system->solution->print();
+	*/
+
 	
 	if(es->parameters.get<unsigned int>("preconditioner_type") == 0)
 		rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
@@ -2294,6 +2309,12 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	//system->request_matrix("Preconditioner")->print();
 	//if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
 	//	int ierr = MatView(schur_complement_approx->mat(),PETSC_VIEWER_STDOUT_SELF);
+
+	/*
+	std::cout << "post solution" << std::endl;
+	system->solution->print();
+	*/
+
 
 	int num_outer_its = 0;	
 	int num_inner_velocity_its = 0;
