@@ -1626,6 +1626,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 				flux_values_1d[i] = ns_assembler->calculate_flux(tree_id_to_boundary_id[i]);
 				pressure_values_1d[i] = ns_assembler->calculate_pressure(tree_id_to_boundary_id[i]);			
 			}
+
 		}
 		else
 		{

@@ -404,6 +404,7 @@ private:
 	std::string input_file;
 	std::string input_file_particle;
 	std::ostringstream output_folder;
+	std::ostringstream restart_folder;
 	GetPot infile;
 	GetPot infileparticle;
 	GetPot comm_line;

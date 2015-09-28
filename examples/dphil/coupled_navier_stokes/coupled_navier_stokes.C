@@ -311,18 +311,25 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	if(restart)
 	{
-		std::cout << "Reading in data for restart." << std::endl;
 		std::ostringstream file_name;
 		std::ostringstream file_name_es;
 		std::ostringstream file_name_mesh;
 
-		file_name << output_folder.str() << "out_3D";
+		std::cout << "restart_folder = " << restart_folder.str() << std::endl;
+
+		//file_name << output_folder.str() << "out_3D";
+		file_name << restart_folder.str() << "out_3D";
  
 		file_name_es << file_name.str() << "_es_" << std::setw(4) 
 			<< std::setfill('0') << es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
 
+		std::cout << "Reading in data for restart from file:" << std::endl;
+		std::cout << "\t" << file_name_es.str() << std::endl;
+
 		unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
 		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
+		std::cout << "Done reading in data." << std::endl;
+		
 	}
 
 
@@ -600,6 +607,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						unsigned int nonlinear_iteration_1d = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						local_linear_iterations = 0;
+
+						double shift_value = 0.;
 					
 						//TEMP : this is to test how the different meshes compare
 						//double before_norm = system_3d->solution->l2_norm();
@@ -625,6 +634,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 								nonlinear_iteration_1d++;
 								es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
 								calculate_1d_boundary_values();
+
+
+								// if we want to shift the boundary conditions, use the last element as the zero
+								// from the first nonlinear iterations, well the second, after the first 3d solution has been solved.
+								if(es->parameters.get<bool> ("shift_pressure_bc"))
+								{
+									if(nonlinear_iteration_1d == 2)
+										shift_value = pressure_values_1d[pressure_values_1d.size()-1];
+
+									for(unsigned int i=1; i< pressure_values_1d.size(); i++)
+									{
+										pressure_values_1d[i] = pressure_values_1d[i] - shift_value;			
+									}
+								}
+
 								picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
 								if(solve_3d_system_iteration(system_3d))
 									break;
@@ -1488,6 +1512,9 @@ void NavierStokesCoupled::read_parameters()
   set_bool_parameter(infile,"increasing_residuals_exit",true);
   set_unsigned_int_parameter(infile,"num_initial_picard",0);
 
+  set_bool_parameter(infile,"shift_pressure_bc",0);
+
+  restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
 
 
 
@@ -2526,7 +2553,7 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 		// write geometry variables later when reading meta data file
 		// write boundary conditions later with Picard class
 		linear_iterations_output_file << "# Results" << std::endl;
-		linear_iterations_output_file << "# timestep\tnonlinear_iteration\tlocal_linear_iterations\tmax_linear_iterations\ttotal_nonlinear_iterations\ttotal_linear_iterations";
+		linear_iterations_output_file << "# timestep\tnonlinear_iteration\tlocal_linear_iterations\tmax_linear_iterations\ttotal_nonlinear_iterations\ttotal_linear_iterations\tnonlinear_residual";
 		linear_iterations_output_file << std::endl;
 	}
 	else
@@ -2535,7 +2562,8 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 																							"\t" << local_linear_iterations << 
 																							"\t" << total_max_iterations << 
 																							"\t" << total_nonlinear_iterations <<
-																							"\t" << total_linear_iterations << std::endl;
+																							"\t" << total_linear_iterations << 
+																							"\t" << es->parameters.get<double> ("last_nonlinear_iterate") << std::endl;
 	}
 }
 
