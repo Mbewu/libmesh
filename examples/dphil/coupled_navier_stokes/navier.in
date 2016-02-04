@@ -88,6 +88,7 @@ impaction_type = 1	#0 - schum, 1 - zhang 1997 (a bit better but not great)
 
 ## some IO data
 output_folder = results/new_results/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files can't have names longer than 80 expanding_pipe/straight_pipe_stab_expand_v50.0_working_small_stretch/
+
 restart_folder = results/new_results/large_system_restart_test/small_timestep/ 
 results_folder_1 = results/new_results/large_system_restart_test/3d_test/		# this is the reference folder
 results_folder_2 = results/supgpspg_convergence/4_comp/
@@ -468,8 +469,8 @@ threed = false
 pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement = 1
-output_no_refinement = 1		#okay this only works for going to coarser mesh
+no_refinement = 0
+output_no_refinement = 0		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
 geometry_type = 4
 problem_type = 0
@@ -520,8 +521,8 @@ newton = true
 viscosity_controlled = false
 max_newton_iterations = 100
 multiply_system_by_dt = false
-restart_time = 0.
-restart_time_step = 0
+restart_time = 0.1
+restart_time_step = 100
 write_interval = 0.01
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0

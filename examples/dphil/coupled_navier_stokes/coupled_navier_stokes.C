@@ -652,6 +652,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 								}
 
 								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+
 								if(solve_3d_system_iteration(system_3d))
 									break;
 				
