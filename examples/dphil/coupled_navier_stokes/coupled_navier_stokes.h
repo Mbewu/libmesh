@@ -164,11 +164,35 @@ typedef struct {
   Mat pressure_laplacian_matrix;
   Mat pressure_laplacian_preconditioner;
   Mat pressure_convection_diffusion_matrix;
+  Mat velocity_matrix;
+  Mat S_approx;
   KSP inner_mass_ksp;
   KSP inner_lap_ksp;
-	Vec temp_vec;
-	Vec temp_vec_2;
+  KSP inner_schur_ksp;
+  KSP inner_velocity_ksp;
+  Vec temp_vec;
+  Vec temp_vec_2;
+  Vec temp_vec_3;
+  Vec lsc_scale;
+  Mat lsc_laplacian_matrix;
+  Vec lsc_stab_alpha_D_inv;
 } NSShellPC;
+
+typedef struct {
+  Mat velocity_matrix;
+  Mat S_approx;
+  Mat A;
+  Mat Bt;
+  Mat B;
+  Mat C;
+  IS velocity_is;
+  IS pressure_is;
+  KSP inner_schur_ksp;
+  KSP inner_velocity_ksp;
+  Vec temp_vec;
+  Vec temp_vec_2;
+  Vec temp_vec_3;
+} SIMPLEShellPC;
 
 /* Define context for user-provided matrix A_p = BQ^-1Bt */
 
@@ -187,13 +211,30 @@ typedef struct {
 
 /* Declare routines for user-provided preconditioner */
 extern PetscErrorCode ShellPCCreate(NSShellPC**);
+extern PetscErrorCode ShellPCCreate(SIMPLEShellPC**);
 extern PetscErrorCode PressureShellPCSetUp(PC,Mat,KSP);
 extern PetscErrorCode PressureShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCDShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
-extern PetscErrorCode ShellPCDestroy(PC);
+extern PetscErrorCode MonolithicShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode Monolithic2ShellPCSetUp(PC,Mat,Vec,Vec,KSP);
+extern PetscErrorCode MonolithicShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode LSCShellPCSetUp(PC,KSP);
+extern PetscErrorCode LSCShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode LSCScaledShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode LSCScaledShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode LSCScaledStabilisedShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode SIMPLEShellPCSetUp(PC,IS,IS,KSP);
+extern PetscErrorCode SIMPLECShellPCSetUp(PC,IS,IS,KSP);
+extern PetscErrorCode SIMPLEShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode SIMPLERShellPCApply(PC,Vec x,Vec y);
+extern PetscErrorCode NSShellPCDestroy(PC);
+extern PetscErrorCode NSSIMPLEShellPCDestroy(PC);
+
+
 
 /* Declare routines for user-provided A_p = BQ^-1Bt */
 extern PetscErrorCode MatShellMultFull(Mat,Vec,Vec);
@@ -339,6 +380,12 @@ public:
 
 	void construct_petsc_options_string();
 
+	int setup_preconditioners(TransientLinearImplicitSystem * system, Mat& B);
+
+	int compute_and_output_eigenvalues(TransientLinearImplicitSystem * system);
+
+	void setup_is_simple (TransientLinearImplicitSystem * sys, PC my_pc);
+
 
 private:
 
@@ -404,6 +451,7 @@ private:
 	std::string input_file;
 	std::string input_file_particle;
 	std::ostringstream output_folder;
+	std::ostringstream restart_folder;
 	GetPot infile;
 	GetPot infileparticle;
 	GetPot comm_line;
@@ -461,6 +509,7 @@ private:
 	int total_max_iterations;
 	int stokes_gmres_iterations;
 	bool shell_pc_created;
+	bool mono_shell_pc_created;
 
 	// preconditioner stuff
 	PetscMatrix<Number>* pressure_mass_matrix;
@@ -469,7 +518,15 @@ private:
 	PetscMatrix<Number>* pressure_convection_diffusion_matrix;
 	PetscMatrix<Number>* schur_complement_approx;
 	PetscMatrix<Number>* velocity_mass_matrix;
+	PetscMatrix<Number>* velocity_matrix;
+
+	// Mats for submatrices of SIMPLE-type preconditioners
+	IS velocity_is;
+	IS pressure_is;
+	Vec non_zero_cols;
+	Vec non_zero_rows;
 	NSShellPC  *shell;    /* user-defined preconditioner context */
+	SIMPLEShellPC  *simple_shell;    /* user-defined preconditioner context */
 
 	PCD2ShellMatrixCtx mat_ctx;
 

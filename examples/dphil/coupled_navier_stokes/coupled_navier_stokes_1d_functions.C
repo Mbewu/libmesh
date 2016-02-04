@@ -791,6 +791,8 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	unsigned int num_generations_1 = es->parameters.get<unsigned int> ("num_generations_1");
 	unsigned int num_generations_2 = es->parameters.get<unsigned int> ("num_generations_2");
 	unsigned int num_generations_3 = es->parameters.get<unsigned int> ("num_generations_3");
+	unsigned int num_generations_4 = es->parameters.get<unsigned int> ("num_generations_4");
+
 
 	double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
 
@@ -893,12 +895,52 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			cell_vertices.push_back(segment);
 
 			unsigned int num_generations_local = num_generations_1;
-			if(i==1)
-				num_generations_local = num_generations_1;
-			else if(i==2)
-				num_generations_local = num_generations_2;
-			else if(i==3)
-				num_generations_local = num_generations_3;
+
+			if(es->parameters.get<unsigned int> ("random_1d_generations"))
+			{
+				//create a random number between 1 and random_1d_generations
+				// num_generations_local in the range 1 - es->parameters.get<unsigned int> ("random_1d_generations")
+				num_generations_local = rand() % es->parameters.get<unsigned int> ("random_1d_generations") + 1;  
+				std::cout << "num_generations_local = " << num_generations_local << std::endl;
+			}
+			else if(!es->parameters.get<std::string> ("num_generations_string").empty())
+			{
+				if(es->parameters.get<std::string> ("num_generations_string").length() < es->parameters.get<unsigned int> ("num_1d_trees"))
+				{
+					std::cout << "not enough digits in string to specify generations." << std::endl;
+					std::cout << "num_generations_string.length = " << es->parameters.get<std::string> ("num_generations_string").length() << std::endl;
+					std::cout << "while number of outlets is = " << es->parameters.get<unsigned int> ("num_1d_trees") << std::endl;
+					std::cout << "EXITING..." << std::endl;
+					std::exit(0);
+				}
+
+				std::string sym(1, es->parameters.get<std::string> ("num_generations_string")[i-1]);
+				const char* x = sym.c_str();
+				std::istringstream myStream(x);
+				myStream >> num_generations_local;
+
+				if(num_generations_local < 1)
+				{
+					std::cout << "cannot have fewer than 1 generation." << std::endl;
+					std::cout << "num_generations_local = " << num_generations_local << std::endl;
+					std::cout << "EXITING..." << std::endl;
+					std::exit(0);
+				}
+
+				std::cout << "num_generations_local = " << num_generations_local << std::endl;
+			}
+			else
+			{
+				if(i==1)
+					num_generations_local = num_generations_1;
+				else if(i==2)
+					num_generations_local = num_generations_2;
+				else if(i==3)
+					num_generations_local = num_generations_3;
+				else if(i==4)
+					num_generations_local = num_generations_4;
+			}
+				
 
 			// for each element/segment, assuming same numbering convention
 			// 0 - parent elem no, 1 - daughter elem no 1, 2 - daughter elem no 2
@@ -1626,6 +1668,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 				flux_values_1d[i] = ns_assembler->calculate_flux(tree_id_to_boundary_id[i]);
 				pressure_values_1d[i] = ns_assembler->calculate_pressure(tree_id_to_boundary_id[i]);			
 			}
+
 		}
 		else
 		{

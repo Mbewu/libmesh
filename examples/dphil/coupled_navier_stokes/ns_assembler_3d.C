@@ -10,6 +10,7 @@ using namespace libMesh;
 // these values are just magnitude values
 void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values = std::vector<double>(),
+											std::vector<double> flow_values = std::vector<double>(),
 											std::vector<double> previous_flow_values = std::vector<double>(),
 											std::vector<double> previous_previous_flow_values = std::vector<double>()) 
 {
@@ -18,6 +19,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 	//resize so that doesn't break ;)
 	pressure_values.resize(boundary_ids.size());
+	flow_values.resize(boundary_ids.size());
 	const int problem_type    = es->parameters.get<unsigned int>("problem_type");
 	
 	// dirichlet input
@@ -31,7 +33,26 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 			
 		bc_value[boundary_ids[0]] = 0;	//dirichlet will be handled outside this class	
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)
-			bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+				{
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+					std::cout << "pressure[" << i << "] = " << pressure_values[i] << std::endl;
+					std::cout << "flow_values[" << i << "] = " << flow_values[i] << std::endl;
+					std::cout << "bc_value[" << i << "] = " << bc_value[boundary_ids[i]] << std::endl;
+				}
+				else
+				{
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+					std::cout << "oops" << std::endl;
+				}
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
 
 		//here we calculate the interpolated flow value
 		//if steady then this is just 1.
@@ -79,8 +100,19 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 		bc_value[boundary_ids[0]] = pressure_values[0];;//"0.00675896";	//"0.008";
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)
-			bc_value[boundary_ids[i]] = pressure_values[i];//"-100.0";
-
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+				else
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
+		
 
 		//here we calculate the interpolated flow value
 		if(es->parameters.get<bool>("neumann_stabilised"))
@@ -115,8 +147,18 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 		bc_value[boundary_ids[0]] = pressure_values[0];	//"0.008";
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)	
-			bc_value[boundary_ids[i]] = pressure_values[i];
-
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+				else
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
 
 		//here we calculate the interpolated flow value
 		if(es->parameters.get<bool>("neumann_stabilised"))
@@ -889,7 +931,7 @@ void NSAssembler3D::assemble_preconditioner ()
 
 	//here we just copy the matrix
 	// the stokes pressure mass matrix preconditioner
-	if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 1)
 	{
 		system->get_matrix("Preconditioner").close();
 	}

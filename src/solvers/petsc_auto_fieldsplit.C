@@ -93,6 +93,7 @@ void petsc_auto_fieldsplit (PC my_pc,
           sys.get_dof_map().local_variable_indices
             (var_idx, sys.get_mesh(), v);
 
+	  // the outer fieldsplit grouping
           std::string group_command = sys_prefix + var_name;
 
           const std::string empty_string;
@@ -115,7 +116,7 @@ void petsc_auto_fieldsplit (PC my_pc,
             }
           else
             {
-							//std::cout << "yeah doing p now" << std::endl; 
+							std::cout << "doing outer  now" << std::endl; 
               indices_to_fieldsplit (sys.comm(), var_idx, my_pc, var_name);
             }
         }
@@ -125,10 +126,105 @@ void petsc_auto_fieldsplit (PC my_pc,
   for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
          i = group_indices.begin(); i != group_indices.end(); ++i)
     {
-			//std::cout << "k doing U" << std::endl;
+			std::cout << "k doing outer group" << std::endl;
       indices_to_fieldsplit(sys.comm(), i->second, my_pc, i->first);
     }
 
+
+
+  if(true)
+  {
+	// do this so that they know what preconditioner to use for the sub systems
+	PetscErrorCode ierr=0;
+	ierr = PCSetUp(my_pc);
+
+
+	// now we want to do the fieldsplit of the sub fieldsplit
+
+	std::cout << "Setting up the IS for the sub fieldsplits." << std::endl;
+
+	PCType pc_type;
+	ierr = PCGetType(my_pc,&pc_type);
+	std::cout << "outer pc type = " << pc_type << std::endl;
+	std::string fieldsplit_string = "fieldsplit";
+	if (pc_type == fieldsplit_string)
+	{
+		std::cout << "yeah..." << std::endl;
+		// loop over the number of dofs, cause this is the possible amount of fieldsplits
+		KSP* subksp;	//subksps
+		PetscInt num_splits;
+		ierr = PCFieldSplitGetSubKSP(my_pc,&num_splits,&subksp);// CHKERRQ(ierr);
+
+		for (unsigned int i = 0; i < num_splits; ++i)
+		{
+			PC sub_pc;
+			ierr = KSPGetPC(subksp[i],&sub_pc);// CHKERRQ(ierr);
+			PCType sub_pc_type;
+			ierr = PCGetType(sub_pc,&sub_pc_type);
+			std::cout << "sub_pc type = " << sub_pc_type << std::endl;
+			std::cout << "hmmm" << std::endl;
+
+			if (sub_pc_type == fieldsplit_string)
+			{
+				// need to extract the pc corresponding to this 
+				sys_prefix = sys_prefix + static_cast<std::ostringstream*>( &(std::ostringstream() << i) )->str() + "_";
+
+				std::map<std::string, std::vector<dof_id_type> > group_indices;
+
+				if (libMesh::on_command_line("--solver_variable_names"))
+				{
+					for (unsigned int v = 0; v != sys.n_vars(); ++v)
+					{
+						const std::string& var_name = sys.variable_name(v);
+
+						std::vector<dof_id_type> var_idx;
+						sys.get_dof_map().local_variable_indices
+						(var_idx, sys.get_mesh(), v);
+
+						// the outer fieldsplit grouping
+						std::string group_command = sys_prefix + var_name;
+
+						const std::string empty_string;
+
+									// JAMES EDIT:
+									// changed so that actually gets the command line bit
+						std::string group_name = libMesh::command_line_next
+						(group_command, empty_string);
+
+
+						if (group_name != empty_string)
+						{
+											//std::cout << "yeah doing " << var_name << " u figuring out now" << std::endl; 
+							std::vector<dof_id_type> &indices =
+							group_indices[group_name];
+							const bool prior_indices = !indices.empty();
+							indices.insert(indices.end(), var_idx.begin(),
+								     var_idx.end());
+							if (prior_indices)
+							std::sort(indices.begin(), indices.end());
+						}
+					}
+				  }
+
+					// want to do groups first
+				  for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
+					 i = group_indices.begin(); i != group_indices.end(); ++i)
+				  {
+							//std::cout << "k doing U" << std::endl;
+				      indices_to_fieldsplit(sys.comm(), i->second, sub_pc, i->first);
+				  }
+			}
+			ierr = KSPSetUp(subksp[i]);// CHKERRQ(ierr);
+			ierr = PCSetUp(sub_pc);
+
+			
+
+			
+		}
+	}
+  }
+
+	std::cout << "hi.."<< std::endl;
 
 	//int ierr = PCSetDiagonalScale(my_pc,sys.solution->vec());
   //CHKERRABORT(sys.comm().get(), ierr);

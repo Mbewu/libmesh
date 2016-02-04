@@ -158,6 +158,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
   DenseMatrix<Number> Ke_pre_laplacian;
   DenseMatrix<Number> Ke_pre_convection_diffusion;
   DenseMatrix<Number> Ke_pre_velocity_mass;
+  DenseMatrix<Number> Ke_pre_velocity;	// just the velocity block, we will copy from Ke.
 
   DenseSubMatrix<Number>
     Kuu(Ke), Kuv(Ke), Kuw(Ke), Kup(Ke),
@@ -177,6 +178,11 @@ void Picard::assemble(ErrorVector&)// error_vector)
   DenseSubMatrix<Number>
     Kuu_pre_velocity_mass(Ke_pre_velocity_mass), Kvv_pre_velocity_mass(Ke_pre_velocity_mass), Kww_pre_velocity_mass(Ke_pre_velocity_mass);
 
+  DenseSubMatrix<Number>
+    Kuu_pre_velocity(Ke_pre_velocity), Kuv_pre_velocity(Ke_pre_velocity), Kuw_pre_velocity(Ke_pre_velocity), Kup_pre_velocity(Ke_pre_velocity),
+    Kvu_pre_velocity(Ke_pre_velocity), Kvv_pre_velocity(Ke_pre_velocity), Kvw_pre_velocity(Ke_pre_velocity), Kvp_pre_velocity(Ke_pre_velocity),
+    Kwu_pre_velocity(Ke_pre_velocity), Kwv_pre_velocity(Ke_pre_velocity), Kww_pre_velocity(Ke_pre_velocity), Kwp_pre_velocity(Ke_pre_velocity),
+    Kpu_pre_velocity(Ke_pre_velocity), Kpv_pre_velocity(Ke_pre_velocity), Kpw_pre_velocity(Ke_pre_velocity), Kpp_pre_velocity(Ke_pre_velocity);
 
   DenseSubVector<Number>
     Fu(Fe),
@@ -301,6 +307,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		  Ke_pre_laplacian.resize (n_dofs, n_dofs);
 		  Ke_pre_convection_diffusion.resize (n_dofs, n_dofs);
 		  Ke_pre_velocity_mass.resize (n_dofs, n_dofs);
+		  Ke_pre_velocity.resize (n_dofs, n_dofs);
 		  Fe.resize (n_dofs);
 		  Fe_coupled_p.resize (n_dofs);
 		  Fe_coupled_u.resize (n_dofs);
@@ -336,10 +343,43 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		  Kpp_pre_laplacian.reposition (p_var*n_u_dofs, p_var*n_u_dofs, n_p_dofs, n_p_dofs);
 		  Kpp_pre_convection_diffusion.reposition (p_var*n_u_dofs, p_var*n_u_dofs, n_p_dofs, n_p_dofs);
 
+
+
 		  Kuu_pre_velocity_mass.reposition (u_var*n_u_dofs, u_var*n_u_dofs, n_u_dofs, n_u_dofs);
 		  Kvv_pre_velocity_mass.reposition (v_var*n_v_dofs, v_var*n_v_dofs, n_v_dofs, n_v_dofs);
 			if(threed)
 			  Kww_pre_velocity_mass.reposition (w_var*n_w_dofs, w_var*n_w_dofs, n_w_dofs, n_w_dofs);
+
+
+
+			// the velocity block matrix
+			Kuu_pre_velocity.reposition (u_var*n_u_dofs, u_var*n_u_dofs, n_u_dofs, n_u_dofs);
+		  Kuv_pre_velocity.reposition (u_var*n_u_dofs, v_var*n_u_dofs, n_u_dofs, n_v_dofs);
+		  Kup_pre_velocity.reposition (u_var*n_u_dofs, p_var*n_u_dofs, n_u_dofs, n_p_dofs);
+			if(threed)
+				Kuw_pre_velocity.reposition (u_var*n_u_dofs, w_var*n_u_dofs, n_u_dofs, n_w_dofs);
+
+		  Kvu_pre_velocity.reposition (v_var*n_v_dofs, u_var*n_v_dofs, n_v_dofs, n_u_dofs);
+		  Kvv_pre_velocity.reposition (v_var*n_v_dofs, v_var*n_v_dofs, n_v_dofs, n_v_dofs);
+		  Kvp_pre_velocity.reposition (v_var*n_v_dofs, p_var*n_v_dofs, n_v_dofs, n_p_dofs);
+			if(threed)
+				Kvw_pre_velocity.reposition (v_var*n_v_dofs, w_var*n_v_dofs, n_v_dofs, n_w_dofs);
+
+			if(threed)
+			{
+				Kwu_pre_velocity.reposition (w_var*n_w_dofs, u_var*n_w_dofs, n_w_dofs, n_u_dofs);
+				Kwv_pre_velocity.reposition (w_var*n_w_dofs, v_var*n_w_dofs, n_w_dofs, n_v_dofs);
+				Kww_pre_velocity.reposition (w_var*n_w_dofs, w_var*n_w_dofs, n_w_dofs, n_w_dofs);
+				Kwp_pre_velocity.reposition (w_var*n_w_dofs, p_var*n_w_dofs, n_w_dofs, n_p_dofs);
+			}
+		
+		  Kpu_pre_velocity.reposition (p_var*n_u_dofs, u_var*n_u_dofs, n_p_dofs, n_u_dofs);
+		  Kpv_pre_velocity.reposition (p_var*n_u_dofs, v_var*n_u_dofs, n_p_dofs, n_v_dofs);
+		  Kpp_pre_velocity.reposition (p_var*n_u_dofs, p_var*n_u_dofs, n_p_dofs, n_p_dofs);
+			if(threed)
+				Kpw_pre_velocity.reposition (p_var*n_u_dofs, w_var*n_u_dofs, n_p_dofs, n_w_dofs);
+
+
 
 		  Fu.reposition (u_var*n_u_dofs, n_u_dofs);
 		  Fv.reposition (v_var*n_u_dofs, n_v_dofs);
@@ -419,7 +459,9 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					//std::cout << "h_T = " << h_T << std::endl;
 				}
 				else
+				{
 					sd_param = 0.;
+				}
 
 				// doesn't really help
 				//sd_param *= 100.0;
@@ -738,8 +780,8 @@ void Picard::assemble(ErrorVector&)// error_vector)
 									std::exit(0);
 								}
 
-				        Kuu(i,j) += sd_param*JxW[qp]*((U*dphi[i][qp])*(U*dphi[j][qp]));  // convection
-				        Kvv(i,j) += sd_param*JxW[qp]*((U*dphi[i][qp])*(U*dphi[j][qp]));   // convection
+				        			Kuu(i,j) += sd_param*JxW[qp]*((U*dphi[i][qp])*(U*dphi[j][qp]));  // convection
+				        			Kvv(i,j) += sd_param*JxW[qp]*((U*dphi[i][qp])*(U*dphi[j][qp]));   // convection
 								if(threed){ Kww(i,j) += sd_param*JxW[qp]*((U*dphi[i][qp])*(U*dphi[j][qp]));}   // convection
 								
 							}
@@ -871,6 +913,94 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						Kww_pre_velocity_mass(i,j) += JxW[qp]*phi[i][qp]*phi[j][qp];
 					}
 				}
+
+
+
+
+
+				// temp more preconditioner terms
+				
+				for (unsigned int i=0; i<n_u_dofs; i++)
+      				{
+					for (unsigned int j=0; j<n_u_dofs; j++)
+	      				{
+
+						// *************** Unsteady term i.e. mass matrix ************ //
+						if(unsteady)
+						{
+							Kuu_pre_velocity(i,j) += JxW[qp]/dt*(phi[i][qp]*phi[j][qp]);                // mass matrix term
+							Kvv_pre_velocity(i,j) += JxW[qp]/dt*(phi[i][qp]*phi[j][qp]);                // mass matrix term
+							if(threed) {	Kww_pre_velocity(i,j) += JxW[qp]/dt*(phi[i][qp]*phi[j][qp]); }                // mass matrix term
+						}
+
+
+
+
+
+
+						// *************** Diffusion terms ************** //
+						// We can use the nonsymmetric gradient or the symmetrised gradient
+						if(!symmetric_gradient)
+						{
+							Kuu_pre_velocity(i,j) += JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							Kvv_pre_velocity(i,j) += JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							if(threed) { Kww_pre_velocity(i,j) += JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));}   // diffusion
+						}
+						else
+						{
+							Kuu_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							Kvv_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));   // diffusion
+							if(threed) { Kww_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp]*dphi[j][qp]));}   // diffusion
+
+							Kuu_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](0)*dphi[j][qp](0)));   // diffusion
+							Kuv_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](0)*dphi[j][qp](1)));   // diffusion
+							if(threed) { Kuw_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](0)*dphi[j][qp](2)));}   // diffusion
+							Kvu_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](1)*dphi[j][qp](0)));   // diffusion
+							Kvv_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](1)*dphi[j][qp](1)));   // diffusion
+							if(threed) { Kvw_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](1)*dphi[j][qp](2)));}   // diffusion
+							Kwu_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](2)*dphi[j][qp](0)));   // diffusion
+							Kwv_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](2)*dphi[j][qp](1)));   // diffusion
+							if(threed) { Kww_pre_velocity(i,j) += 0.5*JxW[qp]*(1./Re*(dphi[i][qp](2)*dphi[j][qp](2)));}   // diffusion
+
+						}
+
+
+				    	}
+
+				      	// ************ Pressure gradient term *********************** //
+							// put the density in here
+				      	for (unsigned int j=0; j<n_p_dofs; j++)
+				      	{
+						Kup_pre_velocity(i,j) += -JxW[qp]*psi[j][qp]*dphi[i][qp](0);
+						Kvp_pre_velocity(i,j) += -JxW[qp]*psi[j][qp]*dphi[i][qp](1);
+						if(threed) { Kwp_pre_velocity(i,j) += -JxW[qp]*psi[j][qp]*dphi[i][qp](2); }
+				      	}
+				}
+
+
+			    	for (unsigned int i=0; i<n_p_dofs; i++)
+			    	{
+					  // ************* Continuity equation  ****************************** //
+						// could possibly be NOT multiplied by negative.
+				      	for (unsigned int j=0; j<n_u_dofs; j++)
+				      	{
+						Kpu_pre_velocity(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](0);
+						Kpv_pre_velocity(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](1);
+						if(threed) { Kpw_pre_velocity(i,j) += -JxW[qp]*psi[i][qp]*dphi[j][qp](2); }
+					}
+					// ************** Stabilisation term - should be opposite sign to continuity equation
+					// stabilisation depends on if using P1-P1 or P1-P0
+					// need stabilisation for first tstep of pspg because parameter is zero
+					if(stab || (es->parameters.get<unsigned int> ("t_step") == 1 && pspg))
+					{
+					      	for (unsigned int j=0; j<n_p_dofs; j++)
+						{
+							Kpp_pre_velocity(i,j) += -alpha*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
+						}
+					}
+				}
+
+				
 
 
 
@@ -1670,7 +1800,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 						// but dof_indices_p includes the dofs that are in the whole element.. hmmm
 						// use FEInterface::dofs_on_side
 
-						if((es->parameters.get<unsigned int>("preconditioner_type") == 4 || es->parameters.get<unsigned int>("preconditioner_type") == 5)
+						if((es->parameters.get<unsigned int>("preconditioner_type_3d") == 4 || es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)
 							 && es->parameters.get<unsigned int>("problem_type") != 4)
 						{
 							if(boundary_id == 0)
@@ -1758,7 +1888,12 @@ void Picard::assemble(ErrorVector&)// error_vector)
 							if(bc_type[boundary_id].compare("pressure") == 0 || bc_type[boundary_id].compare("stress") == 0 || bc_type[boundary_id].compare("neumann") == 0)
 							{
 
+								// mean pressure or moghadam resistance
 								double mean_pressure = bc_value[boundary_id];
+								//mean_pressure = 2.;
+	
+								// TEST
+								//std::cout << "resistance = " << mean_pressure << std::endl;
 
 								if(bc_type[boundary_id].compare("neumann") == 0)
 									mean_pressure = 0;
@@ -1809,6 +1944,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 									}
 								}
 
+								std::vector<double> temp_vector(n_u_dofs);
+								std::vector<std::vector<double> > temp_matrix_1(n_u_dofs,std::vector<double>(n_u_dofs));
+								std::vector<std::vector<double> > temp_matrix_2(n_u_dofs,std::vector<double>(n_u_dofs));
+								double extra_terms = 0;
+								double actual_terms = 0;
+								double actual_terms_2 = 0.;
+								//std::cout << "no gps = " << qface.n_points() << std::endl;
+								//std::cout << "no u_dofs = " << n_u_dofs << std::endl;
+
 								for (unsigned int qp=0; qp<qface.n_points(); qp++)
 								{
 
@@ -1835,18 +1979,68 @@ void Picard::assemble(ErrorVector&)// error_vector)
 									}
 
 
-
-									for (unsigned int i=0; i<n_u_dofs; i++)
+									if(!es->parameters.get<bool>("moghadam_coupling"))
 									{
+										for (unsigned int i=0; i<n_u_dofs; i++)
+										{
 							
-								    Fu(i) += -JxW_face[qp]*(((normal_stress(0))*phi_face[i][qp]));
-								    Fv(i) += -JxW_face[qp]*(((normal_stress(1))*phi_face[i][qp]));
-								    if(threed) { Fw(i) += -JxW_face[qp]*(((normal_stress(2))*phi_face[i][qp])); }
+									    		Fu(i) += -JxW_face[qp]*(((normal_stress(0))*phi_face[i][qp]));
+										    	Fv(i) += -JxW_face[qp]*(((normal_stress(1))*phi_face[i][qp]));
+									    		if(threed) { Fw(i) += -JxW_face[qp]*(((normal_stress(2))*phi_face[i][qp])); }
+										}
 									}
-		
+									else
+									{
+										// for moghadam we need a sub loop over quad points to do a 
+
+										for (unsigned int i=0; i<n_u_dofs; i++)
+										{
+
+											temp_vector[i] += JxW_face[qp]*(qface_normals[qp](0)*phi_face[i][qp]);
+
+											
+											for (unsigned int qp2=0; qp2<qface.n_points(); qp2++)
+											{
+
+												for (unsigned int j=0; j<n_u_dofs; j++)
+												{
+													temp_matrix_1[i][j] += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
+													actual_terms += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
+
+													/*
+											    		Kuu(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
+												    	Kuv(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
+											    		if(threed) { Kuw(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](2)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]); }
+											    		Kvu(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]);
+												    	Kvv(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]);
+											    		if(threed) { Kvw(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](2)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]); }
+													if(threed)
+													{										    		
+														Kwu(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](2)*phi_face[j][qp2]);
+													    	Kwv(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](2)*phi_face[j][qp2]);
+												    		Kww(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](2)*phi_face[i][qp] * qface_normals[qp2](2)*phi_face[j][qp2]);
+													}
+													extra_terms +=JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]) + JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]) + JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]);
+													actual_terms += mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
+													*/
+													//std::cout << "extra terms = " <<  << std::endl;
+													//std::cout << "actual term = " << JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]) << std::endl;
+													//std::cout << "mean_pressure = " << mean_pressure << std::endl;
+												}
+												//std::cout << "qp = " << qp << ", qp2 = " << qp2 << std::endl;
+											}
+											
+											
+
+
+										}
+									}
+
+
 
 									if(!convective_form || es->parameters.get<bool>("neumann_stabilised") || es->parameters.get<bool>("bertoglio_stabilisation"))
 									{
+										std::cout << "in the wrong place..." << std::endl;
 										//let us calculate the inflow normal velocity
 										double normal_velocity = 0.0;
 										double previous_normal_velocity = 0.0;
@@ -2208,6 +2402,44 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 								}//end face quad loop
 
+								
+								// moghadam crap
+								/*
+								for (unsigned int i=0; i<n_u_dofs; i++)
+								{
+									for (unsigned int j=0; j<n_u_dofs; j++)
+									{
+
+										Kuu(i,j) += mean_pressure*temp_vector[i] * temp_vector[j];
+										temp_matrix_2[i][j] += mean_pressure*temp_vector[i] * temp_vector[j];
+										actual_terms_2 += mean_pressure*temp_vector[i] * temp_vector[j];
+										
+									}
+								}
+
+								std::cout << "extra_terms = " << extra_terms << std::endl;
+								std::cout << "actual_terms = " << actual_terms << std::endl;
+								std::cout << "actual_terms_2 = " << actual_terms_2 << std::endl;
+
+								std::cout << "temp_matrix_1:" << std::endl;
+								for(unsigned int i=0; i<n_u_dofs; i++)
+								{
+									std::cout << "row " << i;
+									for(unsigned int j=0; j<n_u_dofs; j++)
+										std::cout << " " << temp_matrix_1[i][j];
+									std::cout << std::endl;
+								}
+										
+
+								std::cout << "temp_matrix_2:" << std::endl;
+								for(unsigned int i=0; i<n_u_dofs; i++)
+								{
+									std::cout << "row " << i;
+									for(unsigned int j=0; j<n_u_dofs; j++)
+										std::cout << " " << temp_matrix_2[i][j];
+									std::cout << std::endl;
+								}
+								*/	
 
 
 							}//end if(bc_type[boundary_id].compare("pressure") == 0)
@@ -2337,7 +2569,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 		        {
 		          Kpp(c,c) += penalty;
 		          Fp(c)    += penalty*p_value;
-							if(es->parameters.get<unsigned int>("preconditioner_type"))
+							if(es->parameters.get<unsigned int>("preconditioner_type_3d"))
 							{
 								Kpp_pre_laplacian(c,c) += penalty*Re;
 								Kpp_pre_convection_diffusion(c,c) += penalty;
@@ -2350,6 +2582,55 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 		  } // end boundary condition section
 
+
+
+
+
+
+			// copy entries from Ke to Ke_pre_velocity
+			if((es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
+				&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10 && es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 11))
+			{
+				Ke_pre_velocity = Ke;
+				
+				if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10)
+				{
+					// zero out the pressure bits
+					Kup_pre_velocity.zero();
+					Kvp_pre_velocity.zero();
+					if(threed)
+						Kwp_pre_velocity.zero();
+
+					Kpu_pre_velocity.zero();
+					Kpv_pre_velocity.zero();
+					if(threed)
+						Kpw_pre_velocity.zero();
+
+					Kpp_pre_velocity.zero();
+				}
+				
+
+			}
+			else if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10)
+			{
+				// don't do anything, the stokes part has been assembled
+			}
+			else if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+			{
+
+				// stokes part has been assembled, but need to zero out the pressure bits
+				Kup_pre_velocity.zero();
+				Kvp_pre_velocity.zero();
+				if(threed)
+					Kwp_pre_velocity.zero();
+
+				Kpu_pre_velocity.zero();
+				Kpv_pre_velocity.zero();
+				if(threed)
+					Kpw_pre_velocity.zero();
+
+				Kpp_pre_velocity.zero();
+			}
 
 
 
@@ -2386,8 +2667,19 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					{
 						//if not constrained dof
 						if(!dof_map.is_constrained_dof(dof_indices[i]))
+						{
 							system->matrix->add(dof_indices[i],pressure_1d_index,Fe_coupled_p(i));
+							if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+								system->get_matrix("Preconditioner").add(dof_indices[i],pressure_1d_index,Fe_coupled_p(i));
+								
+						}
 					}
+
+					
 
 
 					//flux coupling - only in row corresponding to 1d dof is how it is defined
@@ -2399,7 +2691,15 @@ void Picard::assemble(ErrorVector&)// error_vector)
 					{
 						//if not constrained dof
 						if(!dof_map.is_constrained_dof(dof_indices[i]))
+						{
 							system->matrix->add(flux_1d_index,dof_indices[i],Fe_coupled_u(i));
+							if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+								|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+								system->get_matrix("Preconditioner").add(flux_1d_index,dof_indices[i],Fe_coupled_u(i));
+						}
 					}
 
 					// reset to zero so that isn't used in next loop.
@@ -2417,18 +2717,24 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				//hmm really not sure bout this last argument but it works
 				//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
 				dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,true);
-				//dof_map.constrain_element_matrix (Ke_pre_velocity_mass, dof_indices,false);
+				dof_map.constrain_element_matrix (Ke_pre_velocity_mass, dof_indices,false);
 				//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);				
 
 				system->matrix->add_matrix (Ke, dof_indices);
 				system->rhs->add_vector (Fe, dof_indices);
-				if(es->parameters.get<unsigned int>("preconditioner_type"))
+				if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 				{
 					system->get_matrix("Pressure Mass Matrix").add_matrix (Ke_pre_mass, dof_indices);
 					system->get_matrix("Pressure Laplacian Matrix").add_matrix (Ke_pre_laplacian, dof_indices);
 					system->get_matrix("Pressure Convection Diffusion Matrix").add_matrix (Ke_pre_convection_diffusion, dof_indices);
 					system->get_matrix("Velocity Mass Matrix").add_matrix (Ke_pre_velocity_mass, dof_indices);
 					system->get_matrix("Preconditioner").add_matrix (Ke, dof_indices);
+
+					// don't use any boundary conditions... for the stokes preconditioners only assemble once
+					dof_map.constrain_element_matrix (Ke_pre_velocity, dof_indices,true);
+					system->get_matrix("Velocity Matrix").add_matrix (Ke_pre_velocity, dof_indices);
+					
+					
 				}
 
 				// ***************************************************************** //
@@ -2485,7 +2791,7 @@ void Picard::assemble(ErrorVector&)// error_vector)
 				// now we need to add the pressure dof constraints that were found to be on the inflow dirichlet boundary
 				// doesn't really matter if there is overlap.
 
-				if((es->parameters.get<unsigned int>("preconditioner_type") == 4 || es->parameters.get<unsigned int>("preconditioner_type") == 5)
+				if((es->parameters.get<unsigned int>("preconditioner_type_3d") == 4 || es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)
 					 && es->parameters.get<unsigned int>("problem_type") != 4)
 				{
 					if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 1 || es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 3
@@ -2541,10 +2847,6 @@ void Picard::assemble(ErrorVector&)// error_vector)
 																																					-Ke_pre_convection_diffusion(local_pressure_dof,local_pressure_dof));
 																		
 
-								}
-								else if(es->parameters.get<unsigned int>("pcd_boundary_condition_type") == 4)
-								{
-									// do nothing because laplacian and convection diffusion operators will already have correct diagonal
 								}
 
 							}
@@ -2603,7 +2905,18 @@ void Picard::assemble(ErrorVector&)// error_vector)
 
 
 
-
+	// put ones on the diagonal of the pressure block of the navier stokes matrix preconditioner
+	// preconditioner 9 doesn't use the velocity matrix, takes it from the system matrix
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8  || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+	{
+		const unsigned int p_var = system->variable_number ("p");
+		std::vector<dof_id_type> p_var_idx;
+		system->get_dof_map().local_variable_indices
+			(p_var_idx, system->get_mesh(), p_var);
+		// velocity mass matrix
+		for(unsigned int i=0; i<p_var_idx.size();i++)
+			system->request_matrix("Velocity Matrix")->set(p_var_idx[i],p_var_idx[i],1.0);
+	}
 
 
 

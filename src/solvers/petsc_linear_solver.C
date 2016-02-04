@@ -974,6 +974,14 @@ PetscLinearSolver<T>::solve_simple (SparseMatrix<T>&  matrix_in,
 
 
 
+
+
+
+
+
+
+
+
   // Solve the linear system
   ierr = KSPSolve (_ksp, rhs->vec(), solution->vec());
   LIBMESH_CHKERRABORT(ierr);

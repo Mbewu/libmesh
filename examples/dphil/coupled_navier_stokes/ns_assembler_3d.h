@@ -75,6 +75,7 @@ class NSAssembler3D : public System::Assembly
 		// initialise bc information
 		virtual void init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values,
+											std::vector<double> flow_values,
 											std::vector<double> previous_flux_values,
 											std::vector<double> previous_previous_flux_values);
 
@@ -82,7 +83,7 @@ class NSAssembler3D : public System::Assembly
 		{
 			ErrorVector error;
 			this->assemble(error);
-			if(es->parameters.get<unsigned int>("preconditioner_type"))
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 			{
 				this->assemble_preconditioner();
 			}

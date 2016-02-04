@@ -64,6 +64,7 @@ class NavierStokesAssembler : public System::Assembly
 		double calculate_pressure (const int boundary_id, const int mid_mesh_element=-1);
 		void init_bc(std::vector<double> _flux_values, std::vector<double> _pressure_values = std::vector<double>());
 		void set_coupled(bool _coupled) { coupled = _coupled; };
+		void add_to_matrices(TransientLinearImplicitSystem * system, unsigned int row_number, unsigned int col_number, double value);
 	
 	private:
 		EquationSystems* es;
@@ -73,6 +74,7 @@ class NavierStokesAssembler : public System::Assembly
 		std::vector<double> flux_values;
 		bool coupled;
 		std::vector<unsigned int> subdomains_1d;
+		bool preconditioner;
 };
 
 #endif //__navier_stokes_assembler_assembly_h__

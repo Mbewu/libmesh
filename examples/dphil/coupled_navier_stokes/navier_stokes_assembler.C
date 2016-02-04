@@ -339,6 +339,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			const double in_pressure = es->parameters.get<double> ("in_pressure");
 			const double out_pressure = 0.0;
 
+			//std::cout << "resistance 1d = " << R << std::endl;
+
 			/*
 			std::cout << "I = " << I << std::endl;
 			std::cout << "C = " << C << std::endl;
@@ -417,23 +419,23 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				// ********** PUTTING THE EQUATIONS IN THE MATRIX AND RHS ********* //
 
 				// **** equation 1 - compliance
-	    	system->matrix->add (eqn_1_dof,dof_indices_q[1],1.0);
-	    	system->matrix->add (eqn_1_dof,dof_indices_q[0],-1.0);
+	    	add_to_matrices (system,eqn_1_dof,dof_indices_q[1],1.0);
+	    	add_to_matrices (system,eqn_1_dof,dof_indices_q[0],-1.0);
 
 				if(unsteady)
 				{
-	    		system->matrix->add (eqn_1_dof,dof_indices_p[0],C/dt);
+	    		add_to_matrices (system,eqn_1_dof,dof_indices_p[0],C/dt);
 	    		system->rhs->add (eqn_1_dof,C*old_p0/dt);
 				}
 
 				// **** equation 2 - resistance
-	    	system->matrix->add (eqn_2_dof,dof_indices_q[1],R);
-	    	system->matrix->add (eqn_2_dof,dof_indices_p[1],1.0);
-	    	system->matrix->add (eqn_2_dof,dof_indices_p[0],-1.0);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_q[1],R);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_p[1],1.0);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_p[0],-1.0);
 
 				if(unsteady)
 				{
-	    		system->matrix->add (eqn_2_dof,dof_indices_q[1],I/dt);
+	    		add_to_matrices (system,eqn_2_dof,dof_indices_q[1],I/dt);
 	    		system->rhs->add (eqn_2_dof,I*old_q1/dt);
 				}
 
@@ -451,7 +453,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						if(is_daughter_1)
 						{
 							
-							system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
+							add_to_matrices (system,eqn_3_dof,dof_indices_q[0],-1.0);
 
 							std::cout << "flux dof in 0d = " << eqn_3_dof << std::endl;
 							if(has_sibling)
@@ -460,7 +462,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 								//std::cout << "sibling id daughter1 = " << sibling_el_ids[0] << std::endl;
 								//std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
 								for(unsigned int i=0; i<sibling_el_ids.size(); i++)
-									system->matrix->add (eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
+									add_to_matrices (system,eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
 							}
 			
 							// boundary condition should be on side 0
@@ -482,7 +484,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						}
 						else	// if we are a daughter 2 then we have a sibling and need to apply the pressure continuity condition
 						{
-							system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
+							add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
 							//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
 							//std::cout << "sibling id daughter2 = " << sibling_el_ids[0] << std::endl;
 //							std::cout << "actual val = " << (int)airway_data[current_1d_el_idx][3] + n_initial_3d_elem << std::endl;
@@ -495,13 +497,13 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 							//	std::cout << "couldn't get in" << std::endl;
 
 							for(unsigned int i=0; i<sibling_el_ids.size(); i++)
-								system->matrix->add (eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
+								add_to_matrices (system,eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
 						}
 					}
 					// pressure
 					else if(es->parameters.get<unsigned int> ("bc_type_1d") == 1)
 					{
-		    		system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
+		    		add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
 		    		system->rhs->add (eqn_3_dof,in_pressure);
 					}
 
@@ -511,16 +513,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					if(is_daughter_1)
 					{
 						// conservation of flux
-						system->matrix->add (eqn_3_dof,dof_indices_parent_q[1],1.0);
-						system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
+						add_to_matrices (system,eqn_3_dof,dof_indices_parent_q[1],1.0);
+						add_to_matrices (system,eqn_3_dof,dof_indices_q[0],-1.0);
 						for(unsigned int i=0; i<sibling_el_ids.size(); i++)
-							system->matrix->add (eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
+							add_to_matrices (system,eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
 					}
 					else
 					{
 						// parent pressure cont
-				  	system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
-				  	system->matrix->add (eqn_3_dof,dof_indices_parent_p[1],-1.0);
+				  	add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
+				  	add_to_matrices (system,eqn_3_dof,dof_indices_parent_p[1],-1.0);
 					}
 
 				}
@@ -530,16 +532,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				if(daughter_1_el_idx  == current_el_idx)
 				{
 					//can only be pressure
-	    		system->matrix->add (eqn_4_dof,dof_indices_p[1],1.0);
+	    		add_to_matrices (system,eqn_4_dof,dof_indices_p[1],1.0);
 	    		system->rhs->add (eqn_4_dof,out_pressure);
 
 				}
 				else
 				{
 					//pressure continuity to daughter_1
-	    		system->matrix->add (eqn_4_dof,dof_indices_p[1],1.0);
-	    		system->matrix->add 
-							(eqn_4_dof,dof_indices_daughter_1_p[0],-1.0);
+	    		add_to_matrices (system,eqn_4_dof,dof_indices_p[1],1.0);
+	    		add_to_matrices
+							(system,eqn_4_dof,dof_indices_daughter_1_p[0],-1.0);
 				}
 			
 			}
@@ -559,6 +561,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 	std::cout << "End 0D assembly" << std::endl;
   return;
+}
+
+// This adds values to the system matrix and/or preconditioner
+void NavierStokesAssembler::add_to_matrices (TransientLinearImplicitSystem * system, unsigned int row_number, unsigned int col_number, double value)
+{
+	
+	system->matrix->add (row_number,col_number,value);
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+		system->request_matrix("Preconditioner")->add (row_number,col_number,value);
+	
 }
 
 
