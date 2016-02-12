@@ -424,7 +424,7 @@ petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly 
 # iterative
 #petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
 # General fieldsplit
-petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-8 -ns3d1d_fieldsplit_0_ksp_atol 1e-10 -ns3d1d_fieldsplit_0_ksp_divtol 1e10  -ns3d1d_fieldsplit_0_ksp_max_it 500 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor -log_summary  -ns3d1d_fieldsplit_0_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_fieldsplit_0_ksp_type preonly -ns3d1d_ksp_view -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_0_fieldsplit_1_pc_type lsc -ns3d1d_fieldsplit_0_fieldsplit_1_lsc_pc_type lu' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+#petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-8 -ns3d1d_fieldsplit_0_ksp_atol 1e-10 -ns3d1d_fieldsplit_0_ksp_divtol 1e10  -ns3d1d_fieldsplit_0_ksp_max_it 500 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor -log_summary  -ns3d1d_fieldsplit_0_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_fieldsplit_0_ksp_type preonly -ns3d1d_ksp_view -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_0_fieldsplit_1_pc_type lsc -ns3d1d_fieldsplit_0_fieldsplit_1_lsc_pc_type lu' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 ##### 3D1D inner 1D solver options #####
 # direct
@@ -443,11 +443,11 @@ petsc_3d1d_outer_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu 
 # 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 0
 # 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 0
+preconditioner_type_3d1d = 6 
 multiple_column_solve = true
 reuse_preconditioner = false
-fieldsplit = false
-direct = true
+fieldsplit = true
+direct = false 
 ksp_view = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
@@ -469,8 +469,8 @@ threed = false
 pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement = 0
-output_no_refinement = 0		#okay this only works for going to coarser mesh
+no_refinement = 1
+output_no_refinement = 1		#okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
 geometry_type = 4
 problem_type = 0
@@ -510,6 +510,7 @@ mesh_file = meshes/multi_bifurcation_2x2_medium_extended_double_2.0.msh #
 #mesh_file = meshes/full_no_bdy_labelled.xda
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2.msh
 #mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2x2x2x2x2.msh
+mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
 inflow_bdy_id = 0 	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 1
@@ -521,9 +522,9 @@ newton = true
 viscosity_controlled = false
 max_newton_iterations = 100
 multiply_system_by_dt = false
-restart_time = 0.1
-restart_time_step = 100
-write_interval = 0.01
+restart_time = 0.
+restart_time_step = 0
+write_interval = 5.0
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
@@ -549,4 +550,4 @@ assume_symmetric_tree = false
 calculate_1d_info_at_coupling_nodes = false
 radius_on_edge = false
 resistance_type_1d = 1
-output_folder = results/new_results/results_for_paper/tests/coupled/no_outputs_2_dt_0.1_asym/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+output_folder = results/test1/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
