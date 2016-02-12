@@ -1460,21 +1460,15 @@ void NavierStokesCoupled::read_parameters()
 	set_unsigned_int_parameter(infile,"impaction_type",0);
 
 	set_bool_parameter(infile,"ksp_view",false);
+	set_bool_parameter(infile,"ksp_view_before",false);
 	set_bool_parameter(infile,"nonzero_initial_guess",false);
 	set_bool_parameter(infile,"streamline_diffusion",false);
 	set_bool_parameter(infile,"leaky_lid_driven_cavity",false);
 	set_bool_parameter(infile,"pin_pressure",false);
 
 	set_bool_parameter(infile,"fieldsplit",false);
-	set_bool_parameter(infile,"direct",true);
+	set_bool_parameter(infile,"direct",false);
 
-	set_string_parameter(infile,"petsc_3d_outer_solver_options","");
-	set_string_parameter(infile,"petsc_3d_inner_velocity_solver_options","");
-	set_string_parameter(infile,"petsc_3d_inner_pressure_solver_options","");
-	set_string_parameter(infile,"petsc_3d_schur_mass_solver_options","");
-	set_string_parameter(infile,"petsc_3d_schur_lap_solver_options","");
-	set_string_parameter(infile,"petsc_1d_solver_options","");
-	set_string_parameter(infile,"petsc_solver_options","");
 
 	set_bool_parameter(infile,"mesh_dependent_stab_param",false);
 	set_bool_parameter(infile,"gravemeier_element_length",false);
@@ -1515,15 +1509,42 @@ void NavierStokesCoupled::read_parameters()
   set_bool_parameter(infile,"output_resistance",true);
 
   set_bool_parameter(infile,"increasing_residuals_exit",true);
-  set_unsigned_int_parameter(infile,"num_initial_picard",0);
+  set_unsigned_int_parameter(infile,"max_initial_picard",0);
+  set_double_parameter(infile,"picard_to_newton_threshold",0.1);
 
   set_bool_parameter(infile,"shift_pressure_bc",0);
 
   set_bool_parameter(infile,"compute_eigenvalues",false);
 
-	set_string_parameter(infile,"petsc_3d1d_outer_solver_options","");
+  // petsc options
+	set_string_parameter(infile,"petsc_3d_fieldsplit_solver_options","");
+	set_string_parameter(infile,"petsc_3d_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d_gmres_solver_options","");
+
+
+	set_string_parameter(infile,"petsc_convection_diffusion_solver_options","");
+	set_string_parameter(infile,"petsc_navier_stokes_schur_solver_options","");
+
+	set_string_parameter(infile,"petsc_mass_matrix_solver_options","");
+	set_string_parameter(infile,"petsc_laplacian_solver_options","");
+
+	set_string_parameter(infile,"petsc_1d_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_direct_solver_options","");
 	set_string_parameter(infile,"petsc_3d1d_diagonal_solver_options","");
 	set_string_parameter(infile,"petsc_3d1d_schur_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_gmres_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_gmres_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_fieldsplit_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_inner_1d_solver_options","");
+
+
+	set_string_parameter(infile,"petsc_solver_options","");
+
+  //
 
 	set_unsigned_int_parameter(infile,"random_1d_generations",0);
 	set_string_parameter(infile,"num_generations_string","");
@@ -1581,38 +1602,106 @@ void NavierStokesCoupled::read_parameters()
 		if(sim_3d)
 		{
 
-			// if we are using the monolithic solvers then we just choose between schur diagonal and not
-			if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 6)
+			// figure out if we are doing monolithic simulation or not
+			if(sim_type != 5)
 			{
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_diagonal_solver_options");
-			}
-			else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") > 6)
-			{
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_solver_options");
+				// we need to figure out what 3d preconditioner we are using
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 0)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_direct_solver_options");
+					es->parameters.set<bool> ("direct") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_gmres_solver_options");
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") > 1)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_fieldsplit_solver_options");
+
+
+					// extra navier stokes settings
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_convection_diffusion_solver_options");
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_navier_stokes_schur_solver_options");	
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_mass_matrix_solver_options");		
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_laplacian_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+
+				if(es->parameters.get<bool> ("ksp_view"))
+					petsc_solver_options += " -ns3d_ksp_view";
+				
+
 			}
 			else
 			{
-				// need to fix this part in the case we are doing a partitioned method we still want to take the 
-				if(sim_1d)
-					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_outer_solver_options");
-				else
-					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_outer_solver_options");
+				// we need to figure out what 3d1d monolithic preconditioner we are using
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 0)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_direct_solver_options");
+					es->parameters.set<bool> ("direct") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 1)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_gmres_solver_options");
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 6)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_diagonal_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") > 6)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+
+
+				// now we need to add the navier-stokes specific preconditioner details if doing a fieldsplit monolithic solve
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") >= 6)
+				{
+					if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 0)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_direct_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_gmres_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") > 1)
+					{
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_solver_options");
+
+						// extra navier stokes settings
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_convection_diffusion_solver_options");
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_navier_stokes_schur_solver_options");	
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_mass_matrix_solver_options");		
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_laplacian_solver_options");
+						es->parameters.set<bool> ("fieldsplit") = true;
+					}
+				}
+
+				if(es->parameters.get<bool> ("ksp_view"))
+					petsc_solver_options += " -ns3d1d_ksp_view";
+
+				
 			}
 
 
 
-			if(es->parameters.get<bool> ("fieldsplit"))
-			{
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_inner_velocity_solver_options");
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_inner_pressure_solver_options");	
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_schur_mass_solver_options");		
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_schur_lap_solver_options");			
-			}
 		}
 
 		if(sim_1d)
 		{
-			petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_1d_solver_options");
+
+			// need to figure out if we have a monolithic method
+			if(sim_type != 5)
+			{
+				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_1d_solver_options");
+
+				if(es->parameters.get<bool> ("ksp_view"))
+					petsc_solver_options += " -ns1d_ksp_view";
+			}
+
+			else
+			{
+				// need to figure out if we have a separate solver for the 1d part of the simulation
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") >= 6)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_inner_1d_solver_options");
+					
+			}
 		}
 
 		es->parameters.set<std::string> ("petsc_solver_options") = petsc_solver_options;

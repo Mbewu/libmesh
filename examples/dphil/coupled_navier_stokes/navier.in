@@ -303,29 +303,6 @@ ksp_view = false
 
 ############################################
 
-####### Stokes Preconditioned by pressure mass matrix - AMAZING!
-#stokes_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-10 -ns3d_ksp_pc_side right -ns3d_ksp_diagonal_scale  -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition user -ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_1_ksp_rtol 1e-10 -ns3d_fieldsplit_1_pc_type ml  -ns3d_ksp_monitor -ns3d_fieldsplit_1_ksp_monitor -ns3d_ksp_view'
-
-####### Stokes Preconditioned by pressure mass matrix - exact!
-#stokes_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-10 -ns3d_ksp_pc_side right -ns3d_ksp_diagonal_scale  -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu  -ns3d_ksp_monitor -ns3d_fieldsplit_1_ksp_monitor -ns3d_ksp_view'
-
-
-####### Stokes Preconditioned by pcd mass matrix - exact!
-#stokes_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -ns3d_fieldsplit_0_ksp_monitor -ns3d_fieldsplit_1_ksp_monitor -ns3d_ksp_view'
-
-
-####### Stokes Preconditioned by pcd mass matrix - with hypre for velocity
-#stokes_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -ns3d_fieldsplit_0_ksp_monitor -ns3d_fieldsplit_1_ksp_monitor -ns3d_ksp_view'
-
-####### Stokes Preconditioned by pcd mass matrix - with velocity, pressure in parallel
-#stokes_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor -ns3d_fieldsplit_0_ksp_monitor -ns3d_fieldsplit_1_ksp_monitor -ns3d_ksp_view'
-
-
-#-ns3d_fieldsplit_1_ksp_sub_0_ksp_ksp_monitor
-    
-#stokes_solver_options = '-ns3d_ksp_view -ns3d_ksp_type fgmres  -ns3d_ksp_rtol 1.0e-10 -ns3d_pc_type ml -ns3d_ksp_monitor'
-#stokes_solver_options = '-ns3d_ksp_view -ns3d_ksp_type preonly  -ns3d_ksp_rtol 1.0e-10 -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor'
-#stokes_solver_options = '-ns3d_ksp_view -ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -ns3d_ksp_view'
 
 
 
@@ -337,122 +314,210 @@ ksp_view = false
 
 
 
+#################### 3D solver options ################################
 
-
-##### 3D outer solver options #####
 # General fieldsplit
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-8 -ns3d_ksp_atol 1e-10 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view -ns3d_fieldsplit_1_lsc_pc_type lu'
+petsc_3d_fieldsplit_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_1_pc_type lsc -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor'
+
 # Umfpack
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
+petsc_3d_direct_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor'
+
 # Superlu_dist
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor'
+petsc_3d_direct_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor'
+
 # Euclid (hypre)
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d_pc_hypre_type euclid -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor -ns3d_ksp_view'
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d_pc_hypre_type euclid -ns3d_ksp_pc_side right -ns3d_ksp_monitor'
+petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d_pc_hypre_type euclid -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor'
+
 # ML
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
+#petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor'
+
 # ILU (petsc) 
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ilu -ns3d_ksp_pc_side right -ns3d_ksp_monitor'
-# LSC fieldsplit
-petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-8 -ns3d_ksp_atol 1e-10 -ns3d_ksp_divtol 1e10  -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_ksp_type preonly  -ns3d_fieldsplit_1_pc_type lsc -ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_lsc_pc_type lu'
+#petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_pc_type ilu -ns3d_ksp_pc_side right -ns3d_ksp_monitor'
 
 
-##### 3D inner velocity solver options #####
-# Superlu_dist
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
+
+
+
+
+##### 3D inner velocity convection diffusion solver options #####
+
 # Umfpack
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
+petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package umfpack'
+
+# Superlu_dist
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
+
 # Euclid (hypre)
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type euclid -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres  -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
+
 # ML
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
-petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w  -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.5 -mat_no_inode  -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_ksp_monitor'
+
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w  -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_mg_levels_pc_sor_omega 0.5 -convection_diffusion_ksp_monitor -mat_no_inode '
+
+# using ilu for the amg helps a lot
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 3 -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_ksp_monitor -mat_no_inode '
+
+
+# using ilu for the amg helps a lot (PREFERRED)
+petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 100 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 10 -convection_diffusion_pc_ml_CoarsenScheme Uncoupled -convection_diffusion_pc_ml_EnergyMinimization 2 -convection_diffusion_pc_ml_EnergyMinimizationCheap false -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_pc_mg_Reusable true -convection_diffusion_pc_ml_maxCoarseSize 256 -convection_diffusion_ksp_monitor -mat_no_inode -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 '
+
+
+
+
 # Boomeramg (hypre)
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type boomeramg --ns3d_fieldsplit_0_pc_hypre_boomeramg_cycle_type W -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_down 1 -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_up 4 -ns3d_fieldsplit_0_pc_hypre_boomeramg_relax_weight_all 0.67 -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30  -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type boomeramg --convection_diffusion_pc_hypre_boomeramg_cycle_type W -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_down 1 -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_up 4 -convection_diffusion_pc_hypre_boomeramg_relax_weight_all 0.67 -convection_diffusion_ksp_monitor'
+
+
+
+
+
 
 #### 3D inner pressure solver options #####
-# Superlu_dist
-petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_monitor'
+
 # Umfpack
-petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_ksp_monitor'
+petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonly -navier_stokes_schur_pc_type lu -navier_stokes_schur_pc_factor_mat_solver_package umfpack'
+
+# Superlu_dist
+#petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonly -navier_stokes_schur_pc_type lu -navier_stokes_schur_pc_factor_mat_solver_package superlu_dist'
+
 # Hypre
-#petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type gmres -ns3d_fieldsplit_1_pc_type hypre -ns3d_fieldsplit_1_ksp_rtol 1e-6 -ns3d_fieldsplit_1_ksp_monitor'
+#petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type gmres -navier_stokes_schur_ksp_rtol 1e-6 -navier_stokes_schur_ksp_atol 1e-8 -navier_stokes_schur_pc_type hypre -navier_stokes_schur_ksp_monitor'
 
 
-#### 3D preconditioner options #####
+
+
+
+
+
+#### inner mass solver options #####
+
+# Umfpack
+petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package umfpack'
+
+# Superlu_dist
+#petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package superlu_dist'
+
 # CG ML
-#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns3d_fieldsplit_1_pc_mass_pc_type ml -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_mass_ksp_monitor'
+#petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type cg -mass_matrix_pc_type ml -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
+
 # Jacobi Preonly
-petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type jacobi -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6'
-# Superlu_dist
-#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
-# Umfpack
-#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package umfpack'
+petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type jacobi -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
 
+
+#### inner laplacian solver options ####
+
+# Umfpack
+petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package umfpack'
+
+# Superlu_dist
+#petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package superlu_dist'
 
 # CG ML
-petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type cg -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6' # -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
-# Umfpack
-#petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package umfpack'
-# Superlu_dist
-#petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package superlu_dist'
+#petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-6 -laplacian_ksp_atol 1e-8 -laplacian_pc_type ml  -laplacian_ksp_monitor'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ##### 1D solver options #####
-petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns1d_ksp_view'
+petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
 
 
-##### 3D1D outer solver options #####
-# diaongal
-petsc_3d1d_diagonal_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-12 -ns3d1d_ksp_divtol 1e10  -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type additive -ns3d1d_ksp_monitor -ns3d1d_ksp_view'
-# direct
-petsc_3d1d_outer_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_monitor -log_summary -ns3d1d_ksp_view'
-# ilu iterative
-#petsc_3d_outer_solver_options = '-ns3d1d_ksp_type gmres  -ns3d1d_pc_type hypre -ns3d1d_pc_hypre_type euclid -ns3d1d_ksp_pc_side right -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_monitor -ns3d1d_ksp_view'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### 3D1D solver options #####
+
+# diagonal
+petsc_3d1d_diagonal_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type additive -ns3d1d_ksp_monitor'
+
 # schur
-petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-10 -ns3d1d_ksp_atol 1e-12 -ns3d1d_ksp_divtol 1e10  -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type upper -ns3d1d_pc_fieldsplit_schur_precondition a11 -ns3d1d_ksp_monitor -ns3d1d_ksp_view'
+petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type upper -ns3d1d_ksp_monitor'
 
-# ilu iterative not coupled
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d_pc_hypre_type euclid -ns3d_ksp_pc_side right -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor -ns3d_ksp_view'
 # direct
-#petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_pc_side right -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor -log_summary -ns3d_ksp_view'
+petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right'
+
+# ilu iterative
+petsc_3d1d_gmres_solver_options = '-ns3d1d_ksp_type gmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_pc_type hypre -ns3d1d_pc_hypre_type euclid -ns3d1d_ksp_pc_side right -ns3d1d_ksp_monitor'
 
 
-##### 3D1D inner 3D solver options #####
-# direct
-petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_0_ksp_monitor'
+
+
+
+
+
+##### 3D1D inner navier stokes solver options #####
+
+# UMFPACK
+petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_0_ksp_monitor'
+
+# Superlu_dist
+#petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_0_ksp_monitor'
+
 # iterative
-#petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
+petsc_3d1d_navier_stokes_gmres_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
+
 # General fieldsplit
-#petsc_3d_inner_velocity_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-8 -ns3d1d_fieldsplit_0_ksp_atol 1e-10 -ns3d1d_fieldsplit_0_ksp_divtol 1e10  -ns3d1d_fieldsplit_0_ksp_max_it 500 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor -log_summary  -ns3d1d_fieldsplit_0_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_fieldsplit_0_ksp_type preonly -ns3d1d_ksp_view -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_0_fieldsplit_1_pc_type lsc -ns3d1d_fieldsplit_0_fieldsplit_1_lsc_pc_type lu' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-6 -ns3d1d_fieldsplit_0_ksp_atol 1e-10 -ns3d1d_fieldsplit_0_ksp_divtol 1e10  -ns3d1d_fieldsplit_0_ksp_max_it 500 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+
+
+
+
 
 ##### 3D1D inner 1D solver options #####
+
 # direct
-petsc_3d_inner_pressure_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_1_ksp_monitor'
+petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_1_ksp_monitor'
+
 # iterative pre
-#petsc_3d_inner_pressure_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type hypre -ns3d1d_fieldsplit_1_pc_hypre_type euclid -ns3d1d_fieldsplit_1_ksp_monitor'
-# iterative solve
-#petsc_3d_inner_pressure_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type none -ns3d1d_fieldsplit_1_ksp_rtol 1.0e-10 -ns3d1d_fieldsplit_1_ksp_atol 1e-12 -ns3d1d_fieldsplit_1_ksp_monitor'
+#petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type hypre -ns3d1d_fieldsplit_1_pc_hypre_type euclid -ns3d1d_fieldsplit_1_ksp_monitor'
 
 
-petsc_3d_outer_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_pc_side right -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_monitor -ns3d_ksp_view'
-
-petsc_3d1d_outer_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_monitor -ns3d1d_ksp_view'
 
 
-# 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
-preconditioner_type_3d = 0
-# 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 6 
+
+
+
+
+
+
+
+# 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
+preconditioner_type_3d = 9
+# 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
+preconditioner_type_3d1d = 12
 multiple_column_solve = true
-reuse_preconditioner = false
-fieldsplit = true
-direct = false 
-ksp_view = false
+reuse_preconditioner = true
+ksp_view = true
+ksp_view_before = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
 reynolds_number = 500.0
-streamline_diffusion = false
+streamline_diffusion = true
 stokes = false
 tube_length = 1.
 cube_length_N = 2 #100
@@ -509,16 +574,19 @@ mesh_file = meshes/multi_bifurcation_2x2_medium_extended_double_2.0.msh #
 #mesh_file = meshes/coarse_mesh_labelled.msh
 #mesh_file = meshes/full_no_bdy_labelled.xda
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2.msh
-#mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2x2x2x2x2.msh
+mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2x2x2x2x2.msh
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
+mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2x2x2x2x2.msh
+mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
+#mesh_file = meshes/full_no_bdy_labelled.xda
 inflow_bdy_id = 0 	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 1
 ramp_duration = 1.0
 end_time = 500.0
 period = 1000.0
-dt = 50.0
-newton = true
+dt = 5.0
+newton = false
 viscosity_controlled = false
 max_newton_iterations = 100
 multiply_system_by_dt = false
@@ -533,7 +601,8 @@ output_nondim = true
 sim_type = 5
 reynolds_number_calculation = true
 no_output = false
-num_initial_picard = 1
+max_initial_picard = 5
+picard_to_newton_threshold = 0.005
 shift_pressure_bc = false
 compute_eigenvalues = false
 num_generations_1 = 1
@@ -550,4 +619,5 @@ assume_symmetric_tree = false
 calculate_1d_info_at_coupling_nodes = false
 radius_on_edge = false
 resistance_type_1d = 1
-output_folder = results/test1/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+output_folder = results/test3/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+restart_folder = results/lin_solver_test_unstructured/p1p1/bfbt_big_geom_initial_guess/
