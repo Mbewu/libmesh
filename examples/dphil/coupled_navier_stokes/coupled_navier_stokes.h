@@ -231,8 +231,11 @@ extern PetscErrorCode SIMPLEShellPCSetUp(PC,IS,IS,KSP);
 extern PetscErrorCode SIMPLECShellPCSetUp(PC,IS,IS,KSP);
 extern PetscErrorCode SIMPLEShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode SIMPLERShellPCApply(PC,Vec x,Vec y);
-extern PetscErrorCode NSShellPCDestroy(PC);
-extern PetscErrorCode NSSIMPLEShellPCDestroy(PC);
+extern PetscErrorCode NSShellDestroy(PC);
+extern PetscErrorCode SIMPLEShellDestroy(PC);
+
+extern PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
+extern PetscErrorCode custom_inner_pressure_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
 
 
 
@@ -376,7 +379,6 @@ public:
 	void output_coupling_points();
 
 
-	//PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
 
 	void construct_petsc_options_string();
 
