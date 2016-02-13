@@ -528,6 +528,7 @@ private:
 	Vec non_zero_cols;
 	Vec non_zero_rows;
 	NSShellPC  *shell;    /* user-defined preconditioner context */
+	NSShellPC  *mono_shell;    /* user-defined preconditioner context */
 	SIMPLEShellPC  *simple_shell;    /* user-defined preconditioner context */
 
 	PCD2ShellMatrixCtx mat_ctx;

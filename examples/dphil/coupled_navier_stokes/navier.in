@@ -510,7 +510,7 @@ petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 12
+preconditioner_type_3d1d = 10
 multiple_column_solve = true
 reuse_preconditioner = true
 ksp_view = true
@@ -584,7 +584,7 @@ inflow_bdy_id = 0 	#vmtk labels the outlets, but you can't really renuber them s
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 1
 ramp_duration = 1.0
-end_time = 500.0
+end_time = 10.0
 period = 1000.0
 dt = 5.0
 newton = false
@@ -620,5 +620,5 @@ assume_symmetric_tree = false
 calculate_1d_info_at_coupling_nodes = false
 radius_on_edge = false
 resistance_type_1d = 1
-output_folder = results/test3/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+output_folder = results/test4/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
 restart_folder = results/lin_solver_test_unstructured/p1p1/bfbt_big_geom_initial_guess/

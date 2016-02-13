@@ -716,12 +716,23 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 	}
 
 	// ******** WE NEED TO ADD THE PRECONDITIONER MATRIX POSSIBLY ********** //
+
+	if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
+		system->add_matrix("Pressure Laplacian Matrix");
+
+	if(es->parameters.get<bool>("assemble_pressure_mass_matrix")
+		|| es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix"))
+		system->add_matrix("Pressure Mass Matrix");
+
+
+	if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
+		system->add_matrix("Pressure Convection Diffusion Matrix");
+
+	if(es->parameters.get<bool>("assemble_velocity_mass_matrix"))
+		system->add_matrix("Velocity Mass Matrix");
+
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 	{
-		system->add_matrix("Pressure Laplacian Matrix");
-		system->add_matrix("Pressure Mass Matrix");
-		system->add_matrix("Pressure Convection Diffusion Matrix");
-		system->add_matrix("Velocity Mass Matrix");
 		system->add_matrix("Preconditioner");
 		system->add_matrix("Velocity Matrix");	// a full matrix with only the velocity block
 	}
@@ -2146,45 +2157,29 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	system->update();
 
 	// delete matrices after solve
-
-	std::cout << "k" << std::endl;
-	if(es->parameters.get<unsigned int>("preconditioner_type_3d") != 0 && es->parameters.get<unsigned int>("preconditioner_type_3d") != 8)
+	// only the pressure convection diffusion matrix and the pressure laplacian change at each step the others we don't need to delete
+	if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
 	{
-		
-		delete pressure_mass_matrix;
-		delete scaled_pressure_mass_matrix;
-		delete pressure_laplacian_matrix;
 		delete pressure_convection_diffusion_matrix;
-		delete velocity_mass_matrix;
-
-		// also zero the assemble bits for next time
-		std::cout << "yas queen 1" << std::endl;
-		system->request_matrix("Pressure Mass Matrix")->zero();
-		std::cout << "yas queen 2" << std::endl;
-		system->request_matrix("Pressure Laplacian Matrix")->zero();
-		std::cout << "yas queen 3" << std::endl;
 		system->request_matrix("Pressure Convection Diffusion Matrix")->zero();
-		std::cout << "yas queen 4" << std::endl;
-		system->request_matrix("Velocity Mass Matrix")->zero();
-		std::cout << "yas queen 5" << std::endl;
-		//system->request_matrix("Velocity Matrix")->close();
-		//system->request_matrix("Velocity Matrix")->zero();
-		//std::cout << "yas queen 6" << std::endl;
-
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)
-		{
-			ierr = MatDestroy(&B); CHKERRQ(ierr);
-		}
-  	//ierr = MatDestroy(&mat_ctx->pressure_laplacian_matrix);CHKERRQ(ierr);
-
-
 	}
 
+	if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
+	{
+		delete pressure_laplacian_matrix;
+		system->request_matrix("Pressure Laplacian Matrix")->zero();
+	}
+
+	// delete the shell matrix from pcd 2.0
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)
+	{
+		ierr = MatDestroy(&B); CHKERRQ(ierr);
+	}
+
+
+	// the navier stokes 3d1d preconditioners need to be deleted and zeroed
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
-			&& es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9)
 	{
 
 		std::cout << "hiya" << std::endl;
@@ -2197,6 +2192,35 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 
 
+	// the navier stokes 3d1d preconditioners need to be deleted, not zeroed cause not reassembled
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+	{
+
+		std::cout << "hiya" << std::endl;
+		delete velocity_matrix;
+		std::cout << "hmmm" << std::endl;
+	}
+
+	// the navier stokes 3d1d preconditioners need to be deleted and zeroed
+	if((es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+		&& es->parameters.get<bool>("multiple_column_solve"))
+	{
+
+		std::cout << "hiya" << std::endl;
+		VecDestroy(&non_zero_rows);
+		VecDestroy(&non_zero_cols);
+		std::cout << "hmmm" << std::endl;
+
+	}
+
+
+
+
+	// delete the IS's we created in the SIMPLE paradigm
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 10 
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d") == 11
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d") == 12)
@@ -2243,7 +2267,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// we make sure not to put the 
 
 
-	  PetscErrorCode ierr;
+	  	PetscErrorCode ierr;
 
 		//get petsc solver
 		PetscLinearSolver<Number>* system_linear_solver =
@@ -2255,7 +2279,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 
-		std::cout << "Setting up Preconditioner." << std::endl;
+		std::cout << "Setting up Diagonal Preconditioner." << std::endl;
 		int num_splits = 0;
 		ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 
@@ -2271,17 +2295,17 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		// 1.) We need to take the 1D matrix from the system matrix and put it in the preconditioner matrix
 	}
+	// note we don't need to do anything for the schur 0D (12) preconditioner as this is all specified in the command line
 	else if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
 	{
 		// set up some stuff for the velocity preconditioner
 		// need to extract the navier stokes block and add ones on the diagonal of the pressure bit
 
 
-		std::cout << "Constructing submatrices." << std::endl;
+		std::cout << "Constructing submatrix for monolithic schur complement approximation." << std::endl;
 		const unsigned int u_var = system->variable_number ("u");
 		const unsigned int v_var = system->variable_number ("v");
 		unsigned int w_var = 0;
@@ -2289,18 +2313,11 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			w_var = system->variable_number ("w");
 		const unsigned int p_var = system->variable_number ("p");
 
-		const unsigned int Q_var = system->variable_number ("Q");
-		const unsigned int P_var = system->variable_number ("P");
+		std::vector<dof_id_type> 
+			NS_var_idx,	u_var_idx, v_var_idx, w_var_idx, p_var_idx;
 
 
-
-		std::vector<dof_id_type> NS_var_idx;
-		std::vector<dof_id_type> u_var_idx;
-		std::vector<dof_id_type> v_var_idx;
-		std::vector<dof_id_type> w_var_idx;
-		std::vector<dof_id_type> p_var_idx;
-		std::vector<dof_id_type> Q_var_idx;
-		std::vector<dof_id_type> P_var_idx;
+		// get the NS dofs
 		system->get_dof_map().local_variable_indices
 			(u_var_idx, system->get_mesh(), u_var);
 		system->get_dof_map().local_variable_indices
@@ -2313,12 +2330,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		system->get_dof_map().local_variable_indices
 			(p_var_idx, system->get_mesh(), p_var);
 
-		system->get_dof_map().local_variable_indices
-			(Q_var_idx, system->get_mesh(), Q_var);
-		system->get_dof_map().local_variable_indices
-			(P_var_idx, system->get_mesh(), P_var);
 
-		// concatenate all velocity dofs
+		// concatenate all velocity dofs and then sort
 		NS_var_idx.insert(NS_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
 		NS_var_idx.insert(NS_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
 		NS_var_idx.insert(NS_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
@@ -2326,54 +2339,69 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		std::sort(NS_var_idx.begin(),NS_var_idx.end());
 
+		// extract the correct matrix
+		// for schur stokes (10) we need the stokes matrix that is assembled into Velocity Matrix
+		// for schur velocity (8) we need the velocity only matrix that is assembled into Velocity Matrix
+		// for schur stokes velocity (11) we need the stokes velocity only matrix that is assembled into Velocity Matrix
+		// for the other methods we just require the system matrix
 		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
 		{
 			velocity_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-			//system->request_matrix("Velocity Matrix")->close();
-			//system->request_matrix("Velocity Matrix")->add(-.5,*system->request_matrix("Velocity Matrix"));
-			std::cout << "hey babe?" << std::endl;
-			//std::exit(0);
 			system->request_matrix("Velocity Matrix")->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
 			velocity_matrix->close();
 		}
-		else if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 12)
+		else
 		{
 
 			velocity_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 			system->request_matrix("System Matrix")->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
 			velocity_matrix->close();
 		}
-		// don't need a matrix for preconditioner_type 12
 	
-		// figure out which are the pressure dofs on the boundary. then figure out how they fit into the 
-		// submatrix...
-		
 	
 
 
 
 		// set up a global Vec saying which columns have entries in the B1 matrix
-		
+		// remember we only need to do this once, hence the !mono_shell_pc_created
+
 		if(es->parameters.get<bool>("multiple_column_solve"))
 		{
+			std::cout << "Identifying rows and columns of submatrix involved in monolithic schur complement." << std::endl;
+
+			// set up some
+			const unsigned int Q_var = system->variable_number ("Q");
+			const unsigned int P_var = system->variable_number ("P");
+
+			std::vector<dof_id_type> 
+				Q_var_idx, P_var_idx;
+
+			system->get_dof_map().local_variable_indices
+				(Q_var_idx, system->get_mesh(), Q_var);
+			system->get_dof_map().local_variable_indices
+				(P_var_idx, system->get_mesh(), P_var);
 
 			PetscInt n_col = Q_var_idx.size() + P_var_idx.size();
 
 			std::vector<dof_id_type> pressure_coupling_dofs;
 			std::vector<dof_id_type> flux_coupling_dofs;
+
 			const MeshBase& mesh = es->get_mesh();
-			const unsigned int p_var = system->variable_number ("P");
-			const unsigned int q_var = system->variable_number ("Q");
 			const DofMap & dof_map = system->get_dof_map();
+
 			std::vector<dof_id_type> dof_indices;
 			std::vector<dof_id_type> dof_indices_p;
 			std::vector<dof_id_type> dof_indices_q;
+
+
 
 			MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
 			const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
 						
 
+			// loop over the 1d elements and figure out what the P and Q dofs on the coupling boundary are
+			// put these dofs into pressure_coupling_dofs and flux_coupling_dofs
 			for ( ; el != end_el; ++el)
 			{
 				const Elem* elem = *el;
@@ -2389,17 +2417,15 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 						if(boundary_ids.size() > 0) 
 						{ 
 
-							
 							// boundary conditions that are not inflow or walls or ends of airways
 							if(boundary_ids[0] > 0 && boundary_ids[0] < 1000)
 							{	     
-								std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
-								// Get the degree of freedom indices for the
-								// current element.
-								dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+								// Get the pressure and flow dof indices for the current element.
+								dof_map.dof_indices (elem, dof_indices_p, P_var);
 								pressure_coupling_dofs.push_back(dof_indices_p[0]);
 
-								dof_map.dof_indices (elem, dof_indices_q, q_var);
+								dof_map.dof_indices (elem, dof_indices_q, Q_var);
 								flux_coupling_dofs.push_back(dof_indices_q[0]);
 
 							}
@@ -2408,17 +2434,15 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				}
 			}
 
-			std::cout << "pressure coupling dofs: " << std::endl;
-			for(unsigned int i=0; i<pressure_coupling_dofs.size(); i++)
-			{
-				std::cout << "pressure_coupling_dofs[" << i <<"] = " << pressure_coupling_dofs[i] << std::endl;
-			}
+
 	
+			// now we have the global dof positions of the coupling dofs, we want to find where they occur in the local 1D block
 			std::vector<dof_id_type> PQ_var_idx;
 			PQ_var_idx.insert(PQ_var_idx.end(), P_var_idx.begin(), P_var_idx.end() );
 			PQ_var_idx.insert(PQ_var_idx.end(), Q_var_idx.begin(), Q_var_idx.end() );
 			std::sort(PQ_var_idx.begin(),PQ_var_idx.end());
 
+			// set up the petsc Vec that is needed
 			ierr = VecCreate(PETSC_COMM_WORLD,&non_zero_cols); CHKERRQ(ierr);
 			ierr = VecSetSizes(non_zero_cols, pressure_coupling_dofs.size(), pressure_coupling_dofs.size()); CHKERRQ(ierr);
 			ierr = VecSetFromOptions(non_zero_cols); CHKERRQ(ierr);	
@@ -2427,7 +2451,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			ierr = VecSetSizes(non_zero_rows, flux_coupling_dofs.size(), flux_coupling_dofs.size()); CHKERRQ(ierr);
 			ierr = VecSetFromOptions(non_zero_rows); CHKERRQ(ierr);	
 
-		  std::vector<dof_id_type>::iterator p;
+		  	std::vector<dof_id_type>::iterator p;
 			unsigned int pressure_counter = 0;
 			unsigned int flux_counter = 0;
 			for(unsigned int i=0; i<PQ_var_idx.size(); i++)
@@ -2436,7 +2460,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				p = std::find (pressure_coupling_dofs.begin(), pressure_coupling_dofs.end(), PQ_var_idx[i]);
 				if (p != pressure_coupling_dofs.end())
 				{
-		    	VecSetValue(non_zero_cols,pressure_counter,i,INSERT_VALUES);
+		    		VecSetValue(non_zero_cols,pressure_counter,i,INSERT_VALUES);
 					pressure_counter++;
 				}
 
@@ -2444,49 +2468,23 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				p = std::find (flux_coupling_dofs.begin(), flux_coupling_dofs.end(), PQ_var_idx[i]);
 				if (p != flux_coupling_dofs.end())
 				{
-		    	VecSetValue(non_zero_rows,flux_counter,i,INSERT_VALUES);
+		    		VecSetValue(non_zero_rows,flux_counter,i,INSERT_VALUES);
 					flux_counter++;
 				}
 			}
 
+			// put the values into the Vec
 			ierr = VecAssemblyBegin(non_zero_cols); CHKERRQ(ierr);
 			ierr = VecAssemblyEnd(non_zero_cols); CHKERRQ(ierr);
 
 			ierr = VecAssemblyBegin(non_zero_rows); CHKERRQ(ierr);
 			ierr = VecAssemblyEnd(non_zero_rows); CHKERRQ(ierr);
-
-
-
-			std::cout << "PQ_var_idx.size() = " << PQ_var_idx.size() << std::endl;
-			//std::cout << "the non_zero_cols of Bt" << std::endl;
- 			//ierr = VecView(non_zero_cols,PETSC_VIEWER_STDOUT_WORLD);
-			//std::cout << "the non_zero_rows of Bt" << std::endl;
- 			//ierr = VecView(non_zero_rows,PETSC_VIEWER_STDOUT_WORLD);
 			
 
 		}
 		
 
 
-
-		//PetscViewerSetFormat(PETSC_VIEWER_STDOUT_SELF,PETSC_VIEWER_ASCII_DENSE);
-
-
-		//MatView(velocity_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-		/*
-		std::cout << "velocity matrix in full:\n\n\n" << std::endl;
-		system->request_matrix("Velocity Matrix")->print();
-
-		std::cout << "velocity matrux in petsc\n\n\n" << std::endl;
-		//PetscViewerSetFormat(PETSC_VIEWER_STDOUT_SELF,PETSC_VIEWER_ASCII_MATLAB);
-		PetscViewerSetFormat(PETSC_VIEWER_STDOUT_SELF,PETSC_VIEWER_ASCII_DENSE);
-
-
-		MatView(velocity_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-
-
-		std::exit(0);
-		*/
 
 		// now set up the shell preconditioner
 
@@ -2500,69 +2498,60 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 
-		int num_splits = 0;
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 12)
+		std::cout << "Setting up Velocity Monolithic preconditioner." << std::endl;
+	
+
+		ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
+		KSP* subksp;	//subksps
+		ierr = PCFieldSplitGetSubKSP(pc,NULL,&subksp); CHKERRQ(ierr);
+
+		// set ksp to preonly because we are defining the inverse
+		ierr = KSPSetType(subksp[1], KSPPREONLY); CHKERRQ(ierr);
+
+		PC schur_pc;
+		ierr = KSPGetPC(subksp[1],&schur_pc); CHKERRQ(ierr);
+
+		// think about this
+		//ierr = KSPSetReusePreconditioner(subksp[0],PETSC_FALSE); CHKERRQ(ierr);
+		// set to not reuse the preconditioner
+		//ierr = KSPSetReusePreconditioner(subksp[1],PETSC_TRUE); CHKERRQ(ierr);
+
+
+		// (Required) Indicate to PETSc that we're using a "shell" preconditioner 
+		ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
+
+		// destroy old shell before it is created
+		if(mono_shell_pc_created)
 		{
+			ierr = NSShellDestroy(schur_pc);
+		}
 
-			std::cout << "Setting up Velocity Monolithic preconditioner." << std::endl;
-			ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
-			KSP* subksp;	//subksps
-			ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
+		// (Optional) Create a context for the user-defined preconditioner; this
+		//	context can be used to contain any application-specific data. 
+		ierr = ShellPCCreate(&mono_shell); CHKERRQ(ierr);
 
-			// set ksp to preonly because we are defining the inverse
-			ierr = KSPSetType(subksp[1], KSPPREONLY); CHKERRQ(ierr);
+		// (Required) Set the user-defined routine for applying the preconditioner 
+		ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
+		ierr = PCShellSetContext(schur_pc,mono_shell); CHKERRQ(ierr);
 
-			PC schur_pc;
-			ierr = KSPGetPC(subksp[1],&schur_pc); CHKERRQ(ierr);
+		// (Optional) Set user-defined function to free objects used by custom preconditioner 
+		ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
 
-			// set to not reuse the preconditioner
-			//ierr = KSPSetReusePreconditioner(subksp[0],PETSC_FALSE); CHKERRQ(ierr);
-			// set to not reuse the preconditioner
-			//ierr = KSPSetReusePreconditioner(subksp[1],PETSC_TRUE); CHKERRQ(ierr);
+		// (Optional) Set a name for the preconditioner, used for PCView() 
+		ierr = PCShellSetName(schur_pc,"Monolithic Schur Complement Preconditioner"); CHKERRQ(ierr);
 
-
-			// (Required) Indicate to PETSc that we're using a "shell" preconditioner 
-			ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
-
-			// destroy old shell before it is created
-			if(mono_shell_pc_created)
-			{
-				std::cout << "Destroying old contents of shell pc" << std::endl;
-				ierr = NSShellDestroy(schur_pc);
-			}
-
-			// (Optional) Create a context for the user-defined preconditioner; this
-			//	context can be used to contain any application-specific data. 
-			ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
-
-			// (Required) Set the user-defined routine for applying the preconditioner 
-			ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
-			ierr = PCShellSetContext(schur_pc,shell); CHKERRQ(ierr);
-
-			// (Optional) Set user-defined function to free objects used by custom preconditioner 
-			ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
-
-			// (Optional) Set a name for the preconditioner, used for PCView() 
-			ierr = PCShellSetName(schur_pc,"Velocity Preconditioner"); CHKERRQ(ierr);
-
-			// (Optional) Do any setup required for the preconditioner 
-			// Note: This function could be set with PCShellSetSetUp and it would be called when necessary 
-
-			if(es->parameters.get<bool>("multiple_column_solve"))
-			{
-				ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1]); CHKERRQ(ierr);
-			}
-			else
-			{
-				ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
-			}
-
-			mono_shell_pc_created = true;
+		// Do setup of preconditioner
+		if(es->parameters.get<bool>("multiple_column_solve"))
+		{
+			ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1]); CHKERRQ(ierr);
 		}
 		else
 		{
-			// don't need to do anything, should be default
+			ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 		}
+
+		// let the method know we have calculated the shell preconditioner at least once before
+		mono_shell_pc_created = true;
 
 	}
 
@@ -2571,19 +2560,24 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	{
 
 
-	  PetscErrorCode ierr;
+	  	PetscErrorCode ierr;
 
 		//get petsc solver
 		PetscLinearSolver<Number>* system_linear_solver =
 				libmesh_cast_ptr<PetscLinearSolver<Number>* >
 				(system->linear_solver.get());
+
 		KSP system_ksp = system_linear_solver->ksp();
 		PC pc;
 		ierr = KSPGetPC(system_ksp,&pc); CHKERRQ(ierr);
 
 		// ********* CONSTRUCT SUBMATRICES ********** //
 
-		std::cout << "Constructing 3D submatrices." << std::endl;
+		std::cout << "Constructing Navier Stokes Preconditioner submatrices." << std::endl;
+
+
+
+		// set up variable dofs to set up submatrices
 		const unsigned int u_var = system->variable_number ("u");
 		const unsigned int v_var = system->variable_number ("v");
 		unsigned int w_var = 0;
@@ -2591,15 +2585,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			w_var = system->variable_number ("w");
 		const unsigned int p_var = system->variable_number ("p");
 
-		std::vector<dof_id_type> var_idx;
-		system->get_dof_map().local_variable_indices
-			(var_idx, system->get_mesh(), p_var);
+		std::vector<dof_id_type> 
+			U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
 
-
-		std::vector<dof_id_type> U_var_idx;
-		std::vector<dof_id_type> u_var_idx;
-		std::vector<dof_id_type> v_var_idx;
-		std::vector<dof_id_type> w_var_idx;
 		system->get_dof_map().local_variable_indices
 			(u_var_idx, system->get_mesh(), u_var);
 		system->get_dof_map().local_variable_indices
@@ -2608,6 +2596,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		if(threed)
 			system->get_dof_map().local_variable_indices
 				(w_var_idx, system->get_mesh(), w_var);
+
+		system->get_dof_map().local_variable_indices
+			(p_var_idx, system->get_mesh(), p_var);
 
 		// concatenate all velocity dofs
 		U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
@@ -2619,73 +2610,108 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	
 	
 
-	
 
 
+		// object to enable us to pin the matrices at a pressure node if necessary
 		std::vector<dof_id_type> rows;
 		rows.push_back(0);
 
 
-		// pressure mass matrix
-		pressure_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-		system->request_matrix("Pressure Mass Matrix")->create_submatrix(*pressure_mass_matrix,var_idx,var_idx);
-		//if(!es->parameters.get<unsigned int>("problem_type") == 4 && !es->parameters.get<unsigned int>("problem_type") == 5)
-		//pressure_mass_matrix->zero_rows(rows,1.0);
-		pressure_mass_matrix->close();
 
-		// scaled pressure mass matrix
-		scaled_pressure_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-		system->request_matrix("Pressure Mass Matrix")->create_submatrix(*scaled_pressure_mass_matrix,var_idx,var_idx);
-		scaled_pressure_mass_matrix->zero();
-		scaled_pressure_mass_matrix->add(es->parameters.get<Real>("reynolds_number"),*pressure_mass_matrix);
-		//if(!es->parameters.get<unsigned int>("problem_type") == 4 && !es->parameters.get<unsigned int>("problem_type") == 5)
-		//scaled_pressure_masNus_matrix->zero_rows(rows,1.0);
-		scaled_pressure_mass_matrix->close();
+
+
+		// the pressure mass matrix, scaled mass matrix and pressure laplacian only need to be constructed once,
+		// while the convection diffusion matrix needs to be computed at each step.
+
+		if(!shell_pc_created)
+		{
+
+			if(es->parameters.get<bool>("assemble_pressure_mass_matrix"))
+			{
+				// ************ pressure mass matrix ************ //
+				pressure_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
+				system->request_matrix("Pressure Mass Matrix")->create_submatrix(*pressure_mass_matrix,p_var_idx,p_var_idx);
+				//if(!es->parameters.get<unsigned int>("problem_type") == 4 && !es->parameters.get<unsigned int>("problem_type") == 5)
+				//pressure_mass_matrix->zero_rows(rows,1.0);
+				pressure_mass_matrix->close();
+
+				// now that this matrix has been set we can not assemble it again
+				es->parameters.set<bool>("assemble_pressure_mass_matrix") = false;
+			}
+
+
+			if(es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix"))
+			{
+				//************* scaled pressure mass matrix ************** //
+				scaled_pressure_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
+				system->request_matrix("Pressure Mass Matrix")->create_submatrix(*scaled_pressure_mass_matrix,p_var_idx,p_var_idx);
+				scaled_pressure_mass_matrix->zero();
+				scaled_pressure_mass_matrix->add(es->parameters.get<Real>("reynolds_number"),*pressure_mass_matrix);
+				//if(!es->parameters.get<unsigned int>("problem_type") == 4 && !es->parameters.get<unsigned int>("problem_type") == 5)
+				//scaled_pressure_masNus_matrix->zero_rows(rows,1.0);
+				scaled_pressure_mass_matrix->close();
+
+
+				// now that this matrix has been set we can not assemble it again
+				es->parameters.set<bool>("assemble_scaled_pressure_mass_matrix") = false;
+			}
 	
 
-		// pressure laplacian matrix
-		pressure_laplacian_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-		// need to pin laplacian matrix... at the first pressure node
-		system->request_matrix("Pressure Laplacian Matrix")->create_submatrix(*pressure_laplacian_matrix,var_idx,var_idx);
-		if(es->parameters.get<bool>("pin_pressure"))
-		{
-			pressure_laplacian_matrix->zero_rows(rows,1.0);
+
+
+			if(es->parameters.get<bool>("assemble_velocity_mass_matrix"))
+			{
+				// *********** velocity mass matrix ********************************** //
+				velocity_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
+				system->request_matrix("Velocity Mass Matrix")->create_submatrix(*velocity_mass_matrix,U_var_idx,U_var_idx);
+				velocity_mass_matrix->close();
+
+
+				// now that this matrix has been set we can not assemble it again
+				es->parameters.set<bool>("assemble_velocity_mass_matrix") = false;
+			}
 		}
 
-		pressure_laplacian_matrix->close();
-		//system->request_matrix("Pressure Laplacian Matrix")->print();
 
-	
-
-		// pressure convection diffusion matrix
-		pressure_convection_diffusion_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-		system->request_matrix("Pressure Convection Diffusion Matrix")->create_submatrix(*pressure_convection_diffusion_matrix,var_idx,var_idx);
-		if(es->parameters.get<bool>("pin_pressure"))
+		if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
 		{
-			pressure_convection_diffusion_matrix->zero_rows(rows,1.0/es->parameters.get<Real>("reynolds_number"));
+			// ************ pressure laplacian matrix *************** //
+			pressure_laplacian_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
+			// need to pin laplacian matrix... at the first pressure node
+			system->request_matrix("Pressure Laplacian Matrix")->create_submatrix(*pressure_laplacian_matrix,p_var_idx,p_var_idx);
+			if(es->parameters.get<bool>("pin_pressure"))
+			{
+				pressure_laplacian_matrix->zero_rows(rows,1.0);
+			}
+			pressure_laplacian_matrix->close();
+
 		}
 
-		pressure_convection_diffusion_matrix->close();
+		if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
+		{
+			// ************ pressure convection diffusion matrix ***************** //
+			pressure_convection_diffusion_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
+			system->request_matrix("Pressure Convection Diffusion Matrix")->create_submatrix(*pressure_convection_diffusion_matrix,p_var_idx,p_var_idx);
+			if(es->parameters.get<bool>("pin_pressure"))
+			{
+				pressure_convection_diffusion_matrix->zero_rows(rows,1.0/es->parameters.get<Real>("reynolds_number"));
+			}
+			pressure_convection_diffusion_matrix->close();
+		}
 
 	
 
-		// pressure convection diffusion matrix
-		velocity_mass_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
-		system->request_matrix("Velocity Mass Matrix")->create_submatrix(*velocity_mass_matrix,U_var_idx,U_var_idx);
-		velocity_mass_matrix->close();
 
 
-		//system->request_matrix("Pressure Laplacian Matrix")->print();
-		//system->request_matrix("Pressure Convection Diffusion Matrix")->print();
 
-		//pressure_laplacian_matrix->add(-1.,*pressure_convection_diffusion_matrix);
-		//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-	
+
+
+
 
 		// set pressure in system matrix and preconditioner
 
 		std::vector<dof_id_type> rows_full;
-		rows_full.push_back(var_idx[0]);
+		rows_full.push_back(p_var_idx[0]);
 		//system->request_matrix("System Matrix")->zero_rows(rows_full,1.0);
 		//system->request_matrix("Preconditioner")->zero_rows(rows_full,1.0);
 		//system->request_matrix("System Matrix")->close();
@@ -2699,7 +2725,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		//system->request_matrix("Pressure Mass Matrix")->print();
 
-		std::cout << "Done setting up the sub matrices." << std::endl;
+		std::cout << "Done setting up Navier Stokes Preconditioner sub matrices." << std::endl;
+
+
 		// *********************************************************************** //
 
 
@@ -2730,11 +2758,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
 			KSP* velocity_subksp;
 
-
-
-			std::cout << "INSIDE SETUP PC = " << std::endl;
-			std::cout << "ya = " << std::endl;
-
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
 			{
 				velocity_subksp = subksp;
@@ -2752,7 +2775,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			}
 
 
-			std::cout << "Setting up the convection diffusion part of the settings" << std::endl;
+			std::cout << "Setting up the convection diffusion Petsc settings" << std::endl;
 
 			
 
@@ -2768,28 +2791,24 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 			std::cout << "Old Preconditioner destroyed." << std::endl;
 
+
+			std::cout << "Setting up Navier Stokes Schur complement preconditioners." << std::endl;
+
 			// now set the preconditioner stuff for the schur preconditioners
+
+			// scaled mass matrix with solve
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 1)
 			{
 
-				//PCFieldSplitSchurPrecondition(pc,PC_FIELDSPLIT_SCHUR_PRE_USER,scaled_pressure_mass_matrix->mat());
-
-		
 				// note even though the preconditioner says it is using A11 it is not
 				Mat Amat, Pmat;
-				//MatStructure mat_structure;
-
-				//MatView(scaled_pressure_mass_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);
-				//ierr = KSPGetOperators(velocity_subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
 				ierr = KSPGetOperators(velocity_subksp[1],&Amat,&Pmat); CHKERRQ(ierr);
-				//ierr = PetscObjectReference((PetscObject)Amat); CHKERRQ(ierr);
-				//ierr = PetscObjectReference((PetscObject)mat_structure); CHKERRQ(ierr);
-				//ierr = KSPSetOperators(velocity_subksp[1],scaled_pressure_mass_matrix->mat(),scaled_pressure_mass_matrix->mat(),mat_structure); CHKERRQ(ierr);
 				ierr = KSPSetOperators(velocity_subksp[1],Amat,scaled_pressure_mass_matrix->mat()); CHKERRQ(ierr);
 		
 		
 		
 			}
+			// Petsc LSC preconditioner
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 2)
 			{
 
@@ -2800,19 +2819,16 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
-
-
-
-				// (Required) Indicate to PETSc that we're using a "lsc" preconditioner 
 				ierr = PCSetType(schur_pc,PCLSC); CHKERRQ(ierr);
 
 		
 		
 			}
+			// Scaled Pressure Mass Matrix
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 3)	// shell pc..
 			{
 
-				std::cout << "Setting up Pressure preconditioner." << std::endl;
+				std::cout << "Setting up Scaled Pressure Mass Matrix preconditioner." << std::endl;
 
 				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
@@ -2820,97 +2836,57 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
-
-
-				// (Required) Indicate to PETSc that we're using a "shell" preconditioner 
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
-
-				// destroy old shell before it is created - UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "Destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
-
-				// (Optional) Create a context for the user-defined preconditioner; this
-				//	context can be used to contain any application-specific data. 
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
 
-				// (Required) Set the user-defined routine for applying the preconditioner 
 				ierr = PCShellSetApply(schur_pc,PressureShellPCApply); CHKERRQ(ierr);
 				ierr = PCShellSetContext(schur_pc,shell); CHKERRQ(ierr);
 
-				// (Optional) Set user-defined function to free objects used by custom preconditioner 
 				ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
+				ierr = PCShellSetName(schur_pc,"Scaled Pressure Mass Matrix Preconditioner"); CHKERRQ(ierr);
 
-				// (Optional) Set a name for the preconditioner, used for PCView() 
-				ierr = PCShellSetName(schur_pc,"Pressure Preconditioner"); CHKERRQ(ierr);
-
-				// (Optional) Do any setup required for the preconditioner 
-				// Note: This function could be set with PCShellSetSetUp and it would be called when necessary 
 				ierr = PressureShellPCSetUp(schur_pc,scaled_pressure_mass_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
 
 				shell_pc_created = true;
 			}
+			// PCD
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 4)	// shell pc..
 			{
 
 				std::cout << "Setting up PCD preconditioner." << std::endl;
 
-				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
 
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
-
-				/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-				// UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "Destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
-
-				/* (Optional) Create a context for the user-defined preconditioner; this
-					context can be used to contain any application-specific data. */
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
-
-				/* (Required) Set the user-defined routine for applying the preconditioner */
 				ierr = PCShellSetApply(schur_pc,PCDShellPCApply); CHKERRQ(ierr);
 				ierr = PCShellSetContext(schur_pc,shell); CHKERRQ(ierr);
 
-				/* (Optional) Set user-defined function to free objects used by custom preconditioner */
 				ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
-
-				/* (Optional) Set a name for the preconditioner, used for PCView() */
 				ierr = PCShellSetName(schur_pc,"PCD Preconditioner"); CHKERRQ(ierr);
 
-				/* (Optional) Do any setup required for the preconditioner */
-				/* Note: This function could be set with PCShellSetSetUp and it would be called when necessary */
 				ierr = PCDShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
 
 				shell_pc_created = true;
 			}
-
+			// PCD 2.0
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)	// shell pc..+ shel matrix pcd2.0
 			{
 
 		
+				std::cout << "Setting up PCD preconditioner." << std::endl;
 
-
-				std::cout << "hello" << std::endl;
-
-
-				mat_ctx.m = var_idx.size();
-				mat_ctx.n = var_idx.size();
+				mat_ctx.m = p_var_idx.size();
+				mat_ctx.n = p_var_idx.size();
 				mat_ctx.pressure_laplacian_matrix = pressure_laplacian_matrix->mat();
 				mat_ctx.velocity_mass_matrix = velocity_mass_matrix->mat();
 				mat_ctx.schur_ksp = velocity_subksp[1];
 
-				PetscInt mn = var_idx.size() * var_idx.size();
+				PetscInt mn = p_var_idx.size() * p_var_idx.size();
 
 				std::cout << "m = " << mat_ctx.m  << std::endl;
 				std::cout << "n = " << mat_ctx.n  << std::endl;
@@ -2920,70 +2896,42 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		
 				//get operators from the outer pcshell solver
 				Mat Amat, Pmat;
-				//MatStructure mat_structure;
-				//ierr = KSPGetOperators(velocity_subksp[1],&Amat,&Pmat,&mat_structure); CHKERRQ(ierr);
 				ierr = KSPGetOperators(velocity_subksp[1],&Amat,&Pmat); CHKERRQ(ierr);
 
-				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
 
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
-
-				/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-				// UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
 
-				/* (Optional) Create a context for the user-defined preconditioner; this
-					context can be used to contain any application-specific data. */
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
 
-				/* (Required) Set the user-defined routine for applying the preconditioner */
 				ierr = PCShellSetApply(schur_pc,PCD2ShellPCApply); CHKERRQ(ierr);
 				ierr = PCShellSetContext(schur_pc,shell); CHKERRQ(ierr);
 
-				/* (Optional) Set user-defined function to free objects used by custom preconditioner */
 				ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
 
-				/* (Optional) Set a name for the preconditioner, used for PCView() */
 				ierr = PCShellSetName(schur_pc,"PCD2 Preconditioner"); CHKERRQ(ierr);
 
-				/* (Optional) Do any setup required for the preconditioner */
-				/* Note: This function could be set with PCShellSetSetUp and it would be called when necessary */
 				//ierr = PCDShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
-				std::cout << "ya" << std::endl;
 				ierr = PCD2ShellPCSetUp(schur_pc,pressure_mass_matrix->mat(),B,pressure_laplacian_matrix->mat(),pressure_convection_diffusion_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
 
 				shell_pc_created = true;
 			}
+			// LSC James
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 6)	// shell pc..
 			{
 
 				std::cout << "Setting up LSC James preconditioner." << std::endl;
 
-				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
 
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
-
-
-				/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-				// UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "Destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
 
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
 
@@ -2998,27 +2946,19 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 				shell_pc_created = true;
 			}
+			// LSC James Scaled properly
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 7)	// shell pc..
 			{
 
 				std::cout << "Setting up LSC James scaled preconditioner." << std::endl;
 
-				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
 
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
-
-				/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-				// UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "Destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
 
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
 
@@ -3033,10 +2973,12 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 				shell_pc_created = true;
 			}
+			// Petsc LSC command line (defunct)
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 8)
 			{
 				// do nothing, we should have set this all up on the command line
 			}
+			// LSC James scaled stabilised elements
 			else if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 9)
 			{
 			
@@ -3045,39 +2987,23 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				// set ksp to preonly because we are defining the inverse
 				ierr = KSPSetType(velocity_subksp[1], KSPPREONLY); CHKERRQ(ierr);
 
-				std::cout << "1" << std::endl;
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
-				std::cout << "2" << std::endl;
-
-				/* (Required) Indicate to PETSc that we're using a "shell" preconditioner */
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-				//// UNNECESSARY
-				if(false)//shell_pc_created)
-				{
-					std::cout << "Destroying old contents of shell pc" << std::endl;
-					ierr = NSShellDestroy(schur_pc);
-				}
-
-				std::cout << "3" << std::endl;
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
 
-				std::cout << "4" << std::endl;
 				ierr = PCShellSetApply(schur_pc,LSCScaledStabilisedShellPCApply); CHKERRQ(ierr);
 				ierr = PCShellSetContext(schur_pc,shell); CHKERRQ(ierr);
 
-				std::cout << "5" << std::endl;
 				ierr = PCShellSetDestroy(schur_pc,NSShellDestroy); CHKERRQ(ierr);
 
 				ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner"); CHKERRQ(ierr);
 
-				std::cout << "6" << std::endl;
 				       
 				ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
 
-				std::cout << "7" << std::endl;
 				shell_pc_created = true;
 			}
 		}

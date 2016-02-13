@@ -293,7 +293,7 @@ void NSAssembler3D::find_1d_boundary_nodes()
 double NSAssembler3D::calculate_flux(const int boundary_id)
 {
 
-	std::cout << "begin calculating flux on bouundary " << boundary_id << std::endl;
+	//std::cout << "begin calculating flux on bouundary " << boundary_id << std::endl;
 	
 	TransientLinearImplicitSystem * system;
 	// Get a reference to the Stokes system object.
@@ -355,8 +355,8 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
   MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
-	for(unsigned int i=0; i<subdomains_3d.size(); i++)
-		std::cout << "subdomains[" << i << "] = " << subdomains_3d[i] << std::endl;
+	//for(unsigned int i=0; i<subdomains_3d.size(); i++)
+	//	std::cout << "subdomains[" << i << "] = " << subdomains_3d[i] << std::endl;
 
 
   for ( ; el != end_el; ++el)

@@ -558,9 +558,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				{
 					dt = es->parameters.get<Real> ("end_time") - time;
 				}
-				time += dt;
 				shell_pc_created = false;
 				mono_shell_pc_created = false;
+				time += dt;
 				update_times();
 
 				if(!particle_deposition)
@@ -1553,6 +1553,12 @@ void NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"moghadam_coupling",false);
 
+	set_bool_parameter(infile,"assemble_pressure_mass_matrix",false);
+	set_bool_parameter(infile,"assemble_scaled_pressure_mass_matrix",false);
+	set_bool_parameter(infile,"assemble_pressure_convection_diffusion_matrix",false);
+	set_bool_parameter(infile,"assemble_pressure_laplacian_matrix",false);
+	set_bool_parameter(infile,"assemble_velocity_mass_matrix",false);
+
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -1736,6 +1742,27 @@ void NavierStokesCoupled::read_parameters()
 			es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
 		}
 	}
+
+
+
+	// ***************** figure out what sub matrices we need to assemble ********************* //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3)
+		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
+	{
+		es->parameters.set<bool> ("assemble_pressure_mass_matrix") = true;
+		es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = true;
+		es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = true;
+	}
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 8
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
+		es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
+		
+
 
 
 

@@ -59,7 +59,7 @@ void indices_to_fieldsplit (const Parallel::Communicator& comm,
 	ierr = PCGetType(my_pc,&type);
   CHKERRABORT(comm.get(), ierr);
 
-	std::cout << "pc type = " << type << std::endl;
+	//std::cout << "pc type = " << type << std::endl;
 
 }
 
@@ -116,7 +116,7 @@ void petsc_auto_fieldsplit (PC my_pc,
             }
           else
             {
-							std::cout << "doing outer  now" << std::endl; 
+							//std::cout << "doing outer  now" << std::endl; 
               indices_to_fieldsplit (sys.comm(), var_idx, my_pc, var_name);
             }
         }
@@ -126,7 +126,7 @@ void petsc_auto_fieldsplit (PC my_pc,
   for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
          i = group_indices.begin(); i != group_indices.end(); ++i)
     {
-			std::cout << "k doing outer group" << std::endl;
+			//std::cout << "k doing outer group" << std::endl;
       indices_to_fieldsplit(sys.comm(), i->second, my_pc, i->first);
     }
 
@@ -145,11 +145,11 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 	PCType pc_type;
 	ierr = PCGetType(my_pc,&pc_type);
-	std::cout << "outer pc type = " << pc_type << std::endl;
+	//std::cout << "outer pc type = " << pc_type << std::endl;
 	std::string fieldsplit_string = "fieldsplit";
 	if (pc_type == fieldsplit_string)
 	{
-		std::cout << "yeah..." << std::endl;
+		//std::cout << "yeah..." << std::endl;
 		// loop over the number of dofs, cause this is the possible amount of fieldsplits
 		KSP* subksp;	//subksps
 		PetscInt num_splits;
@@ -161,8 +161,8 @@ void petsc_auto_fieldsplit (PC my_pc,
 			ierr = KSPGetPC(subksp[i],&sub_pc);// CHKERRQ(ierr);
 			PCType sub_pc_type;
 			ierr = PCGetType(sub_pc,&sub_pc_type);
-			std::cout << "sub_pc type = " << sub_pc_type << std::endl;
-			std::cout << "hmmm" << std::endl;
+			//std::cout << "sub_pc type = " << sub_pc_type << std::endl;
+			//std::cout << "hmmm" << std::endl;
 
 			if (sub_pc_type == fieldsplit_string)
 			{
@@ -213,9 +213,11 @@ void petsc_auto_fieldsplit (PC my_pc,
 							//std::cout << "k doing U" << std::endl;
 				      indices_to_fieldsplit(sys.comm(), i->second, sub_pc, i->first);
 				  }
+
+				ierr = KSPSetUp(subksp[i]);// CHKERRQ(ierr);
+				ierr = PCSetUp(sub_pc);
 			}
-			ierr = KSPSetUp(subksp[i]);// CHKERRQ(ierr);
-			ierr = PCSetUp(sub_pc);
+
 
 			
 
@@ -224,7 +226,6 @@ void petsc_auto_fieldsplit (PC my_pc,
 	}
   }
 
-	std::cout << "hi.."<< std::endl;
 
 	//int ierr = PCSetDiagonalScale(my_pc,sys.solution->vec());
   //CHKERRABORT(sys.comm().get(), ierr);
