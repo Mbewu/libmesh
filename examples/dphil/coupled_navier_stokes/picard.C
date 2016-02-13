@@ -3344,11 +3344,11 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 			    std::vector < double >temp_vector (n_u_dofs);
 			    std::vector < std::vector <
-			      double >>temp_matrix_1 (n_u_dofs,
+			      double > >temp_matrix_1 (n_u_dofs,
 						      std::vector <
 						      double >(n_u_dofs));
 			    std::vector < std::vector <
-			      double >>temp_matrix_2 (n_u_dofs,
+			      double > >temp_matrix_2 (n_u_dofs,
 						      std::vector <
 						      double >(n_u_dofs));
 			    double extra_terms = 0;
