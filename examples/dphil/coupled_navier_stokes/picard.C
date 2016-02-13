@@ -4717,136 +4717,118 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 
-	  // ********* ASSEMBLE AND APPLY DIRICHLET BOUNDARY CONDITIONS ******** //
-	  // if we are estimating the error then calcalate relative contributions
-	  if (!estimating_error)
-	    {
+	  	// ********* ASSEMBLE AND APPLY DIRICHLET BOUNDARY CONDITIONS ******** //
+	  	// if we are estimating the error then calcalate relative contributions
+	  	if (!estimating_error)
+	  	{
 
-	      // ***************** INSERT COUPLING BOUNDARY CONDITIONS ********* //
-	      // if we have pressure coupled, then we need and found a boundary
-	      // the only problem is that we don't want the dofs that are on the 
-	      // boundary to be affected. so we zero them out and assume that there
-	      // is zero contribution from them, assumming a zero boundary condition
-	      // this is fairly common especially in my applications.
-	      if (pressure_coupled && pressure_1d_index != 0)
-		{
-
-		  // if one of the dofs is a 
-		  // constrained dof then we zero it. otherwise we add it to the matrix
-		  // problem is that the pressure integral should contain stuff from the boundary
-		  // maybe it wil average? who knows... seems like it, but it isn't nice.                         
-		  for (unsigned int i = 0; i < dof_indices.size (); i++)
-		    {
-		      //if not constrained dof
-		      if (!dof_map.is_constrained_dof (dof_indices[i]))
+			// ***************** INSERT COUPLING BOUNDARY CONDITIONS ********* //
+			// if we have pressure coupled, then we need and found a boundary
+			// the only problem is that we don't want the dofs that are on the 
+			// boundary to be affected. so we zero them out and assume that there
+			// is zero contribution from them, assumming a zero boundary condition
+			// this is fairly common especially in my applications.
+			if (pressure_coupled && pressure_1d_index != 0)
 			{
-			  system->matrix->add (dof_indices[i],
-					       pressure_1d_index,
-					       Fe_coupled_p (i));
-			  if (es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 7
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 8
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 9
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 10
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 11
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") ==
-			      12)
-			    system->get_matrix ("Preconditioner").
-			      add (dof_indices[i], pressure_1d_index,
-				   Fe_coupled_p (i));
+
+		  		// if one of the dofs is a 
+		  		// constrained dof then we zero it. otherwise we add it to the matrix
+		  		// problem is that the pressure integral should contain stuff from the boundary
+		  		// maybe it wil average? who knows... seems like it, but it isn't nice.                         
+		  		for (unsigned int i = 0; i < dof_indices.size (); i++)
+		    	{
+		      		//if not constrained dof
+		      		if (!dof_map.is_constrained_dof (dof_indices[i]))
+					{
+			  			system->matrix->add (dof_indices[i],pressure_1d_index,Fe_coupled_p (i));
+					  	if (es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 7
+						  || es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 8
+						  || es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
+						  || es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
+						  || es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
+						  || es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+			    		system->get_matrix ("Preconditioner").add (dof_indices[i], pressure_1d_index,Fe_coupled_p (i));
+
+					}
+		    	}
+
+
+
+
+		  		//flux coupling - only in row corresponding to 1d dof is how it is defined
+		  		// this 1d dof is now pressure 0 so that getting towards symmetry
+
+		  		// if one of the dofs is a 
+		  		// constrained dof then we zero it. otherwise we add it to the matrix
+		  		for (unsigned int i = 0; i < dof_indices.size (); i++)
+		   	 	{
+		      		//if not constrained dof
+		      		if (!dof_map.is_constrained_dof (dof_indices[i]))
+					{
+			  			system->matrix->add (flux_1d_index, dof_indices[i],Fe_coupled_u (i));
+			  			if (es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 7
+			      			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 8
+			      			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
+			      			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
+			      			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
+			      			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+			    		system->get_matrix ("Preconditioner").add (flux_1d_index, dof_indices[i],Fe_coupled_u (i));
+					}
+		    	}
+
+		  		// reset to zero so that isn't used in next loop.
+		  		pressure_1d_index = 0;
+		  		flux_1d_index = 0;
+			}
+
+
+
+
+
+
+	      	// ************** INSERT LOCAL MATRICES INTO BIG MATRIX ************ //
+	      	// apply dirichlet conditions (e.g. wall and maybe inflow)
+	      	//hmm really not sure bout this last argument but it works
+	      	//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
+	      	dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,  Fe,  dof_indices,  true);
+	      	//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);                              
+
+	      	system->matrix->add_matrix (Ke, dof_indices);
+	      	system->rhs->add_vector (Fe, dof_indices);
+	      	if (es->parameters.get < unsigned int >("preconditioner_type_3d")
+		  		|| es->parameters.get <  unsigned int >("preconditioner_type_3d1d"))
+			{
+
+
+			  	system->get_matrix ("Preconditioner").add_matrix (Ke,dof_indices);
+
+			  	// don't use any boundary conditions... for the stokes preconditioners only assemble once
+			  	dof_map.constrain_element_matrix (Ke_pre_velocity,dof_indices, true);
+				system->get_matrix ("Velocity Matrix").add_matrix (Ke_pre_velocity, dof_indices);
 
 			}
-		    }
 
 
+			if(es->parameters.get <bool>("assemble_pressure_mass_matrix")
+				|| es->parameters.get <bool>("assemble_scaled_pressure_mass_matrix"))
+	  			system->get_matrix ("Pressure Mass Matrix").add_matrix (Ke_pre_mass, dof_indices);
 
+		
+			if(es->parameters.get <bool>("assemble_pressure_laplacian_matrix"))
+	  			system->get_matrix ("Pressure Laplacian Matrix").add_matrix (Ke_pre_laplacian, dof_indices);
 
-		  //flux coupling - only in row corresponding to 1d dof is how it is defined
-		  // this 1d dof is now pressure 0 so that getting towards symmetry
+	
+			if(es->parameters.get <bool>("assemble_pressure_convection_diffusion_matrix"))
+	  			system->get_matrix ("Pressure Convection Diffusion Matrix").add_matrix (Ke_pre_convection_diffusion, dof_indices);
 
-		  // if one of the dofs is a 
-		  // constrained dof then we zero it. otherwise we add it to the matrix
-		  for (unsigned int i = 0; i < dof_indices.size (); i++)
-		    {
-		      //if not constrained dof
-		      if (!dof_map.is_constrained_dof (dof_indices[i]))
+			if(es->parameters.get <bool>("assemble_velocity_mass_matrix"))
 			{
-			  system->matrix->add (flux_1d_index, dof_indices[i],
-					       Fe_coupled_u (i));
-			  if (es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 7
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 8
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 9
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 10
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") == 11
-			      || es->parameters.get <
-			      unsigned int >("preconditioner_type_3d1d") ==
-			      12)
-			    system->get_matrix ("Preconditioner").
-			      add (flux_1d_index, dof_indices[i],
-				   Fe_coupled_u (i));
+	  			dof_map.constrain_element_matrix (Ke_pre_velocity_mass,dof_indices, false);
+				system->get_matrix ("Velocity Mass Matrix").add_matrix (Ke_pre_velocity_mass, dof_indices);
+
 			}
-		    }
 
-		  // reset to zero so that isn't used in next loop.
-		  pressure_1d_index = 0;
-		  flux_1d_index = 0;
-		}
-
-
-
-
-
-
-	      // ************** INSERT LOCAL MATRICES INTO BIG MATRIX ************ //
-	      // apply dirichlet conditions (e.g. wall and maybe inflow)
-	      //hmm really not sure bout this last argument but it works
-	      //dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
-	      dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,
-									  Fe,
-									  dof_indices,
-									  true);
-	      dof_map.constrain_element_matrix (Ke_pre_velocity_mass,
-						dof_indices, false);
-	      //dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);                              
-
-	      system->matrix->add_matrix (Ke, dof_indices);
-	      system->rhs->add_vector (Fe, dof_indices);
-	      if (es->parameters.get <
-		  unsigned int >("preconditioner_type_3d")
-		  || es->parameters.get <
-		  unsigned int >("preconditioner_type_3d1d"))
-		{
-		  system->get_matrix ("Pressure Mass Matrix").
-		    add_matrix (Ke_pre_mass, dof_indices);
-		  system->get_matrix ("Pressure Laplacian Matrix").
-		    add_matrix (Ke_pre_laplacian, dof_indices);
-		  system->get_matrix ("Pressure Convection Diffusion Matrix").
-		    add_matrix (Ke_pre_convection_diffusion, dof_indices);
-		  system->get_matrix ("Velocity Mass Matrix").
-		    add_matrix (Ke_pre_velocity_mass, dof_indices);
-		  system->get_matrix ("Preconditioner").add_matrix (Ke,
-								    dof_indices);
-
-		  // don't use any boundary conditions... for the stokes preconditioners only assemble once
-		  dof_map.constrain_element_matrix (Ke_pre_velocity,
-						    dof_indices, true);
-		  system->get_matrix ("Velocity Matrix").
-		    add_matrix (Ke_pre_velocity, dof_indices);
-
-
-		}
-
-	      // ***************************************************************** //
+	      	// ***************************************************************** //
 
 
 
@@ -4857,190 +4839,127 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 
-	      // ****************** APPLY PRECONDITIONER BOUNDARY CONDITIONS ***** //
-	      // if we have a pressure dof that needs to be constrained then make all
-	      // row/ column zero apart from diag
-	      /*
-	         if(pin_pressure)
-	         {
-	         if(pressure_dof >= 0)
-	         {
-	         std::cout << "pinning pressure" << std::endl;
-	         for(unsigned int i=0; i<dof_indices.size(); i++)
-	         {
-	         system->matrix->set(pressure_dof,dof_indices[i],0.);
-	         system->matrix->set(dof_indices[i],pressure_dof,0.);
-	         if(es->parameters.get<unsigned int>("preconditioner_type"))
-	         {
-	         system->request_matrix("Preconditioner")->set(pressure_dof,dof_indices[i],0.);
-	         system->request_matrix("Preconditioner")->set(dof_indices[i],pressure_dof,0.);
-	         system->request_matrix("Pressure Mass Matrix")->set(pressure_dof,dof_indices[i],0.);
-	         system->request_matrix("Pressure Mass Matrix")->set(dof_indices[i],pressure_dof,0.);
-	         system->request_matrix("Pressure Laplacian Matrix")->set(pressure_dof,dof_indices[i],0.);
-	         system->request_matrix("Pressure Laplacian Matrix")->set(dof_indices[i],pressure_dof,0.);
-	         system->request_matrix("Pressure Convection Diffusion Matrix")->set(pressure_dof,dof_indices[i],0.);
-	         system->request_matrix("Pressure Convection Diffusion Matrix")->set(dof_indices[i],pressure_dof,0.);
-	         }
-	         }
-	         system->matrix->set(pressure_dof,pressure_dof,1.);
-	         system->rhs->set(pressure_dof,0.);
-
-	         if(es->parameters.get<unsigned int>("preconditioner_type"))
-	         {
-	         system->request_matrix("Preconditioner")->set(pressure_dof,pressure_dof,1.);
-	         system->request_matrix("Pressure Mass Matrix")->set(pressure_dof,pressure_dof,-1.);
-	         system->request_matrix("Pressure Laplacian Matrix")->set(pressure_dof,pressure_dof,1.);
-	         system->request_matrix("Pressure Convection Diffusion Matrix")->set(pressure_dof,pressure_dof,1.);
-	         }
-	         }
-	         }
-	       */
-
-
-	      // now we need to add the pressure dof constraints that were found to be on the inflow dirichlet boundary
-	      // doesn't really matter if there is overlap.
-
-	      if ((es->parameters.get <
-		   unsigned int >("preconditioner_type_3d") == 4
-		   || es->parameters.get <
-		   unsigned int >("preconditioner_type_3d") ==
-		   5) &&es->parameters.get < unsigned int >("problem_type") !=
-		  4)
-		{
-		  if (es->parameters.get <
-		      unsigned int >("pcd_boundary_condition_type") == 1
-		      || es->parameters.get <
-		      unsigned int >("pcd_boundary_condition_type") == 3
-		      || es->parameters.get <
-		      unsigned int >("pcd_boundary_condition_type") == 4)
-		    {
-		      for (unsigned int i = 0;
-			   i < pressure_dofs_on_inflow_boundary.size (); i++)
+			// ****************** APPLY PRECONDITIONER BOUNDARY CONDITIONS ***** //
+			// if we have a pressure dof that needs to be constrained then make all
+			// row/ column zero apart from diag
+			/*
+			if(pin_pressure)
 			{
-			  unsigned int local_pressure_dof = -1;
-			  //find what local pressure dof in Ke_pre_convection_diffusion we need to take as the increment of the diagonal scaling
-			  for (unsigned int j = 0; j < dof_indices.size ();
-			       j++)
-			    {
-			      if (pressure_dofs_on_inflow_boundary[i] ==
-				  dof_indices[j])
-				{
-				  local_pressure_dof = j;
-				  break;
-				}
-			    }
-
-			  // we found the correct pressure dof...
-			  if (local_pressure_dof >= 0)
-			    {
-			      //std::cout << "hi" << std::endl;
-			      double diagonal_scaling_increment =
-				Ke_pre_convection_diffusion
-				(local_pressure_dof, local_pressure_dof);
-			      sum_fp_diag += diagonal_scaling_increment;
-			      //std::cout << "pinning pressure dof " << pressure_dofs_on_inflow_boundary[i] << " on elem " << elem->id() << " on inflow bdy with scaling = " << diagonal_scaling_increment << std::endl;
-			      for (unsigned int j = 0;
-				   j < dof_indices.size (); j++)
-				{
-				  if (pressure_dofs_on_inflow_boundary[i] !=
-				      dof_indices[j])
-				    {
-				      system->
-					request_matrix
-					("Pressure Laplacian Matrix")->
-					set (pressure_dofs_on_inflow_boundary
-					     [i], dof_indices[j], 0.);
-				      system->
-					request_matrix
-					("Pressure Laplacian Matrix")->
-					set (dof_indices[j],
-					     pressure_dofs_on_inflow_boundary
-					     [i], 0.);
-				      system->
-					request_matrix
-					("Pressure Convection Diffusion Matrix")->
-					set (pressure_dofs_on_inflow_boundary
-					     [i], dof_indices[j], 0.);
-				      system->
-					request_matrix
-					("Pressure Convection Diffusion Matrix")->
-					set (dof_indices[j],
-					     pressure_dofs_on_inflow_boundary
-					     [i], 0.);
-				    }
-				}
-
-			      if (es->parameters.get <
-				  unsigned int
-				  >("pcd_boundary_condition_type") == 1)
-				{
-				  // first subject the increment we in the matrix construction of this element
-				  system->
-				    request_matrix
-				    ("Pressure Laplacian Matrix")->
-				    add (pressure_dofs_on_inflow_boundary[i],
-					 pressure_dofs_on_inflow_boundary[i],
-					 -Ke_pre_laplacian
-					 (local_pressure_dof,
-					  local_pressure_dof));
-				  // then add the correct increment
-				  system->
-				    request_matrix
-				    ("Pressure Laplacian Matrix")->
-				    add (pressure_dofs_on_inflow_boundary[i],
-					 pressure_dofs_on_inflow_boundary[i],
-					 diagonal_scaling_increment * Re);
-				}
-			      else if (es->parameters.get <
-				       unsigned int
-				       >("pcd_boundary_condition_type") == 3)
-				{
-				  // first subject the increment we in the matrix construction of this element, so that can add average later
-				  system->
-				    request_matrix
-				    ("Pressure Laplacian Matrix")->
-				    add (pressure_dofs_on_inflow_boundary[i],
-					 pressure_dofs_on_inflow_boundary[i],
-					 -Ke_pre_laplacian
-					 (local_pressure_dof,
-					  local_pressure_dof));
-
-				  // first subject the increment we in the matrix construction of this element
-				  system->
-				    request_matrix
-				    ("Pressure Convection Diffusion Matrix")->
-				    add (pressure_dofs_on_inflow_boundary[i],
-					 pressure_dofs_on_inflow_boundary[i],
-					 -Ke_pre_convection_diffusion
-					 (local_pressure_dof,
-					  local_pressure_dof));
-
-
-				}
-
-			    }
-			  else
-			    {
-			      std::
-				cout <<
-				"Error local pressure dof not found in Picard.C... EXITING"
-				<< std::endl;
-			      std::exit (0);
-			    }
+			if(pressure_dof >= 0)
+			{
+			std::cout << "pinning pressure" << std::endl;
+			for(unsigned int i=0; i<dof_indices.size(); i++)
+			{
+			system->matrix->set(pressure_dof,dof_indices[i],0.);
+			system->matrix->set(dof_indices[i],pressure_dof,0.);
+			if(es->parameters.get<unsigned int>("preconditioner_type"))
+			{
+			system->request_matrix("Preconditioner")->set(pressure_dof,dof_indices[i],0.);
+			system->request_matrix("Preconditioner")->set(dof_indices[i],pressure_dof,0.);
+			system->request_matrix("Pressure Mass Matrix")->set(pressure_dof,dof_indices[i],0.);
+			system->request_matrix("Pressure Mass Matrix")->set(dof_indices[i],pressure_dof,0.);
+			system->request_matrix("Pressure Laplacian Matrix")->set(pressure_dof,dof_indices[i],0.);
+			system->request_matrix("Pressure Laplacian Matrix")->set(dof_indices[i],pressure_dof,0.);
+			system->request_matrix("Pressure Convection Diffusion Matrix")->set(pressure_dof,dof_indices[i],0.);
+			system->request_matrix("Pressure Convection Diffusion Matrix")->set(dof_indices[i],pressure_dof,0.);
 			}
-		    }
+			}
+			system->matrix->set(pressure_dof,pressure_dof,1.);
+			system->rhs->set(pressure_dof,0.);
+
+			if(es->parameters.get<unsigned int>("preconditioner_type"))
+			{
+			system->request_matrix("Preconditioner")->set(pressure_dof,pressure_dof,1.);
+			system->request_matrix("Pressure Mass Matrix")->set(pressure_dof,pressure_dof,-1.);
+			system->request_matrix("Pressure Laplacian Matrix")->set(pressure_dof,pressure_dof,1.);
+			system->request_matrix("Pressure Convection Diffusion Matrix")->set(pressure_dof,pressure_dof,1.);
+			}
+			}
+			}
+			*/
+
+
+	      	// now we need to add the pressure dof constraints that were found to be on the inflow dirichlet boundary
+	      	// doesn't really matter if there is overlap.
+
+	      	if ((es->parameters.get < unsigned int >("preconditioner_type_3d") == 4
+		   		|| es->parameters.get < unsigned int >("preconditioner_type_3d") == 5) 
+				&& es->parameters.get < unsigned int >("problem_type") != 4)
+			{
+		  		if (es->parameters.get <unsigned int >("pcd_boundary_condition_type") == 1
+		      		|| es->parameters.get <unsigned int >("pcd_boundary_condition_type") == 3
+		      		|| es->parameters.get <unsigned int >("pcd_boundary_condition_type") == 4)
+		    	{
+		      		for (unsigned int i = 0; i < pressure_dofs_on_inflow_boundary.size (); i++)
+					{
+			  			unsigned int local_pressure_dof = -1;
+			  			//find what local pressure dof in Ke_pre_convection_diffusion we need to take as the increment of the diagonal scaling
+			  			for (unsigned int j = 0; j < dof_indices.size (); j++)
+			    		{
+			      			if (pressure_dofs_on_inflow_boundary[i] == dof_indices[j])
+							{
+				  				local_pressure_dof = j;
+				  				break;
+							}
+			    		}
+
+			  			// we found the correct pressure dof...
+			  			if (local_pressure_dof >= 0)
+			    		{
+			      			//std::cout << "hi" << std::endl;
+			      			double diagonal_scaling_increment = Ke_pre_convection_diffusion(local_pressure_dof, local_pressure_dof);
+			      			sum_fp_diag += diagonal_scaling_increment;
+			      			//std::cout << "pinning pressure dof " << pressure_dofs_on_inflow_boundary[i] << " on elem " << elem->id() << " on inflow bdy with scaling = " << diagonal_scaling_increment << std::endl;
+			      			for (unsigned int j = 0; j < dof_indices.size (); j++)
+							{
+				  				if (pressure_dofs_on_inflow_boundary[i] != dof_indices[j])
+				    			{
+									
+				      				system->request_matrix("Pressure Laplacian Matrix")->	set (pressure_dofs_on_inflow_boundary[i], dof_indices[j], 0.);
+				      				system->request_matrix("Pressure Laplacian Matrix")->set (dof_indices[j],pressure_dofs_on_inflow_boundary[i], 0.);
+				      				system->request_matrix("Pressure Convection Diffusion Matrix")->set (pressure_dofs_on_inflow_boundary[i], dof_indices[j], 0.);
+				      				system->request_matrix("Pressure Convection Diffusion Matrix")->set (dof_indices[j],pressure_dofs_on_inflow_boundary[i], 0.);
+				    			}
+							}
+
+			      			if (es->parameters.get <unsigned int>("pcd_boundary_condition_type") == 1)
+							{
+								// first subject the increment we in the matrix construction of this element
+								system-> request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],-Ke_pre_laplacian(local_pressure_dof,local_pressure_dof));
+								// then add the correct increment
+system->request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],diagonal_scaling_increment * Re);
+							}
+			      			else if (es->parameters.get <unsigned int>("pcd_boundary_condition_type") == 3)
+							{
+								// first subject the increment we in the matrix construction of this element, so that can add average later
+								system->request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],-Ke_pre_laplacian(local_pressure_dof,local_pressure_dof));
+
+								// first subject the increment we in the matrix construction of this element
+system->request_matrix("Pressure Convection Diffusion Matrix")->add(pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],-Ke_pre_convection_diffusion(local_pressure_dof,local_pressure_dof));
+
+
+							}
+
+			    		}
+			  			else
+			    		{
+			      			std::cout <<"Error local pressure dof not found in Picard.C... EXITING"<< std::endl;
+			      			std::exit (0);
+			    		}
+					}
+		    	}
+			}
+
+	    	}
+	 		else
+	    	{
+	      		// estimate error TODO
+	    	}
+
+
+
+
 		}
-
-	    }
-	  else
-	    {
-	      // estimate error TODO
-	    }
-
-
-
-
-	}
 
     }				// end of element loop
 
@@ -5052,57 +4971,40 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 
-  // *********** APPLY THE AVERAGED PRECONDITIONER BOUNDARY CONDITION ****** //
-  //find the average value of
-  if (es->parameters.get < unsigned int >("pcd_boundary_condition_type") == 3)
-    {
-      // sort the dofs
-      std::sort (all_global_pressure_dofs_on_inflow_boundary.begin (),
-		 all_global_pressure_dofs_on_inflow_boundary.end ());
-      // remove duplicate dofs
-      std::vector < unsigned int >::iterator it;
-      it =
-	std::unique (all_global_pressure_dofs_on_inflow_boundary.begin (),
-		     all_global_pressure_dofs_on_inflow_boundary.end ());
-      all_global_pressure_dofs_on_inflow_boundary.
-	resize (std::
-		distance (all_global_pressure_dofs_on_inflow_boundary.
-			  begin (), it));
-      // set the parameter
-      double ave_fp_diag =
-	sum_fp_diag /
-	(double) all_global_pressure_dofs_on_inflow_boundary.size ();
+	// *********** APPLY THE AVERAGED PRECONDITIONER BOUNDARY CONDITION ****** //
+	//find the average value of
+	if (es->parameters.get < unsigned int >("pcd_boundary_condition_type") == 3)
+ 	{
+		// sort the dofs
+		std::sort (all_global_pressure_dofs_on_inflow_boundary.begin (),all_global_pressure_dofs_on_inflow_boundary.end ());
+		// remove duplicate dofs
+		std::vector < unsigned int >::iterator it;
+		it = std::unique (all_global_pressure_dofs_on_inflow_boundary.begin (),all_global_pressure_dofs_on_inflow_boundary.end ());
+		all_global_pressure_dofs_on_inflow_boundary.resize (std::distance (all_global_pressure_dofs_on_inflow_boundary.begin (), it));
+		// set the parameter
+		double ave_fp_diag = sum_fp_diag / (double) all_global_pressure_dofs_on_inflow_boundary.size ();
 
-      for (unsigned int i = 0;
-	   i < all_global_pressure_dofs_on_inflow_boundary.size (); i++)
-	{
-	  system->request_matrix ("Pressure Convection Diffusion Matrix")->
-	    set (all_global_pressure_dofs_on_inflow_boundary[i],
-		 all_global_pressure_dofs_on_inflow_boundary[i], ave_fp_diag);
-	  system->request_matrix ("Pressure Laplacian Matrix")->
-	    set (all_global_pressure_dofs_on_inflow_boundary[i],
-		 all_global_pressure_dofs_on_inflow_boundary[i],
-		 Re * ave_fp_diag);
-	}
+    	for (unsigned int i = 0; i < all_global_pressure_dofs_on_inflow_boundary.size (); i++)
+		{
+			system->request_matrix ("Pressure Convection Diffusion Matrix")->set (all_global_pressure_dofs_on_inflow_boundary[i],all_global_pressure_dofs_on_inflow_boundary[i],ave_fp_diag);
+			system->request_matrix ("Pressure Laplacian Matrix")->set (all_global_pressure_dofs_on_inflow_boundary[i],all_global_pressure_dofs_on_inflow_boundary[i],Re * ave_fp_diag);
+		}
     }
 
 
 
 
-  // put ones on the diagonal of the pressure block of the navier stokes matrix preconditioner
-  // preconditioner 9 doesn't use the velocity matrix, takes it from the system matrix
-  if (es->parameters.get < unsigned int >("preconditioner_type_3d1d") == 8
-      || es->parameters.get < unsigned int >("preconditioner_type_3d1d") ==
-      11)
+	// put ones on the diagonal of the pressure block of the navier stokes matrix preconditioner
+	// preconditioner 9 doesn't use the velocity matrix, takes it from the system matrix
+	if (es->parameters.get < unsigned int >("preconditioner_type_3d1d") == 8
+  		|| es->parameters.get < unsigned int >("preconditioner_type_3d1d") == 11)
     {
-      const unsigned int p_var = system->variable_number ("p");
-      std::vector < dof_id_type > p_var_idx;
-      system->get_dof_map ().local_variable_indices
-	(p_var_idx, system->get_mesh (), p_var);
-      // velocity mass matrix
-      for (unsigned int i = 0; i < p_var_idx.size (); i++)
-	system->request_matrix ("Velocity Matrix")->set (p_var_idx[i],
-							 p_var_idx[i], 1.0);
+		const unsigned int p_var = system->variable_number ("p");
+		std::vector < dof_id_type > p_var_idx;
+		system->get_dof_map ().local_variable_indices(p_var_idx, system->get_mesh (), p_var);
+		// velocity mass matrix
+		for (unsigned int i = 0; i < p_var_idx.size (); i++)
+		system->request_matrix ("Velocity Matrix")->set (p_var_idx[i],p_var_idx[i], 1.0);
     }
 
 
@@ -5114,17 +5016,17 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 
-  if (threed)
-    std::cout << "end 3D assembly" << std::endl;
-  else
-    std::cout << "end 2D assembly" << std::endl;
+	if (threed)
+		std::cout << "end 3D assembly" << std::endl;
+	else
+		std::cout << "end 2D assembly" << std::endl;
 
-  //std::cout << "tau_sum = " << tau_sum << std::endl;
-  std::cout << "average alpha factor = " << alpha_factor_sum /
-    count << std::endl;
+	//std::cout << "tau_sum = " << tau_sum << std::endl;
+	std::cout << "average alpha factor = " << alpha_factor_sum /
+	count << std::endl;
 
 
-  return;
+	return;
 
 
 }

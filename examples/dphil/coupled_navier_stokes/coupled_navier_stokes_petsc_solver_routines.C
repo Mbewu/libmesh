@@ -341,47 +341,28 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
 
 
 /*
-   MonolithicShellPCSetUp - This routine sets up a user-defined
-   preconditioner context.
-
-   Input Parameters:
-.  pc    - preconditioner object
-.  pmat  - preconditioner matrix
-.  x     - vector
-
-   Output Parameter:
-.  shell - fully set up user-defined preconditioner context
-
-   Notes:
-   In this example, we define the shell preconditioner to be Jacobi's
-   method.  Thus, here we create a work vector for storing the reciprocal
-   of the diagonal of the preconditioner matrix; this vector is then
-   used within the routine SampleShellPCApply().
+   MonolithicShellPCSetUp - This routine sets up the monolithic shell preconditioner
+	when we don't construct the schur complement columnwise. mostly defunct.
 */
 PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 {
-  NSShellPC  *shell;
-  PetscErrorCode ierr;
+  	NSShellPC  *shell;
+  	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(1); // not sure why this doesn't work anymore
+	ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
 
 
-  ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+  	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
 	// ********* SET THE MATRIX ******************* //
 
-  shell->velocity_matrix = velocity_matrix;
+  	shell->velocity_matrix = velocity_matrix;
 
 	// ********* SETUP VELOCITY MATRIX KSP **************** //
 
-	// create
-	//ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
 	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_velocity_ksp); CHKERRQ(ierr);
-	
-	// set the operators for the velocity matrix inversion
 	ierr = KSPSetOperators(shell->inner_velocity_ksp,shell->velocity_matrix,shell->velocity_matrix); CHKERRQ(ierr);
 
-	// setup up the PC for the velocity matrix inversion
 	PC local_velocity_pc;
 	ierr = KSPGetPC(shell->inner_velocity_ksp,&local_velocity_pc); CHKERRQ(ierr);
 
@@ -464,7 +445,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 	ierr = MatDestroy(&S_approx_dense); CHKERRQ(ierr);
 	
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic velocity setup");
   return 0;
@@ -476,16 +457,16 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 */
 PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_cols, Vec non_zero_rows, KSP schur_ksp)
 {
-  NSShellPC  *shell;
-  PetscErrorCode ierr;
+  	NSShellPC  *shell;
+  	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(1);	// not sure why this log thing makes an error now...
+	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
-  ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+  	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
 	// ********* SET MASS MATRIX ******************* //
 
-  shell->velocity_matrix = velocity_matrix;
+  	shell->velocity_matrix = velocity_matrix;
 
 	// ********* SETUP VELOCITY MATRIX KSP **************** //
 
@@ -529,8 +510,8 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 	printf ("2\n");
 	
 	// initialise the items for the factorisation (probably unnecessary)
-  ierr = MatGetOrdering(shell->velocity_matrix,  MATORDERINGNATURAL,  &perm,  &iperm); CHKERRQ(ierr);     
-  ierr = MatFactorInfoInitialize(&info); CHKERRQ(ierr);
+  	ierr = MatGetOrdering(shell->velocity_matrix,  MATORDERINGNATURAL,  &perm,  &iperm); CHKERRQ(ierr);     
+  	ierr = MatFactorInfoInitialize(&info); CHKERRQ(ierr);
 
 	// Do the factorisation
 	// superlu doesn't work with matmatsolve, superlu_dist does.
@@ -659,13 +640,17 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 
 	printf ("yeah\n");
 
-	// delete the matrices we have created	
+	// delete the matrices we have created
+	ierr = VecDestroy(&Bt_col);
+	ierr = VecDestroy(&T_col);
+	ierr = VecDestroy(&B_row);
+	ierr = MatDestroy(&new_T);
 	ierr = MatDestroy(&F); CHKERRQ(ierr);
 	ierr = ISDestroy(&perm); CHKERRQ(ierr);
 	ierr = ISDestroy(&iperm); CHKERRQ(ierr);
 	
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic 2 velocity setup");
   return 0;
@@ -805,8 +790,7 @@ PetscErrorCode LSCScaledShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_
 
 PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_ksp)
 {
-	std::cout << "hello?" << std::endl;
-	printf ("inside shell pc lsc scaled stabilised james setup");
+	printf ("Inside shell pc lsc scaled stabilised james setup\n");
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
@@ -854,25 +838,16 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	Mat D_temp;	// D matrix
 	Mat B_F_inv_Bt_D_inv;	// D matrix
 	Vec F_diag_inv;
-	//std::cout << "hello?" << std::endl;
 	MatDuplicate(Bt,MAT_COPY_VALUES,&D_temp);	// D = B^T
-	//std::cout << "hello?" << std::endl;
 	MatGetVecs(A,&F_diag_inv,NULL);
 	MatGetDiagonal(A,F_diag_inv); 			// get the f_diag
-	//std::cout << "hello?" << std::endl;
 	VecReciprocal(F_diag_inv);			// invert it
-	//std::cout << "hello?" << std::endl;
 	MatDiagonalScale(D_temp,F_diag_inv,NULL);	// D = diag(F)^-1 * B^T
-	//std::cout << "hello?" << std::endl;
 	MatMatMult(B,D_temp,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&D);	// D = B * diag(F)^-1 * B^T
-	//std::cout << "hello?" << std::endl;
 	MatDuplicate(D,MAT_COPY_VALUES,&B_F_inv_Bt_D_inv);	// create temporary place for B_scaled
-	//std::cout << "hello?" << std::endl;
 	MatAXPY(D,-1.0,C,DIFFERENT_NONZERO_PATTERN);	// D = B * diag(F)^-1 * B^T - C
-	//std::cout << "hello?" << std::endl;
 	MatGetVecs(D,&shell->lsc_stab_alpha_D_inv,NULL);
 	MatGetDiagonal(D,shell->lsc_stab_alpha_D_inv); // D = diag(B * diag(F)^-1 * B^T - C)
-	//std::cout << "hello?" << std::endl;
 	VecReciprocal(shell->lsc_stab_alpha_D_inv);	// invert it
 
 	// make B_F_inv_Bt_D_inv
@@ -915,8 +890,10 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	MatDuplicate(A,MAT_COPY_VALUES,&Q_inv_F);	// create temporary place for B_scaled
 	MatDiagonalScale(Q_inv_F,shell->lsc_scale,NULL);	// D = diag(F)^-1 * B^T
 
-	//std::cout << "hello?" << std::endl;
-	// do power series
+
+
+	
+	// ************ do power series to calculate spectral radius ************ //
 	Vec b_k;
 	Vec b_k_plus_1;
 	// initialise b_k
@@ -959,9 +936,13 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	//std::cout << "hello?" << std::endl;
 	
 
+ 	VecDestroy(&b_k);
+	VecDestroy(&b_k_plus_1);
+
 	MatGetVecs(B_F_inv_Bt_D_inv,&b_k,NULL);
 	MatGetVecs(B_F_inv_Bt_D_inv,&b_k_plus_1,NULL);
-     	VecSetRandom(b_k,rctx);	
+    
+	VecSetRandom(b_k,rctx);	
 
 	PetscReal max_eigenvalue_B_F_inv_Bt_D_inv = 1.0;
 	PetscReal max_eigenvalue_B_F_inv_Bt_D_inv_prev = 1.0;
@@ -1000,6 +981,10 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	gamma = gamma/D_r_infty;
 	PetscReal alpha = 1.0/max_eigenvalue_B_F_inv_Bt_D_inv;
 
+
+   	PetscRandomDestroy(&rctx);
+	
+
 	//std::cout << "hello?" << std::endl;
 
 	// ********** SETUP L = A10* Q_V^-1* A01 - gamma*D_r_sqrt* C*D_r_sqrt *************************	//
@@ -1034,7 +1019,7 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	MatDestroy(&Q_inv_F);
 	MatDestroy(&D_r_sqrt_C_D_r_sqrt);
 	MatDestroy(&Bt_scaled);
-     	PetscRandomDestroy(&rctx);
+
 	printf ("done shell pc lsc james setup");
 
 	//std::cout << "hello?" << std::endl;
@@ -1546,30 +1531,19 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(1);
+	ierr = PetscLogStagePush(2);
 
-	//printf ("in Monolithic preconditioner\n");
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
-	//VecView(x,PETSC_VIEWER_STDOUT_SELF);
 	
 	// apply the preconditioner (lu)	
 	PC local_velocity_pc;
 	ierr = KSPGetPC(shell->inner_velocity_ksp,&local_velocity_pc); CHKERRQ(ierr);
 	ierr = PCApply(local_velocity_pc,x,y); CHKERRQ(ierr);
 
-	//PetscInt num_mass_its = 0;
-  //ierr = KSPGetIterationNumber (local_mass_ksp, &num_mass_its);
-	//printf ("num_mass_its = %d\n",num_mass_its);
 
-
-	printf ("hi\n");
-	//ierr = MatMult(shell->pressure_mass_matrix,x,y);
-
-	//VecView(y,PETSC_VIEWER_STDOUT_SELF);
-
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
   return 0;
 }
 
@@ -1588,7 +1562,7 @@ PetscErrorCode LSCShellPCApply(PC pc,Vec x,Vec y)
 	printf ("inside shell pc lsc james pcapply");
 
 	PetscLogStage pcd_stage;
-	//ierr = PetscLogStagePush(1);
+	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
 
@@ -1616,7 +1590,7 @@ PetscErrorCode LSCShellPCApply(PC pc,Vec x,Vec y)
 
 
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
   return 0;
 }
@@ -1634,7 +1608,7 @@ PetscErrorCode LSCScaledShellPCApply(PC pc,Vec x,Vec y)
 	printf ("inside shell pc lsc james pcapply");
 
 	PetscLogStage pcd_stage;
-	//ierr = PetscLogStagePush(1);
+	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
 
@@ -1662,7 +1636,7 @@ PetscErrorCode LSCScaledShellPCApply(PC pc,Vec x,Vec y)
 
 
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
   return 0;
 }
@@ -2127,29 +2101,17 @@ PetscErrorCode NSShellDestroy(PC pc)
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = KSPDestroy(&shell->inner_lap_ksp);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = KSPDestroy(&shell->inner_velocity_ksp);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = KSPDestroy(&shell->inner_schur_ksp);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = VecDestroy(&shell->temp_vec);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = VecDestroy(&shell->temp_vec_2);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = VecDestroy(&shell->temp_vec_3);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = VecDestroy(&shell->lsc_scale);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = MatDestroy(&shell->S_approx);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl; //here, it is getting deleted earlier...
 //	ierr = MatDestroy(&shell->velocity_matrix);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = MatDestroy(&shell->lsc_laplacian_matrix);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 	ierr = VecDestroy(&shell->lsc_stab_alpha_D_inv);CHKERRQ(ierr);
-  std::cout << "in shell destroy" << std::endl;
 
 
   ierr = PetscFree(shell);CHKERRQ(ierr);
