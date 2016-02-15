@@ -2200,6 +2200,10 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		std::cout << "hiya" << std::endl;
 		delete velocity_matrix;
 		std::cout << "hmmm" << std::endl;
+
+		// also zero the assemble bits for next time
+		system->request_matrix("Velocity Matrix")->close();
+		system->request_matrix("Velocity Matrix")->zero();
 	}
 
 	// the navier stokes 3d1d preconditioners need to be deleted and zeroed

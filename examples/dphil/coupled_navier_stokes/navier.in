@@ -509,7 +509,7 @@ petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 10
+preconditioner_type_3d1d = 12
 multiple_column_solve = true
 reuse_preconditioner = true
 ksp_view = true
