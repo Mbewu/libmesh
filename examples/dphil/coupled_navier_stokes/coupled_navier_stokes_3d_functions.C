@@ -1601,7 +1601,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	// only use ksp view in the first iteration
 	ierr = PetscOptionsInsertString(es->parameters.get<std::string>("petsc_solver_options").c_str()); CHKERRQ(ierr);
 	
-
 	previous_nonlinear_residual = current_nonlinear_residual;
 
 
@@ -2513,15 +2512,16 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// set to not reuse the preconditioner
 		//ierr = KSPSetReusePreconditioner(subksp[1],PETSC_TRUE); CHKERRQ(ierr);
 
-
-		ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+		if(es->parameters.get<bool>("nonzero_initial_guess_inner_3d1d") && !es->parameters.get<bool>("monolithic_navier_stokes_preonly"))
+		{
+			ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+		}
 
 		if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
 		{
 			PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
 			function_ptr = &custom_outer_monitor;
 
-			PetscNew(&mono_ctx);
 			mono_ctx->total_velocity_iterations = 0;
 			mono_ctx->total_convection_diffusion_iterations = 0;
 
@@ -2765,8 +2765,26 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 
+		if(es->parameters.get<bool>("nonzero_initial_guess_inner_3d1d") && !es->parameters.get<bool>("monolithic_navier_stokes_preonly"))
+		{
+			ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+		}
+
 		
-		//ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+		if((es->parameters.set<double> ("last_nonlinear_iterate") < es->parameters.get<double>("monolithic_navier_stokes_preonly_switch"))
+			&& nonlinear_iteration > 1)
+		{
+			std::cout << "changing to use preonly" << std::endl;
+			ierr = KSPSetType(subksp[0], KSPPREONLY); CHKERRQ(ierr);
+			ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_FALSE); CHKERRQ(ierr);
+		}
+		else if(nonlinear_iteration == 1 && !es->parameters.get<bool>("monolithic_navier_stokes_preonly"))
+		{
+			std::cout << "changing back to use gmres" << std::endl;
+			ierr = KSPSetType(subksp[0], KSPGMRES); CHKERRQ(ierr);
+
+		}
+
 
 		// set ksp to preonly because we are defining the inverse
 		ierr = KSPSetType(subksp[1], KSPPREONLY); CHKERRQ(ierr);
@@ -2825,7 +2843,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
 			function_ptr = &custom_outer_monitor;
 
-			PetscNew(&mono_ctx);
 			mono_ctx->total_velocity_iterations = 0;
 			mono_ctx->total_convection_diffusion_iterations = 0;
 

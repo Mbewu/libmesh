@@ -1463,6 +1463,7 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"ksp_view",false);
 	set_bool_parameter(infile,"ksp_view_before",false);
 	set_bool_parameter(infile,"nonzero_initial_guess",false);
+	set_bool_parameter(infile,"nonzero_initial_guess_inner_3d1d",false);
 	set_bool_parameter(infile,"streamline_diffusion",false);
 	set_bool_parameter(infile,"leaky_lid_driven_cavity",false);
 	set_bool_parameter(infile,"pin_pressure",false);
@@ -1539,6 +1540,7 @@ void NavierStokesCoupled::read_parameters()
 	set_string_parameter(infile,"petsc_3d1d_navier_stokes_direct_solver_options","");
 	set_string_parameter(infile,"petsc_3d1d_navier_stokes_gmres_solver_options","");
 	set_string_parameter(infile,"petsc_3d1d_navier_stokes_fieldsplit_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options","");
 
 	set_string_parameter(infile,"petsc_3d1d_inner_1d_solver_options","");
 
@@ -1566,6 +1568,8 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"assemble_velocity_mass_matrix",false);
 
 	set_bool_parameter(infile,"schur_stokes_precompute",false);
+	set_bool_parameter(infile,"monolithic_navier_stokes_preonly",false);
+	set_double_parameter(infile,"monolithic_navier_stokes_preonly_switch",0.);
 	set_unsigned_int_parameter(infile,"preconditioner_type_schur_stokes",0);
 
 
@@ -1676,7 +1680,10 @@ void NavierStokesCoupled::read_parameters()
 						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_gmres_solver_options");
 					else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") > 1)
 					{
-						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_solver_options");
+						if(es->parameters.get<bool> ("monolithic_navier_stokes_preonly"))
+							petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options");
+						else
+							petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_solver_options");
 
 						// extra navier stokes settings
 						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_convection_diffusion_solver_options");
@@ -1826,6 +1833,11 @@ void NavierStokesCoupled::read_parameters()
 			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
 		es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
 		
+
+
+	// *************** allocate the monolithic monitor context ***************** //
+	PetscNew(&mono_ctx);
+
 
 
 
