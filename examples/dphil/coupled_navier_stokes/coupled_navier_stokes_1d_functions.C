@@ -1795,6 +1795,8 @@ void NavierStokesCoupled::write_1d_solution()
 void NavierStokesCoupled::solve_1d_system()
 {
 
+	PetscErrorCode ierr;
+
 	PetscLinearSolver<Number>* system_linear_solver =
 			libmesh_cast_ptr<PetscLinearSolver<Number>* >
 			(system_1d->linear_solver.get());
@@ -1813,6 +1815,12 @@ void NavierStokesCoupled::solve_1d_system()
 	perf_log.pop("Linear 1D solve");
 
 
+	if(es->parameters.get<bool>("ksp_view") && nonlinear_iteration == 1 && t_step == 1)
+	{
+		// we need to set this directly
+		KSP system_ksp_1d = system_linear_solver->ksp();
+		ierr = KSPView(system_ksp_1d,PETSC_VIEWER_STDOUT_WORLD);// CHKERRQ(ierr);
+	}
 	//system_1d->matrix->print(std::cout,false);
 	//system_1d->rhs->print(std::cout);
 

@@ -176,6 +176,7 @@ typedef struct {
   Vec lsc_scale;
   Mat lsc_laplacian_matrix;
   Vec lsc_stab_alpha_D_inv;
+  PetscInt total_iterations;
 } NSShellPC;
 
 typedef struct {
@@ -208,6 +209,12 @@ typedef struct {
 } PCD2ShellMatrixCtx;
 
 
+typedef struct {
+	PetscInt total_velocity_iterations;
+	PetscInt total_convection_diffusion_iterations;
+} MonolithicMonitorCtx;
+
+
 
 /* Declare routines for user-provided preconditioner */
 extern PetscErrorCode ShellPCCreate(NSShellPC**);
@@ -219,6 +226,7 @@ extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode MonolithicShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP);
 extern PetscErrorCode Monolithic2ShellPCSetUp(PC,Mat,Vec,Vec,KSP);
 extern PetscErrorCode MonolithicShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode LSCShellPCSetUp(PC,KSP);
@@ -388,6 +396,8 @@ public:
 
 	void setup_is_simple (TransientLinearImplicitSystem * sys, PC my_pc);
 
+	void construct_schur_stokes_matrix(KSP schur_ksp);
+
 
 private:
 
@@ -518,9 +528,11 @@ private:
 	PetscMatrix<Number>* scaled_pressure_mass_matrix;
 	PetscMatrix<Number>* pressure_laplacian_matrix;
 	PetscMatrix<Number>* pressure_convection_diffusion_matrix;
-	PetscMatrix<Number>* schur_complement_approx;
 	PetscMatrix<Number>* velocity_mass_matrix;
 	PetscMatrix<Number>* velocity_matrix;
+
+	// cause it makes things easier..
+	Mat schur_complement_approx;
 
 	// Mats for submatrices of SIMPLE-type preconditioners
 	IS velocity_is;
@@ -529,9 +541,11 @@ private:
 	Vec non_zero_rows;
 	NSShellPC  *shell;    /* user-defined preconditioner context */
 	NSShellPC  *mono_shell;    /* user-defined preconditioner context */
+	NSShellPC  *schur_stokes_shell;    /* user-defined preconditioner context */
 	SIMPLEShellPC  *simple_shell;    /* user-defined preconditioner context */
 
 	PCD2ShellMatrixCtx mat_ctx;
+	MonolithicMonitorCtx *mono_ctx;
 
 
 };

@@ -758,6 +758,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					{
 	
 						std::cout << "hiya" << std::endl;
+						local_linear_iterations = 0;
 						nonlinear_iteration = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						while(true)
@@ -1541,8 +1542,13 @@ void NavierStokesCoupled::read_parameters()
 
 	set_string_parameter(infile,"petsc_3d1d_inner_1d_solver_options","");
 
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_gmres_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_fieldsplit_solver_options","");
+
 
 	set_string_parameter(infile,"petsc_solver_options","");
+	set_string_parameter(infile,"petsc_solver_options_ksp_view","");
 
   //
 
@@ -1558,6 +1564,9 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"assemble_pressure_convection_diffusion_matrix",false);
 	set_bool_parameter(infile,"assemble_pressure_laplacian_matrix",false);
 	set_bool_parameter(infile,"assemble_velocity_mass_matrix",false);
+
+	set_bool_parameter(infile,"schur_stokes_precompute",false);
+	set_unsigned_int_parameter(infile,"preconditioner_type_schur_stokes",0);
 
 
 
@@ -1605,6 +1614,7 @@ void NavierStokesCoupled::read_parameters()
 	if(es->parameters.get<std::string> ("petsc_solver_options") == empty_string)
 	{
 		std::string petsc_solver_options = "";
+		std::string petsc_solver_options_ksp_view = "";
 		if(sim_3d)
 		{
 
@@ -1632,8 +1642,6 @@ void NavierStokesCoupled::read_parameters()
 					es->parameters.set<bool> ("fieldsplit") = true;
 				}
 
-				if(es->parameters.get<bool> ("ksp_view"))
-					petsc_solver_options += " -ns3d_ksp_view";
 				
 
 			}
@@ -1679,8 +1687,25 @@ void NavierStokesCoupled::read_parameters()
 					}
 				}
 
-				if(es->parameters.get<bool> ("ksp_view"))
-					petsc_solver_options += " -ns3d1d_ksp_view";
+				// we need to add the schur stokes solver options
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10)
+				{
+					if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 0)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_direct_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 1)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_gmres_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_fieldsplit_solver_options");
+					else
+					{
+						std::cout << "Schur Stokes solver type " << es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") << " not defined." << std::endl;
+						std::cout << "Exiting..." << std::endl;
+						std::exit(0);
+					}
+					
+					
+				}
+
 
 				
 			}
@@ -1697,8 +1722,6 @@ void NavierStokesCoupled::read_parameters()
 			{
 				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_1d_solver_options");
 
-				if(es->parameters.get<bool> ("ksp_view"))
-					petsc_solver_options += " -ns1d_ksp_view";
 			}
 
 			else
@@ -1710,7 +1733,29 @@ void NavierStokesCoupled::read_parameters()
 			}
 		}
 
+
+		petsc_solver_options_ksp_view = petsc_solver_options;
+		if(es->parameters.get<bool> ("ksp_view"))
+		{
+			if(sim_3d)
+			{
+				if(sim_type != 5)
+					petsc_solver_options_ksp_view += " -ns3d_ksp_view";
+				else
+					petsc_solver_options_ksp_view += " -ns3d1d_ksp_view";
+			}
+		
+			if(sim_1d)
+			{
+				if(sim_type != 5)
+					petsc_solver_options_ksp_view += " -ns1d_ksp_view";
+				
+			}
+		}
+			
+
 		es->parameters.set<std::string> ("petsc_solver_options") = petsc_solver_options;
+		es->parameters.set<std::string> ("petsc_solver_options_ksp_view") = petsc_solver_options_ksp_view;
 		std::cout << "Petsc command line options set to: " << es->parameters.get<std::string> ("petsc_solver_options") << std::endl;;
 	}
 
@@ -1745,23 +1790,55 @@ void NavierStokesCoupled::read_parameters()
 
 
 
+	// ***************** if we aren't doing schur stokes then we can't do schur stokes precompute *********** //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") != 10)
+	{
+		std::cout << "No point doing schur stokes precompute if we aren't doing schur stokes." << std::endl;
+		es->parameters.set<bool> ("schur_stokes_precompute") = false;
+		
+	}
+
+
+	// ***************** if we aren't doing a monolithic simulation then the 3d1d preconditioner is irrelevant ********** //
+	if(sim_type != 5)
+	{
+		es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
+	}	
+
 	// ***************** figure out what sub matrices we need to assemble ********************* //
 	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
 		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
-	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3)
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3
+			|| es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
 		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
-	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
 			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
 	{
 		es->parameters.set<bool> ("assemble_pressure_mass_matrix") = true;
 		es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = true;
 		es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = true;
 	}
-	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
+	
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
 			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 8
 			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
 		es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
 		
+
+
+
+
+
+	// **************** quadratic elements and schur stokes fieldsplit not supported ********************* //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10 && es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2 && !es->parameters.get<bool> ("linear_shape_functions"))
+	{
+		std::cout << "Sorry, fieldsplit and schur stokes are not supported with quadratic elements." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
 
 
 
