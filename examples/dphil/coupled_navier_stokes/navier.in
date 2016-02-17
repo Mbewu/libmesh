@@ -482,10 +482,10 @@ petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type 
 petsc_3d1d_navier_stokes_gmres_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # General fieldsplit
-petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-2 -ns3d1d_fieldsplit_0_ksp_atol 1e-10  -ns3d1d_fieldsplit_0_ksp_max_it 30 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-6 -ns3d1d_fieldsplit_0_ksp_atol 1e-10  -ns3d1d_fieldsplit_0_ksp_max_it 30 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 # General fieldsplit (preonly)
-petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 
 
@@ -525,14 +525,17 @@ petsc_3d1d_schur_stokes_fieldsplit_solver_options = '-schur_stokes_ksp_type gmre
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 0
+preconditioner_type_3d1d = 10
 # 0 - direct, 1 - gmres (ilu etc), 2 - pressure mass matrix
 preconditioner_type_schur_stokes = 0
-schur_stokes_precompute = false
+monolithic_navier_stokes_preonly = 0
+monolithic_navier_stokes_preonly_switch = 0.0
+schur_stokes_precompute = true
 multiple_column_solve = true
 reuse_preconditioner = false
 ksp_view = true
 ksp_view_before = false
+nonzero_initial_guess_inner_3d1d = true
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
 reynolds_number = 500.0
@@ -604,7 +607,7 @@ unsteady = 1
 ramp_duration = 1.0
 end_time = 50.0
 period = 1000.0
-dt = 0.5
+dt = 5.0
 newton = false
 viscosity_controlled = false
 max_newton_iterations = 100
@@ -617,7 +620,7 @@ numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
 element_length_scaling = 1.25
 output_nondim = true
-sim_type = 0
+sim_type = 5
 reynolds_number_calculation = true
 no_output = false
 max_initial_picard = 5
@@ -629,7 +632,7 @@ num_generations_2 = 1
 num_generations_3 = 1
 num_generations_4 = 1
 random_1d_generations = 0	# the number is the maximum number of 1d generations
-num_generations_string = 999999999999999999999999999999999999 58769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
+num_generations_string = 58769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
 output_resistance = false
 input_1d_file = meshes/APLE0027688_truncated/centrelines_remeshed/output_airways_full_james
 match_1d_mesh_to_3d_mesh = false
