@@ -349,7 +349,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
+	//ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
@@ -445,7 +445,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 	ierr = MatDestroy(&S_approx_dense); CHKERRQ(ierr);
 	
 
-	ierr = PetscLogStagePop();
+	//ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic velocity setup");
   return 0;
@@ -460,7 +460,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	//ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -650,7 +650,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 	ierr = ISDestroy(&iperm); CHKERRQ(ierr);
 	
 
-	ierr = PetscLogStagePop();
+	//ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic 2 velocity setup");
   return 0;
@@ -1531,7 +1531,7 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2);
+	//ierr = PetscLogStagePush(2);
 
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -1543,7 +1543,7 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 	ierr = PCApply(local_velocity_pc,x,y); CHKERRQ(ierr);
 
 
-	ierr = PetscLogStagePop();
+	//ierr = PetscLogStagePop();
   return 0;
 }
 
