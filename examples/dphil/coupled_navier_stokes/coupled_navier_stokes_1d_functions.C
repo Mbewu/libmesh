@@ -793,9 +793,6 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	unsigned int num_generations_3 = es->parameters.get<unsigned int> ("num_generations_3");
 	unsigned int num_generations_4 = es->parameters.get<unsigned int> ("num_generations_4");
 
-
-	double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
-
 	// okay we want to make this general so that for a simulation in which it is 
 	// only a 1d simulation.
 
@@ -843,6 +840,15 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			cell_vertices.clear();
 			segment.clear();
 
+			double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");			// gives the length
+			double length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio");	// gives the radius
+			if(es->parameters.get<double> ("length_diam_ratio") > 1e-10)
+			{
+				if(i==1)
+					length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio_1");
+				else
+					length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio_2");					
+			}
 
 			Point normal;
 			Point centroid;
@@ -953,7 +959,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			airway_data[airway_data.size() - 1].set_tree_number(i);
 						
 
-			double radius = airway_data[airway_data.size() - 1].get_length()/length_diam_ratio/2.0;
+			double radius = airway_data[airway_data.size() - 1].get_length()/length_diam_ratio_true/2.0;
 			if(es->parameters.get<bool> ("half_initial_length"))
 			{
 				radius *= 2.0;

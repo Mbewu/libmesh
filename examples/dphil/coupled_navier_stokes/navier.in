@@ -456,7 +456,7 @@ petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_fact
 petsc_3d1d_diagonal_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type additive -ns3d1d_ksp_monitor'
 
 # schur
-petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type upper -ns3d1d_ksp_monitor'
+petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type diag -ns3d1d_ksp_monitor'
 
 # direct
 petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right'
@@ -482,7 +482,7 @@ petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type 
 petsc_3d1d_navier_stokes_gmres_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # General fieldsplit
-petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-6 -ns3d1d_fieldsplit_0_ksp_atol 1e-10  -ns3d1d_fieldsplit_0_ksp_max_it 30 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-6 -ns3d1d_fieldsplit_0_ksp_atol 1e-10  -ns3d1d_fieldsplit_0_ksp_max_it 7 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 # General fieldsplit (preonly)
 petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
@@ -528,14 +528,14 @@ preconditioner_type_3d = 9
 preconditioner_type_3d1d = 10
 # 0 - direct, 1 - gmres (ilu etc), 2 - pressure mass matrix
 preconditioner_type_schur_stokes = 0
-monolithic_navier_stokes_preonly = 0
+monolithic_navier_stokes_preonly = 1
 monolithic_navier_stokes_preonly_switch = 0.0
 schur_stokes_precompute = true
 multiple_column_solve = true
 reuse_preconditioner = false
 ksp_view = true
 ksp_view_before = false
-nonzero_initial_guess_inner_3d1d = true
+nonzero_initial_guess_inner_3d1d = false
 nonzero_initial_guess = true
 outer_solver_rtol = 1.e-6
 reynolds_number = 500.0

@@ -149,6 +149,7 @@
 
 
 #include "libmesh/point_locator_base.h"
+#include "libmesh/point_locator_base.h"
 
 // for element type names
 #include "libmesh/elem_type.h"

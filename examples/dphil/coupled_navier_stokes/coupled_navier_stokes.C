@@ -1571,6 +1571,11 @@ void NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"monolithic_navier_stokes_preonly",false);
 	set_double_parameter(infile,"monolithic_navier_stokes_preonly_switch",0.);
 	set_unsigned_int_parameter(infile,"preconditioner_type_schur_stokes",0);
+	set_unsigned_int_parameter(infile,"monolithic_navier_stokes_gmres_its",100);
+
+	set_double_parameter(infile,"length_diam_ratio_1",0.);
+	set_double_parameter(infile,"length_diam_ratio_2",0.);
+
 
 
 
