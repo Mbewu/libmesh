@@ -219,7 +219,7 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
    */
   const std::vector<std::string> & get_nodal_var_names();
 
-	void set_var_scalings(std::vector<double> scaling);
+  void set_var_scalings(std::vector<double> scaling);
 
  private:
   /**

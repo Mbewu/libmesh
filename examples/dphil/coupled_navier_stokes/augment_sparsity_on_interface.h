@@ -33,15 +33,15 @@ private:
 
 	std::vector<std::vector<unsigned int> > boundary_nodes_1d;
 
-	int n_initial_3d_elem;
 
-	bool coupled;
-
-	std::vector<Airway> airway_data;
 
 	std::vector<unsigned int> subdomains_3d;
 	std::vector<unsigned int> subdomains_1d;
  
+	int n_initial_3d_elem;
+
+	bool coupled;
+	std::vector<Airway> airway_data;
 
 public:
 

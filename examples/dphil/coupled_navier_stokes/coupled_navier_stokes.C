@@ -132,13 +132,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		exit_program(false),
 		threed(true),
 		total_nonlinear_iterations(0),
+		local_linear_iterations(0),
 		total_linear_iterations(0),
 		total_max_iterations(0),
-		local_linear_iterations(0),
 
 		particle_deposition(false),
 		shell_pc_created(false),
-		mono_shell_pc_created(false)
+		mono_shell_pc_created(false),
+		ic_set(true)
 {
 
 	perf_log.push("total");
@@ -423,6 +424,20 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				output_file.open(output_data_file_name.str().c_str());
 			}
 
+			if(es->parameters.get<bool> ("write_eigenvalues"))
+			{
+				// output the parameters used to file and the header of the out.dat file
+				std::ostringstream eigenvalues_data_file_name;
+
+				eigenvalues_data_file_name << output_folder.str() << "eigenvalues.dat";
+				//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
+				eigenvalues_file.open(eigenvalues_data_file_name.str().c_str());
+
+				eigenvalues_file << "# eigenvalue data file" << std::endl;
+				eigenvalues_file << "# timestep_no\tnonlinear_it\teigenvalue_real\teigenvalue_imag" << std::endl;
+
+			}
+
 			if(!restart)
 			{
 				output_sim_data(true);
@@ -549,8 +564,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
+
 				// INCREMENT TIME
 				++t_step;
+
+
+				// choose dt
 				if(particle_deposition && !es->parameters.get<bool> ("unsteady_from_steady"))
 					dt = timestep_sizes[t_step - 1];	//set timestep based on file
 
@@ -558,10 +577,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				{
 					dt = es->parameters.get<Real> ("end_time") - time;
 				}
+
+				time += dt;
+	
+				// if doing a precalculation to setup an initial condition e.g. stokes, then don't increment time
+				if(es->parameters.get<bool> ("stokes_ic") && !ic_set)
+				{
+					--t_step;
+					time -= dt;
+					ic_set = true;
+				}
+
+				update_times();
+
 				shell_pc_created = false;
 				mono_shell_pc_created = false;
-				time += dt;
-				update_times();
 
 				if(!particle_deposition)
 				{
@@ -834,6 +864,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			}// end timestep loop.
 
 			output_file.close();
+			eigenvalues_file.close();
 			if(particle_deposition)
 				particle_output_file.close();
 
@@ -1248,7 +1279,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 // read in parameters from file and give them to the parameters object.
-void NavierStokesCoupled::read_parameters()
+int NavierStokesCoupled::read_parameters()
 {
 
 	// - JAMES always 3D for this one
@@ -1299,7 +1330,7 @@ void NavierStokesCoupled::read_parameters()
 	// 0 - dirichlet-neumann
 	// 1 - pressure-pressure
 	set_unsigned_int_parameter(infile,"problem_type",0);
-	set_bool_parameter(infile,"newton",false);
+	set_unsigned_int_parameter(infile,"newton",0);
 	set_bool_parameter(infile,"direct",true);
 	set_unsigned_int_parameter(infile,"prerefine",0);
 	set_double_parameter(infile,"restart_time",0.0);
@@ -1548,6 +1579,8 @@ void NavierStokesCoupled::read_parameters()
 	set_string_parameter(infile,"petsc_3d1d_schur_stokes_gmres_solver_options","");
 	set_string_parameter(infile,"petsc_3d1d_schur_stokes_fieldsplit_solver_options","");
 
+	set_string_parameter(infile,"petsc_3d1d_post_solve_fieldsplit_solver_options","");
+
 
 	set_string_parameter(infile,"petsc_solver_options","");
 	set_string_parameter(infile,"petsc_solver_options_ksp_view","");
@@ -1576,6 +1609,22 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"length_diam_ratio_1",0.);
 	set_double_parameter(infile,"length_diam_ratio_2",0.);
 
+
+
+	set_bool_parameter(infile,"post_solve",false);
+	set_bool_parameter(infile,"direct_post_solve",false);
+	set_bool_parameter(infile,"0D",false);
+
+	set_bool_parameter(infile,"stokes_ic",false);
+	set_double_parameter(infile,"angle_of_inflow",0.); // angle (in rad) by which inflow is rotated from normal
+
+	set_double_parameter(infile,"length_diam_ratio_1",0.);
+	set_double_parameter(infile,"length_diam_ratio_2",0.);
+
+	set_bool_parameter(infile,"write_eigenvalues",false);
+
+	set_bool_parameter(infile,"negative_mono_schur_complement",false);
+	set_bool_parameter(infile,"negative_bfbt_schur_complement",false);
 
 
 
@@ -1718,6 +1767,11 @@ void NavierStokesCoupled::read_parameters()
 					
 				}
 
+				if(es->parameters.get<bool> ("post_solve"))
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_post_solve_fieldsplit_solver_options");
+				}
+
 
 				
 			}
@@ -1843,6 +1897,7 @@ void NavierStokesCoupled::read_parameters()
 	// *************** allocate the monolithic monitor context ***************** //
 	PetscNew(&mono_ctx);
 
+	PetscNew(&initial_guess_ctx);
 
 
 
@@ -1857,6 +1912,154 @@ void NavierStokesCoupled::read_parameters()
 	}
 
 
+	// *************** newton 2,3 (newton (no rxn term) and semi-implicit) with optimised stabilised boundary conditions not implemented ********** //
+	if((es->parameters.get<unsigned int> ("newton") == 2 || es->parameters.get<unsigned int> ("newton") == 3) 
+			&& es->parameters.get<bool> ("optimisation_stabilised"))
+	{
+		std::cout << "Sorry, newton (no rxn) and semi-implicit are not supported with optimised stabilised boundary conditions." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+
+	// *************** can't use semi-implicit with steady **************************************** //
+
+	if(es->parameters.get<unsigned int> ("newton") == 3 && !unsteady)
+	{
+		std::cout << "Can't use a semi-implicit method with a steady simulation." << std::endl;
+		std::cout << "Current setting: newton - " << es->parameters.get<unsigned int> ("newton") << std::endl;
+		std::cout << "Changing to implicit Newton (with reaction terms)" << std::endl;
+
+		es->parameters.set<unsigned int> ("newton") = 2;
+
+		std::cout << "New setting: newton - " <<  es->parameters.get<unsigned int> ("newton") << std::endl;
+		
+	}
+
+
+	// *************** make sure nonlinear scheme is backwards compatable ******************************* //
+	
+	// to be able to handle when the newton parameter was true or false.
+	// i suppose if newton is true (i.e. intended to be implicit newton) it might be a large number
+	// currently we have 4 nonlinear options
+	// 0 - implicit picard
+	// 1 - implicit newton
+	// 2 - implicit newton (no rxn term)
+	// 3 - semi-implicit newton (no rxn term)
+
+	
+	if(es->parameters.get<unsigned int> ("newton") > 3)
+	{
+		es->parameters.set<unsigned int> ("newton") = 1;
+	}
+
+
+
+	// ************** conservative form of navier stokes only implemented for newton - 0,1 ************** //
+	if(!es->parameters.get<bool> ("convective_form") && es->parameters.get<unsigned int> ("newton") > 1) 
+	{
+		std::cout << "Sorry, conservative Navier-Stokes formulation only supported for implicit Picard and Newton (with reaction terms)." << std::endl;
+		std::cout << "Current setting: newton - " << es->parameters.get<unsigned int> ("newton") << std::endl;
+		std::cout << "Changing to implicit Newton (no reaction terms)" << std::endl;
+
+		es->parameters.set<unsigned int> ("newton") = 1;
+
+		std::cout << "New setting: newton - " <<  es->parameters.get<unsigned int> ("newton") << std::endl;
+    
+	}
+
+
+	// ***************************************** //
+	// ********* nonlinear scheme chosen ******* //
+
+	// ***************** if semi-implicit then we only need one nonlinear iteration ******************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3) 
+	{
+		es->parameters.set<unsigned int> ("max_newton_iterations") = 1;
+	}
+
+
+
+	// ***************** streamline diffusion not implemented for conservative form ******************* //
+	if(!es->parameters.get<bool> ("convective_form") && es->parameters.get<bool> ("streamline_diffusion")) 
+	{
+		std::cout << "Sorry, streamline diffusion not supported with conservative Navier-Stokes formulation." << std::endl;
+		std::cout << "Changing to no streamline diffusion." << std::endl;
+
+		es->parameters.set<bool> ("streamline_diffusion") = false;
+
+		std::cout << "New setting: streamline_diffusion - " <<  es->parameters.get<bool> ("streamline_diffusion") << std::endl;
+    
+	}
+
+
+
+
+	// ***************** if semi-implicit then have to do have a constant supg/pspg/lsic constant and have to have to use supg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && 
+			(es->parameters.get<bool> ("supg") || es->parameters.get<bool> ("pspg") || es->parameters.get<bool> ("lsic")) ) 
+	{
+
+		if(!es->parameters.set<bool> ("supg_constant_constant"))
+		{
+			std::cout << "Using semi-implicit method with supg/pspg/lsic. Must use have a constant supg constant." << std::endl;
+			std::cout << "Changing to supg_constant_constant - true." << std::endl;
+
+			es->parameters.set<bool> ("supg_constant_constant") = true;
+
+			std::cout << "New setting: supg_constant_constant - " <<  es->parameters.get<bool> ("supg_constant_constant") << std::endl;
+		}
+	}
+
+	// ***************** if semi-implicit then have to do supg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("supg")) 
+	{
+		if(!es->parameters.get<bool> ("supg_picard"))
+		{
+			std::cout << "Using semi-implicit method with supg. Must use have a the picard supg method (while using the velocity from the previous timestep)." << std::endl;
+			std::cout << "Changing to supg_picard - true." << std::endl;
+
+			es->parameters.set<bool> ("supg_picard") = true;
+			es->parameters.set<bool> ("supg_newton") = false;
+			es->parameters.set<bool> ("supg_full_newton") = false;
+			es->parameters.set<bool> ("supg_convection_newton") = false;
+			es->parameters.set<bool> ("supg_convection") = false;
+				
+
+			std::cout << "New setting: supg_picard - " <<  es->parameters.get<bool> ("supg_picard") << std::endl;
+		}
+
+    
+	}
+
+	// ***************** if semi-implicit then have to do pspg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("pspg")) 
+	{
+		if(!es->parameters.get<bool> ("pspg_picard"))
+		{
+			std::cout << "Using semi-implicit method with pspg. Must use have a the picard pspg method (while using the velocity from the previous timestep)." << std::endl;
+			std::cout << "Changing to pspg_picard - true." << std::endl;
+
+			es->parameters.set<bool> ("pspg_picard") = true;
+			es->parameters.set<bool> ("pspg_newton") = false;
+				
+
+			std::cout << "New setting: pspg_picard - " <<  es->parameters.get<bool> ("pspg_picard") << std::endl;
+		}
+	}
+
+	// ********* if semi-implicit and using neumann boundary stabilisation then need to use "linear" form ********* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("neumann_stabilised") && !es->parameters.get<bool> ("neumann_stabilised_linear")) 
+	{
+		std::cout << "Using semi-implicit method with neumann stabilisation. Must linear stabilisation." << std::endl;
+		std::cout << "Changing to neumann_stabilised_linear - true." << std::endl;
+
+		es->parameters.set<bool> ("neumann_stabilised_linear") = true;
+			
+
+		std::cout << "New setting: neumann_stabilised_linear - " <<  es->parameters.get<bool> ("neumann_stabilised_linear") << std::endl;
+
+	}
 
 
 
@@ -1865,7 +2068,7 @@ void NavierStokesCoupled::read_parameters()
 	{
 		std::cout << "Currently only picard iterations are supported for optimisation stabilised BCs. Setting to use picard iterations." << std::endl;
 		std::cout << "\tnewton = false" << std::endl;
-		es->parameters.set<bool> ("newton") = false;
+		es->parameters.set<unsigned int> ("newton") = 0;
 	}
 	else
 	{
@@ -1873,6 +2076,15 @@ void NavierStokesCoupled::read_parameters()
 	}
  
 
+
+
+
+	if(es->parameters.get<bool> ("negative_bfbt_schur_complement") && es->parameters.get<unsigned int> ("preconditioner_type_3d") != 9)
+	{
+		std::cout << "Negative BFBt schur complement currently only implemented for scaled stabilsated bfbt. Changning to positive BFBt schur complement." << std::endl;
+		es->parameters.set<bool> ("negative_bfbt_schur_complement") = false;
+		
+	}
 
 
 
@@ -2093,7 +2305,7 @@ void NavierStokesCoupled::read_parameters()
 
 	
 	// ****************** WE DON'T DO 1D ELEMENTS AT THE MOMENT *********** //
-	if(es->parameters.set<bool>("0D") == false)
+	if(es->parameters.get<bool>("0D") == false)
 	{
 		std::cout << "Currently only 0D elements are supported. Setting to use 0D elements." << std::endl;
 		std::cout << "\t0D = true" << std::endl;
@@ -2105,6 +2317,48 @@ void NavierStokesCoupled::read_parameters()
 		es->parameters.set<bool>("nonlinear_1d") = true;
 	}
 
+
+	// **************** Stokes IC and coupled not implemented ************** //
+	if(es->parameters.get<bool>("stokes_ic") && es->parameters.get<unsigned int>("sim_type") > 1)
+	{
+		std::cout << "Stokes IC with coupled simulation or 0D simulation not currently supported." << std::endl;
+		std::cout << "sim_type - " << es->parameters.get<unsigned int>("sim_type") << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	
+	}
+
+	// **************** if using stokes ic then we need to make sure it is done first ********* //
+	if(es->parameters.get<bool>("stokes_ic"))
+	{
+		ic_set = false;
+	}
+
+
+
+	// **************** can only change the angle of inflow for 2D problems ******************* //
+	if(es->parameters.get<bool>("threed") && fabs(es->parameters.get<double>("angle_of_inflow")) > 1e-10)
+	{
+		std::cout << "Changing the angle of inflow for 3D problems not currently implemented." << std::endl;
+		std::cout << "Current setting: angle_of_inflow - " << es->parameters.get<double>("angle_of_inflow") << std::endl;
+		std::cout << "Changing to not alter angle of inflow." << std::endl;
+		
+		es->parameters.set<double>("angle_of_inflow") = 0.;
+
+		std::cout << "New setting: angle_of_inflow - " << es->parameters.get<double>("angle_of_inflow") << std::endl;
+		
+	}
+
+
+
+	// ************** IF WRITING EIGENVALUES MUST BE CALCULATING THEM ***************** //
+	if(es->parameters.get<bool> ("write_eigenvalues") && !es->parameters.get<bool> ("compute_eigenvalues"))
+	{
+		std::cout << "If we are writing eigenvalues to file we must calculate them too." << std::endl;
+		std::cout << "Setting compute_eigenvalues to true." << std::endl;
+		es->parameters.set<bool> ("compute_eigenvalues") = true;
+
+	}
 
 
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
@@ -2137,10 +2391,12 @@ void NavierStokesCoupled::read_parameters()
 
 
 	// ************ SETUP STAGE NUMBERS FOR PETSC PROFILING *************** //
-	PetscErrorCode ierr;
+	PetscErrorCode ierr;	// unused
 	PetscLogStage stage_num;
 	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 2)
-		ierr = PetscLogStageRegister("Petsc LSC (BFBt) Preconditioner",&stage_num);
+	{
+		ierr = PetscLogStageRegister("Petsc LSC (BFBt) Preconditioner",&stage_num); CHKERRQ(ierr);
+	}
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3)
 		ierr = PetscLogStageRegister("Pressure Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4)
@@ -2152,7 +2408,7 @@ void NavierStokesCoupled::read_parameters()
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7)
 		ierr = PetscLogStageRegister("LSC James Scaled Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
-		ierr = PetscLogStageRegister("LSC James Scaled Stabilised Preconditioner",&stage_num);
+		ierr = PetscLogStageRegister("LSC James Scaled Stabilised Preconditioner Setup",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 10)
 		ierr = PetscLogStageRegister("SIMPLE Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 11)
@@ -2160,6 +2416,7 @@ void NavierStokesCoupled::read_parameters()
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 12)
 		ierr = PetscLogStageRegister("SIMPLERC Preconditioner",&stage_num);
 
+	
 
 	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 6)
 		ierr = PetscLogStageRegister("Mono Diagonal Preconditioner",&stage_num);
@@ -2214,6 +2471,9 @@ void NavierStokesCoupled::read_parameters()
 		std::ofstream  mesh_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "mesh_file.msh").c_str(),   std::ios::binary);
 		mesh_file_dst << mesh_file_src.rdbuf();
 	}
+
+
+	return 0;
 
 }
 
@@ -3502,8 +3762,8 @@ void NavierStokesCoupled::setup_variable_scalings_3D()
 
 	if(es->parameters.get<bool>("reynolds_number_calculation"))
 	{
-		double velocity_scale = 1.0;
-		double pressure_scale = 1.0;
+		velocity_scale = 1.0;
+		pressure_scale = 1.0;
 
 	}
 
@@ -3570,8 +3830,8 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 
 	if(es->parameters.get<bool>("reynolds_number_calculation"))
 	{
-		double flow_scale = 1.0;
-		double mean_pressure_scale = 1.0;
+		flow_scale = 1.0;
+		mean_pressure_scale = 1.0;
 
 	}
 

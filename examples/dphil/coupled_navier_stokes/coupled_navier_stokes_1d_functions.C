@@ -777,7 +777,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	//so to create a 1d_tree we first create the first 1d segment and then grow the tree from that
 	//these are simply parameters of the tree making thing so can be gotten from the input file
 	// initial segment length, chosen so that wall thickness is always positive
-	double length_scale = es->parameters.get<double> ("length_scale");
+	//double length_scale = es->parameters.get<double> ("length_scale");	// unused
 	double initial_segment_length = es->parameters.get<double> ("initial_segment_length");
 	initial_segment_length /= es->parameters.get<double> ("length_scale");
 
@@ -1798,10 +1798,10 @@ void NavierStokesCoupled::write_1d_solution()
 
 
 
-void NavierStokesCoupled::solve_1d_system()
+int NavierStokesCoupled::solve_1d_system()
 {
 
-	PetscErrorCode ierr;
+	PetscErrorCode ierr;	// unused
 
 	PetscLinearSolver<Number>* system_linear_solver =
 			libmesh_cast_ptr<PetscLinearSolver<Number>* >
@@ -1825,7 +1825,7 @@ void NavierStokesCoupled::solve_1d_system()
 	{
 		// we need to set this directly
 		KSP system_ksp_1d = system_linear_solver->ksp();
-		ierr = KSPView(system_ksp_1d,PETSC_VIEWER_STDOUT_WORLD);// CHKERRQ(ierr);
+		ierr = KSPView(system_ksp_1d,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
 	}
 	//system_1d->matrix->print(std::cout,false);
 	//system_1d->rhs->print(std::cout);
@@ -1840,6 +1840,8 @@ void NavierStokesCoupled::solve_1d_system()
         		<< ", Solver residual: "
         		<< system_1d->final_linear_residual()
         		<< std::endl;
+
+	return 0;
 }
 
 
@@ -2123,7 +2125,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 	bool per_order = false;
 	
 	TransientLinearImplicitSystem * system;
-	TransientLinearImplicitSystem * system_threed;
+	TransientLinearImplicitSystem * system_threed;	// set system_threed later when it is needed
+	
   // Get a reference to the Stokes system object.
 	if(sim_type == 5)
 	{
@@ -2150,9 +2153,6 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
   const unsigned int q_var = system->variable_number ("Q");
 
 
-  unsigned int p_var_threed = 0;
-	if(sim_3d)
-	  p_var_threed = system_threed->variable_number ("p");
 	
   const DofMap & dof_map = system->get_dof_map();
   // This vector will hold the degree of freedom indices for
@@ -2244,7 +2244,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			//	std::exit(0);
 			//}
 
-			if(generation > max_generation)
+			if(generation > (int)max_generation)
 				max_generation = generation;
 
 			double p0 = system->current_solution(dof_indices_p[0]);
@@ -2329,9 +2329,23 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 
 	// ************* CALCULATE RESISTANCE AND PRESSURE/FLUX IN 3D TREE ******** //
 	
-	if(es->parameters.get<bool>("use_centreline_data"))
+	if(es->parameters.get<bool>("use_centreline_data") && sim_3d)
 	{
 
+	  // Get a reference to the Stokes system object.
+		if(sim_type == 5)
+		{
+			system_threed =
+			  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+		}
+		else
+		{
+			system_threed =
+				  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
+		}
+
+		unsigned int p_var_threed = 0;
+		p_var_threed = system_threed->variable_number ("p");
 
 		// ******* MOVE POINTS SO THAT INSIDE DOMAIN ************************** //
 
@@ -2345,7 +2359,7 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			// if we don't have a parent then move point a small distance
 			if(!centreline_airway_data[i].has_parent())
 			{
-				unsigned int boundary_id = 0;
+				//unsigned int boundary_id = 0;	// unused
 				Point normal = surface_boundaries[0]->get_normal();
 				// move point backwards along normal
 				Point adjusted_point = centreline_points_1[i] - tol*segment_length*normal;
@@ -2525,6 +2539,12 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 		}
 		
 		
+	}
+	else if(es->parameters.get<bool>("use_centreline_data"))
+	{
+		std::cout << "can't calculate centreline data because not doing 3d simualtion" << std::endl;
+		std::cout << "setting es->parameters.get<bool>(\"use_centreline_data\") = " << false << std::endl;
+		std::cout << "and continuing" << std::endl;
 	}
 
 	std::cout<< "hey there, max_gerertaion = " << max_generation << std::endl;
@@ -2842,10 +2862,11 @@ void NavierStokesCoupled::write_efficiency_solution()
 	
 
 
-	ExplicitSystem * system;
+	// unused
+	//ExplicitSystem * system;
   // Get a reference to the Stokes system object.
-	system =
-	  &es->get_system<ExplicitSystem> ("Particle-Deposition-1D");
+	//system =
+	//  &es->get_system<ExplicitSystem> ("Particle-Deposition-1D");
 	
 	//put the efficiency data into the system
 

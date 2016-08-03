@@ -99,9 +99,16 @@ void ExodusII_IO_Extended::write_discontinuous_exodusII(const std::string& name,
 void ExodusII_IO_Extended::write_time(const int timestep,
 														  const Real time)
 {
+#ifdef LIBMESH_HAVE_EXODUS_API
 	exio_helper->write_timestep(timestep,time);
+#endif
 }
 
+// NOTE: needs to be in here
+void ExodusII_IO_Extended::set_var_scalings(std::vector<double> scalings)
+{
+	var_scalings = scalings;
+}
 
 
 
@@ -1087,11 +1094,6 @@ const std::vector<std::string> & ExodusII_IO_Extended::get_elem_var_names()
 }
 
 
-// NOTE: needs to be in here
-void ExodusII_IO_Extended::set_var_scalings(std::vector<double> scalings)
-{
-	var_scalings = scalings;
-}
 
 
 // LIBMESH_HAVE_EXODUS_API is not defined, declare error() versions of functions...

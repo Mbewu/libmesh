@@ -34,7 +34,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	 // unused
 
  
 	TransientLinearImplicitSystem * system;
@@ -64,11 +64,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   const double zeta_1 = es->parameters.get<double>("zeta_1");
   const double zeta_2 = es->parameters.get<double>("zeta_2");
   const double zeta_3 = es->parameters.get<double>("zeta_2");
-  const double period = es->parameters.get<double>("period");
+  //const double period = es->parameters.get<double>("period");	// unused
   const double E = es->parameters.get<double>("E");
   const unsigned int unsteady = es->parameters.get<unsigned int>("unsteady");
   const Real dt    = es->parameters.get<Real>("dt");
-	const double time = system->time;
+	//const double time = system->time;	// unused
 	const bool compliance_1d = es->parameters.get<bool>("compliance_1d");
 	const bool inertance_1d = es->parameters.get<bool>("inertance_1d");
   const unsigned int resistance_type_1d = es->parameters.get<unsigned int>("resistance_type_1d");
@@ -176,7 +176,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			for(unsigned int i=0; i<sibling_el_ids.size(); i++)
 				sibling_elems.push_back(mesh.elem(sibling_el_ids[i]));
 
-			const Elem* primary_sibling_elem = mesh.elem(primary_sibling_el_idx);
+			//const Elem* primary_sibling_elem = mesh.elem(primary_sibling_el_idx); // unused
 			//const Elem* sibling_elem = mesh.elem(sibling_el_idx);
 
 			/*
@@ -210,8 +210,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_p[i], p_var);
 			}
 
-      const unsigned int n_dofs   = 4;
-      const unsigned int n_p_dofs = 2;
+      //const unsigned int n_dofs   = 4;	// unused
+      //const unsigned int n_p_dofs = 2;	// unused
 
 			// some parameters
 			// these are the conventional parameters divided by density because of the pressure scaling
@@ -326,10 +326,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
 
-			double flow_scale = es->parameters.get<double>("velocity_scale") * 
-												pow(es->parameters.get<double>("length_scale"),2.0);
-			double mean_pressure_scale = es->parameters.get<double>("density") *
-															pow(es->parameters.get<double>("velocity_scale"),2.0);
+			// unused
+			//double flow_scale = es->parameters.get<double>("velocity_scale") * 
+			//									pow(es->parameters.get<double>("length_scale"),2.0);
+			//double mean_pressure_scale = es->parameters.get<double>("density") *
+			//												pow(es->parameters.get<double>("velocity_scale"),2.0);
 
 
 			//change for correctness, to change
@@ -355,12 +356,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				I = 0;
 
 			double old_p0 = system->old_solution(dof_indices_p[0]);
-			double old_p1 = system->old_solution(dof_indices_p[1]);
-			double old_q0 = system->old_solution(dof_indices_q[0]);
+			//double old_p1 = system->old_solution(dof_indices_p[1]);	// unused
+			//double old_q0 = system->old_solution(dof_indices_q[0]);	// unused
 			double old_q1 = system->old_solution(dof_indices_q[1]);
 		
 		
-			bool compute_using_monomials = false;
+			//bool compute_using_monomials = false;	// unused
 			{
 				// first we decide which equations go where based on the boundary conditions that exist
 
@@ -882,7 +883,7 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id, const int m
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	// unused
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -958,7 +959,7 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id, const int m
 				
 				const int current_el_idx = elem->id();
 				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-				if(current_1d_el_idx == mid_mesh_element)
+				if(current_1d_el_idx == (unsigned int)mid_mesh_element)
 				{
 					dof_map.dof_indices (elem, dof_indices);
 					dof_map.dof_indices (elem, dof_indices_q, q_var);
@@ -987,7 +988,7 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id, const i
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	// unused
 
 	
 	TransientLinearImplicitSystem * system;
@@ -1063,7 +1064,7 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id, const i
 
 				const int current_el_idx = elem->id();
 				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-				if(current_1d_el_idx == mid_mesh_element)
+				if(current_1d_el_idx == (unsigned int)mid_mesh_element)
 				{
 					total_nodes++;
 					dof_map.dof_indices (elem, dof_indices);

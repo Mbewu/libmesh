@@ -1641,7 +1641,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	else
 	{
 		final_linear_residual = solve_and_assemble_3d_system(system);
-
 	}
 
 	if(es->parameters.get<bool>("compute_eigenvalues"))
@@ -1652,16 +1651,13 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	// need to zero the preconditioner matrix myself... after we have computed the eigenvalues
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 	{
-
 		// also zero the assemble bits for next time
 		system->request_matrix("Preconditioner")->close();
 		system->request_matrix("Preconditioner")->zero();
 	}
 
 	// need to recollect the ksp because perhaps some shit changed in restrict_solve_to
-	system_linear_solver =
-			libmesh_cast_ptr<PetscLinearSolver<Number>* >
-			(system->linear_solver.get());
+	system_linear_solver = libmesh_cast_ptr<PetscLinearSolver<Number>* > (system->linear_solver.get());
 	KSP system_ksp = system_linear_solver->ksp();
 
 	int num_outer_its = 0;	
@@ -1773,6 +1769,12 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	// i.e. need iterations
 	
 	if(es->parameters.get<bool>("stokes") && sim_type != 3)
+	{
+		std::cout << "Stokes so only one iteration required" << std::endl;
+		return true;
+	}
+
+	if(es->parameters.get<unsigned int>("newton") == 3 && sim_type != 3)
 	{
 		std::cout << "Stokes so only one iteration required" << std::endl;
 		return true;
@@ -1941,12 +1943,6 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 
 
-
-
-
-
-
-
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 0 && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
 		system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
 	else
@@ -1990,14 +1986,14 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	if(false)//es->parameters.get<bool>("fieldsplit"))
 	{
-		PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
-		function_ptr = &custom_outer_monitor;
+		//PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
+		//function_ptr = &custom_outer_monitor;
 
 		//ierr = KSPMonitorSet(system_ksp,function_ptr,NULL,NULL); CHKERRQ(ierr);
 	}
 
 	//get the inner iteration ksp
-	int num_splits = 0;
+	//int num_splits = 0;	// unused
 
 
 /*
@@ -2052,7 +2048,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	// Solve the linear system.  Several cases:
 	std::pair<unsigned int, Real> rval = std::make_pair(0,0.0);
-	bool _shell_matrix = false;
+	//bool _shell_matrix = false;	// unused
 	// matrix always passed by reference, preconditioner can be passed by reference of pointer
 
 	// 2.) No shell matrix, with or without user-supplied preconditioner
@@ -2117,8 +2113,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	system->solution->print();
 	*/
 
-
-	if(es->parameters.get<bool>("ksp_view") && nonlinear_iteration == 1 && t_step == 1)
+	// first time step or zeroth time step (setting up IC)
+	if(es->parameters.get<bool>("ksp_view") && nonlinear_iteration == 1 && (t_step - es->parameters.get<unsigned int>("restart_time_step")) <= 1)
 	{
 		// we need to set this directly
 		ierr = KSPView(system_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
@@ -2132,11 +2128,31 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 
 
+	if(es->parameters.get<bool>("post_solve"))
+		test_post_solve(system);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 	int num_outer_its = 0;	
-	int num_inner_velocity_its = 0;
-	int num_inner_pressure_its = 0;
+	//int num_inner_velocity_its = 0;	// unused
+	//int num_inner_pressure_its = 0;	// unused
 	// output some data about the iterative solve
 	// this is hard to do when doing restrict_solve_to, so just leave it
 
@@ -2167,6 +2183,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		total_max_iterations = num_outer_its;
 
 	std::cout << std::endl;
+	std::cout << "outer its this nlin it = " << num_outer_its << std::endl;
 	std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
 	std::cout << "total outer its = " << total_linear_iterations << std::endl;
 	std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
@@ -2295,8 +2312,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	{
 
 
-	  	PetscErrorCode ierr;
-
+	  	
 		// ********* CONSTRUCT SUBMATRICES ********** //
 
 		std::cout << "Constructing Navier Stokes Preconditioner submatrices." << std::endl;
@@ -2477,14 +2493,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	}
 
 
-
-
-
+	// give all monolithic preconditioners the mono_ctx for counting
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") >= 6)
 	{
-		// for the monolithic preconditioner we currently don't need to
-		// do anything, the preconditioner should be built.
-		// we make sure not to put the 
 
 
 	  	PetscErrorCode ierr;
@@ -2507,15 +2518,14 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		KSP* subksp;	//subksps
 		ierr = PCFieldSplitGetSubKSP(pc,&num_splits,&subksp); CHKERRQ(ierr);
 
-		// set to not reuse the preconditioner
-		//ierr = KSPSetReusePreconditioner(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
-		// set to not reuse the preconditioner
-		//ierr = KSPSetReusePreconditioner(subksp[1],PETSC_TRUE); CHKERRQ(ierr);
 
 		if(es->parameters.get<bool>("nonzero_initial_guess_inner_3d1d") && !es->parameters.get<bool>("monolithic_navier_stokes_preonly"))
 		{
 			ierr = KSPSetInitialGuessNonzero(subksp[0],PETSC_TRUE); CHKERRQ(ierr);
 		}
+
+
+
 
 		if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
 		{
@@ -2528,10 +2538,10 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			ierr = KSPMonitorSet(system_ksp,function_ptr,mono_ctx,NULL); CHKERRQ(ierr);
 		}
 
-		//PetscOptionsSetvalue("-ns3d1d_fieldsplit_0_ksp_max_it",es->parameters.get<unsigned int>("monolithic_navier_stokes_gmres_its"));
+	}
 
-
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+	// note we don't need to do anything for the schur 0D (12) preconditioner as this is all specified in the command line
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
@@ -2552,7 +2562,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			std::cout << "Setting up Velocity Monolithic preconditioner." << std::endl;
 	
 
-			ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
+			//ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);	// maybe
 			KSP* subksp;	//subksps
 			ierr = PCFieldSplitGetSubKSP(pc,NULL,&subksp); CHKERRQ(ierr);
 
@@ -2644,8 +2654,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				system->get_dof_map().local_variable_indices
 					(P_var_idx, system->get_mesh(), P_var);
 
-				PetscInt n_col = Q_var_idx.size() + P_var_idx.size();
-
+			//PetscInt n_col = Q_var_idx.size() + P_var_idx.size();	// unused
 
 				const MeshBase& mesh = es->get_mesh();
 				const DofMap & dof_map = system->get_dof_map();
@@ -2740,9 +2749,10 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				ierr = VecAssemblyBegin(non_zero_rows); CHKERRQ(ierr);
 				ierr = VecAssemblyEnd(non_zero_rows); CHKERRQ(ierr);
 
+
 				if(es->parameters.get<bool>("schur_stokes_precompute")  && nonlinear_iteration == 1 && t_step == 1)
 				{
-					construct_schur_stokes_matrix(subksp[1]);
+					construct_schur_stokes_matrix(system,subksp[1]);
 				}
 
 
@@ -2824,7 +2834,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			if(es->parameters.get<bool>("schur_stokes_precompute") && es->parameters.get<bool>("multiple_column_solve"))
 			{
 			
-				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1]); CHKERRQ(ierr);
+				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement")); CHKERRQ(ierr);
 			}
 			else if(es->parameters.get<bool>("multiple_column_solve"))
 			{
@@ -2853,7 +2863,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		}
 	}
 
-	if(es->parameters.get<unsigned int>("preconditioner_type_3d") != 0)
+	// all preconditioners except direct and straight gmres
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") > 1)
 	{
 
 
@@ -2943,12 +2954,15 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			}
 
 
-			std::cout << "Setting up the convection diffusion Petsc settings" << std::endl;
 
 			
 
-			ierr = KSPSetOptionsPrefix(velocity_subksp[0],"convection_diffusion_"); CHKERRQ(ierr);
-			ierr = KSPSetFromOptions (velocity_subksp[0]); CHKERRQ(ierr);
+			if(nonlinear_iteration == 1)
+			{
+				std::cout << "Setting up the convection diffusion Petsc settings" << std::endl;
+				ierr = KSPSetOptionsPrefix(velocity_subksp[0],"convection_diffusion_"); CHKERRQ(ierr);
+				ierr = KSPSetFromOptions (velocity_subksp[0]); CHKERRQ(ierr);
+			}
 
 
 			std::cout << "Setting up the Schur preconditioner Petsc settings" << std::endl;
@@ -3170,7 +3184,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner"); CHKERRQ(ierr);
 
 				       
-				ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),velocity_subksp[1]); CHKERRQ(ierr);
+				ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),velocity_subksp[1],es->parameters.get<bool> ("negative_bfbt_schur_complement")); CHKERRQ(ierr);
 
 				shell_pc_created = true;
 			}
@@ -3178,7 +3192,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		else
 		{
 
-			int num_splits = 0;
+			//int num_splits = 0;	// unused
 
 
 			// ************* CONSTRUCT THE SIMPLE-type PRECONDITIONERS ********** //
@@ -3339,6 +3353,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			}
 		}
 	}
+
+	return 0;	
 }
 
 // ********************************************************************** //
@@ -3361,13 +3377,23 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 // ****************** CONSTRUCT THE SCHUR STOKES MATRIX ************** //
 
 // the pressure coupling dofs and flux coupling dofs corresponding to the same 
-void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
+int NavierStokesCoupled::construct_schur_stokes_matrix (TransientLinearImplicitSystem * sys, KSP schur_ksp)
 {
+
+
 
 	std::cout << "Constructing Schur Stokes Correction..." << std::endl;
 	std::cout << "Could take a while..." << std::endl;
 	
-  	PetscErrorCode ierr;
+  	PetscErrorCode ierr;	// unused
+
+	//get petsc solver
+	PetscLinearSolver<Number>* system_linear_solver =
+			libmesh_cast_ptr<PetscLinearSolver<Number>* >
+			(sys->linear_solver.get());
+	KSP system_ksp = system_linear_solver->ksp();
+	PC pc;
+	ierr = KSPGetPC(system_ksp,&pc); CHKERRQ(ierr);
 
 	// some notes:
 	// H^T has the pressure coupling
@@ -3382,6 +3408,9 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 	// create
 	KSP schur_stokes_ksp;
 	ierr = KSPCreate(PETSC_COMM_WORLD,&schur_stokes_ksp);// CHKERRQ(ierr);
+
+	PC schur_stokes_pc;
+	ierr = KSPGetPC(schur_stokes_ksp,&schur_stokes_pc);// CHKERRQ(ierr);
 	
 	// set the operators for the velocity matrix inversion
 	ierr = KSPSetOperators(schur_stokes_ksp,velocity_matrix->mat(),velocity_matrix->mat());// CHKERRQ(ierr);
@@ -3391,6 +3420,13 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 	ierr = KSPSetInitialGuessNonzero(schur_stokes_ksp,initial_guess);
 	// setup up the operators for the first inner solve
 	ierr = KSPSetFromOptions (schur_stokes_ksp);// CHKERRQ(ierr);
+
+	setup_is_simple (sys,pc);
+
+	std::string split_1 = "0";
+	std::string split_2 = "1";
+	PCFieldSplitSetIS(schur_stokes_pc,split_1.c_str(),velocity_is);
+	PCFieldSplitSetIS(schur_stokes_pc,split_2.c_str(),pressure_is);
 
 	ierr = KSPSetUp(schur_stokes_ksp);// CHKERRQ(ierr);	
 
@@ -3402,6 +3438,13 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 	if(es->parameters.get<unsigned int>("preconditioner_type_schur_stokes") == 2)	// shell pc..
 	{
 
+		if(!es->parameters.get<bool>("stab"))
+		{
+			std::cout << "Quadratic elements not currently supported for fieldsplit schur stokes presolve." << std::endl;
+			std::cout << "EXITING" << std::endl;
+			std::exit(0);
+		}
+
 		PC schur_stokes_pc;
 		ierr = KSPGetPC(schur_stokes_ksp,&schur_stokes_pc);// CHKERRQ(ierr);
 
@@ -3409,7 +3452,11 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 		ierr = PCFieldSplitGetSubKSP(schur_stokes_pc,NULL,&subksp);
 
 
-		std::cout << "Setting up Scaled Pressure Mass Matrix preconditioner for Schur Stokes." << std::endl;
+		ierr = KSPSetOptionsPrefix(subksp[0],"convection_diffusion_");// CHKERRQ(ierr);
+		ierr = KSPSetFromOptions (subksp[0]);// CHKERRQ(ierr);
+
+
+		std::cout << "Setting up LSC James scaled stabilised preconditioner." << std::endl;
 
 		// set ksp to preonly because we are defining the inverse
 		ierr = KSPSetType(subksp[1], KSPPREONLY);// CHKERRQ(ierr);
@@ -3418,17 +3465,29 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 		ierr = KSPGetPC(subksp[1],&schur_pc);// CHKERRQ(ierr);
 
 		ierr = PCSetType(schur_pc,PCSHELL);// CHKERRQ(ierr);
+
 		ierr = ShellPCCreate(&schur_stokes_shell);// CHKERRQ(ierr);
 
-		ierr = PCShellSetApply(schur_pc,PressureShellPCApply);// CHKERRQ(ierr);
+		ierr = PCShellSetApply(schur_pc,LSCScaledStabilisedShellPCApply);// CHKERRQ(ierr);
 		ierr = PCShellSetContext(schur_pc,schur_stokes_shell);// CHKERRQ(ierr);
 
 		ierr = PCShellSetDestroy(schur_pc,NSShellDestroy);// CHKERRQ(ierr);
-		ierr = PCShellSetName(schur_pc,"Scaled Pressure Mass Matrix Preconditioner");// CHKERRQ(ierr);
 
-		ierr = PressureShellPCSetUp(schur_pc,scaled_pressure_mass_matrix->mat(),subksp[1]);// CHKERRQ(ierr);
+		ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner");// CHKERRQ(ierr);
+
+		       
+		ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),subksp[1],es->parameters.get<bool> ("negative_bfbt_schur_complement"));// CHKERRQ(ierr);
+
+
+
+
+
+
+
 
 		shell_pc_created = true;
+
+
 	}
 
 	ierr = KSPView(schur_stokes_ksp,PETSC_VIEWER_STDOUT_WORLD);
@@ -3454,8 +3513,25 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 	
 	// get the Bt (H^T) so that we have vecs of the correct size
 	Mat S,Bt,B;
+	Mat A;
 	ierr = KSPGetOperators(schur_ksp,&S,NULL);// CHKERRQ(ierr);
-	ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,&B,NULL);
+	ierr = MatSchurComplementGetSubMatrices(S,NULL,&A,&Bt,&B,NULL);
+
+
+
+	//std::cout << "schur stokes matrix:\n\n\n\n\n\n\n\n" << std::endl;
+	//MatView(velocity_matrix->mat(),PETSC_VIEWER_STDOUT_WORLD);
+
+
+
+
+
+
+
+	//std::cout << "stokes matrix:\n\n\n\n\n\n\n\n" << std::endl;
+	//MatView(A,PETSC_VIEWER_STDOUT_WORLD);
+
+
 
 	PetscInt num_coupling_points;
 	ierr = VecGetSize(non_zero_cols,&num_coupling_points);
@@ -3504,7 +3580,7 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
                        num_coupling_points,NULL,num_coupling_points,NULL,&new_T);
 
 	// loop over the columns
-	for(unsigned int i=0; i<num_coupling_points; i++)
+	for(unsigned int i=0; i<(unsigned int)num_coupling_points; i++)
 	{
 		PetscScalar col_number[1];
 		
@@ -3518,13 +3594,25 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 		std::cout << "Schur Stokes Solve " << i << std::endl;
 		ierr = KSPSolve(schur_stokes_ksp,Bt_col,T_col);
 
+		//Mat schur_stokes_mat;
+		//Mat schur_stokes_prec;
+		//ierr = KSPGetOperators(schur_stokes_ksp,&schur_stokes_mat,&schur_stokes_prec);// CHKERRQ(ierr);
+
+		//std::cout << "schur stokes mat:\n\n\n\n\n\n\n\n" << std::endl;
+		//MatView(schur_stokes_mat,PETSC_VIEWER_STDOUT_WORLD);
+
+		//std::cout << "schur stokes prec:\n\n\n\n\n\n\n\n" << std::endl;
+		//MatView(schur_stokes_prec,PETSC_VIEWER_STDOUT_WORLD);
+
+		//VecView(T_col,PETSC_VIEWER_STDOUT_SELF);
+
 		
 		double norm;
 		VecNorm(T_col,NORM_2,&norm);
 		std::cout << "Stokes result norm = " << norm << std::endl;
 
 		// loop over the rows for the other bit of the matrix multiplication		
-		for(unsigned int j=0; j<num_coupling_points; j++)
+		for(unsigned int j=0; j<(unsigned int)num_coupling_points; j++)
 		{
 			PetscScalar row_number[1];
 			coupling_point[0] = j;			// the coupling point we are interested in (must be an array...)
@@ -3577,6 +3665,13 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 	ierr = VecDestroy(&B_row);
 	ierr = MatDestroy(&new_T);
 	ierr = KSPDestroy(&schur_stokes_ksp);
+
+
+
+	std::cout << "Done constructing Schur Stokes extras..." << std::endl;
+	//std::exit(0);
+
+	return 0;
 }
 
 
@@ -3598,10 +3693,236 @@ void NavierStokesCoupled::construct_schur_stokes_matrix (KSP schur_ksp)
 
 
 
+
+
+// ****************** CONSTRUCT THE SCHUR STOKES MATRIX ************** //
+
+// the pressure coupling dofs and flux coupling dofs corresponding to the same 
+int NavierStokesCoupled::test_post_solve (TransientLinearImplicitSystem * sys)
+{
+
+	std::cout << "Constructing Post solve crap..." << std::endl;
+	std::cout << "Could take a while..." << std::endl;
+	
+  	PetscErrorCode ierr;	// unused
+
+	//get petsc solver
+	PetscLinearSolver<Number>* system_linear_solver =
+			libmesh_cast_ptr<PetscLinearSolver<Number>* >
+			(sys->linear_solver.get());
+	KSP system_ksp = system_linear_solver->ksp();
+	PC pc;
+	ierr = KSPGetPC(system_ksp,&pc); CHKERRQ(ierr);
+
+
+
+	std::cout << "Setting up Velocity Monolithic preconditioner." << std::endl;
+
+
+	std::cout << "1" << std::endl;
+	KSP* subksp;	//subksps
+	ierr = PCFieldSplitGetSubKSP(pc,NULL,&subksp);// CHKERRQ(ierr);
+	std::cout << "1" << std::endl;
+	KSP schur_ksp = subksp[1];
+	PC ns_pc;
+	KSPGetPC(subksp[0],&ns_pc);
+
+	// get the IS for the NS dofs and the 0D dofs
+
+	IS ns_is,rd_is;
+	std::string split_1 = "0";
+	std::string split_2 = "1";
+	PCFieldSplitGetIS(pc,split_1.c_str(),&ns_is);
+	PCFieldSplitGetIS(pc,split_2.c_str(),&rd_is);
+
+	// some notes:
+	// H^T has the pressure coupling
+	// H has the flux coupling
+
+	// setup the ksp for the stokes system
+	// we have the velocity_matrix that has the stokes stuff created and restricted to the NS dofs
+	// okay let us just only let it work for stabilised
+
+	// ********* SETUP SCHUR_STOKES KSP **************** //
+
+	std::cout << "1" << std::endl;
+	// get the A so that we can use this as the matrix operator
+	// get the Bt so that we can do the multiplication with the 0D vector later
+	Mat S,A,Bt;
+	ierr = KSPGetOperators(schur_ksp,&S,NULL);// CHKERRQ(ierr);
+	ierr = MatSchurComplementGetSubMatrices(S,NULL,&A,&Bt,NULL,NULL);
+
+
+	std::cout << "1" << std::endl;
+	// create
+	KSP post_solve_ksp;
+	ierr = KSPCreate(PETSC_COMM_WORLD,&post_solve_ksp);// CHKERRQ(ierr);
+	PC post_solve_pc;
+	KSPGetPC(post_solve_ksp,&post_solve_pc);
+	
+	// set the operators for the velocity matrix inversion
+	//ierr = KSPSetOperators(post_solve_ksp,velocity_matrix->mat(),velocity_matrix->mat());// CHKERRQ(ierr);
+
+	ierr = KSPSetOperators(post_solve_ksp,A,A);// CHKERRQ(ierr);
+	ierr = KSPSetInitialGuessNonzero (post_solve_ksp, PETSC_TRUE);// CHKERRQ(ierr);
+
+	std::cout << "2" << std::endl;
+	//ierr = KSPSetOptionsPrefix(post_solve_ksp,"post_solve_");// CHKERRQ(ierr);
+	ierr = KSPSetOptionsPrefix(post_solve_ksp,"post_solve_");// CHKERRQ(ierr);
+	// setup up the operators for the first inner solve
+	ierr = KSPSetFromOptions (post_solve_ksp);// CHKERRQ(ierr);
+	std::cout << "2" << std::endl;
+
+	setup_is_simple (sys,pc);
+
+	PCFieldSplitSetIS(post_solve_pc,split_1.c_str(),velocity_is);
+	PCFieldSplitSetIS(post_solve_pc,split_2.c_str(),pressure_is);
+
+	//ierr = KSPView(post_solve_ksp,PETSC_VIEWER_STDOUT_WORLD);
+	std::cout << "yeah?" << std::endl;
+	ierr = KSPSetUp(post_solve_ksp);// CHKERRQ(ierr);
+	std::cout << "yeah?" << std::endl;
+	//ierr = KSPView(post_solve_ksp,PETSC_VIEWER_STDOUT_WORLD);
+
+
+	std::cout << "1" << std::endl;
+	// LSC James scaled stabilised elements
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 9
+		&& !es->parameters.get<bool>("direct_post_solve"))
+	{
+	
+		std::cout << "boo" << std::endl;
+		PC post_solve_pc;
+		std::cout << "boo" << std::endl;
+		ierr = KSPGetPC(post_solve_ksp,&post_solve_pc);// CHKERRQ(ierr);
+
+		std::cout << "boo" << std::endl;
+		KSP* subksp;	//subksps
+		std::cout << "boo" << std::endl;
+		ierr = PCFieldSplitGetSubKSP(post_solve_pc,NULL,&subksp);
+
+		std::cout << "Setting up LSC James scaled stabilised preconditioner for post solve." << std::endl;
+
+		// set ksp to preonly because we are defining the schur inverse
+		ierr = KSPSetType(subksp[1], KSPPREONLY);// CHKERRQ(ierr);
+
+		PC schur_pc;
+		ierr = KSPGetPC(subksp[1],&schur_pc);// CHKERRQ(ierr);
+
+		ierr = PCSetType(schur_pc,PCSHELL);// CHKERRQ(ierr);
+
+		ierr = ShellPCCreate(&post_solve_shell);// CHKERRQ(ierr);
+
+		ierr = PCShellSetApply(schur_pc,LSCScaledStabilisedShellPCApply);// CHKERRQ(ierr);
+		ierr = PCShellSetContext(schur_pc,post_solve_shell);// CHKERRQ(ierr);
+
+		ierr = PCShellSetDestroy(schur_pc,NSShellDestroy);// CHKERRQ(ierr);
+
+		ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner");// CHKERRQ(ierr);
+
+		       
+		ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),subksp[1],es->parameters.get<bool> ("negative_bfbt_schur_complement"));// CHKERRQ(ierr);
+
+		shell_pc_created = true;
+	}
+	else
+	{
+		//std::cout << "any preconditioner other than 9, not supported. EXITING..." << std::endl;
+		//std::exit(0);
+	}
+
+
+
+	std::cout << "yeah?" << std::endl;
+	//ierr = KSPSetUp(post_solve_ksp);// CHKERRQ(ierr);	
+	std::cout << "yeah?" << std::endl;
+	//ierr = KSPView(post_solve_ksp,PETSC_VIEWER_STDOUT_WORLD);
+
+
+
+
+	PetscInt m;
+	PetscInt m_local;
+	PetscInt n;
+	PetscInt n_local;
+	ierr = MatGetSize(A,&m,&n);
+	ierr = MatGetLocalSize(A,&m_local,&n_local);
+
+	Vec result;
+	VecCreate(PETSC_COMM_WORLD,&result);
+	VecSetSizes(result,m_local,m);
+	VecSetFromOptions(result);
+
+	Vec initial_guess_vec;
+	//AutoPtr<PetscVector<double> > petsc_copy;
+	PetscVector<double> & petsc_copy = cast_ref<PetscVector<double>&>(const_cast<NumericVector<double>&>(*sys->solution));
+	VecGetSubVector(petsc_copy.vec(),ns_is,&initial_guess_vec);
+
+	Vec rhs_vec;
+	PetscVector<double> & petsc_copy_rhs = cast_ref<PetscVector<double>&>(const_cast<NumericVector<double>&>(*sys->rhs));
+	VecGetSubVector(petsc_copy_rhs.vec(),ns_is,&rhs_vec);
+
+	Vec temp_rd_vec;
+	VecGetSubVector(petsc_copy.vec(),rd_is,&temp_rd_vec);
+	VecScale(temp_rd_vec,-1.0);
+
+	MatMultAdd(Bt,temp_rd_vec,rhs_vec,rhs_vec);
+
+	double norm;
+	VecNorm(initial_guess_vec,NORM_2,&norm);
+	std::cout << "before norm = " << norm << std::endl;
+	std::cout << "before solve..." << std::endl;
+	ierr = KSPSolve(post_solve_ksp,rhs_vec,initial_guess_vec);
+	std::cout << "after solve..." << std::endl;
+	VecNorm(initial_guess_vec,NORM_2,&norm);
+	std::cout << "after norm = " << norm << std::endl;
+
+
+
+
+
+
+	ierr = VecDestroy(&result);
+	ierr = KSPDestroy(&post_solve_ksp);
+
+
+	//std::cout << "exiting" << std::endl;
+	//std::exit(0);
+
+	return 0;
+}
+// ******************************************************************************** //
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // ****************** SETUP THE IS FOR MONOLITHIC PROBLEMS ************** //
 
 // field_number is the IS that we want to return
-void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
+int NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
                             PC my_pc)
 {
 
@@ -3676,7 +3997,7 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 	  else
 	  {
 		// do this so that they know what preconditioner to use for the sub systems
-		PetscErrorCode ierr=0;
+		PetscErrorCode ierr=0;	// unused
 
 
 		// now we want to do the fieldsplit of the sub fieldsplit
@@ -3693,7 +4014,7 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 			// loop over the number of dofs, cause this is the possible amount of fieldsplits
 			KSP* subksp;	//subksps
 			PetscInt num_splits;
-			ierr = PCFieldSplitGetSubKSP(my_pc,&num_splits,&subksp);// CHKERRQ(ierr);
+			ierr = PCFieldSplitGetSubKSP(my_pc,&num_splits,&subksp); CHKERRQ(ierr);
 
 			// only need to check the first split
 			PC sub_pc;
@@ -3703,8 +4024,9 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 			std::cout << "sub_pc type = " << sub_pc_type << std::endl;
 			std::cout << "hmmm" << std::endl;
 
-				// need to extract the pc corresponding to this 
-			sys_prefix = sys_prefix + static_cast<std::ostringstream*>( &(std::ostringstream() << i) )->str() + "_";
+			// need to extract the pc corresponding to this 
+			// we always look at the first fieldsplit cause we are interested in the navier stokes dofs
+			sys_prefix = sys_prefix + static_cast<std::ostringstream*>( &(std::ostringstream() << 0) )->str() + "_";
 
 			std::map<std::string, std::vector<dof_id_type> > group_indices;
 
@@ -3720,6 +4042,7 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 
 					// the outer fieldsplit grouping
 					std::string group_command = sys_prefix + var_name;
+					std::cout << "group_command = " << group_command << std::endl;
 
 					const std::string empty_string;
 
@@ -3760,18 +4083,19 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 	  if(i==0)
 	  {
 	    std::cout << "num dofs " << i << " = " << indices.size() << std::endl;
-	    int ierr = ISCreateLibMesh(sys->comm().get(), indices.size(),
+	    ISCreateLibMesh(sys->comm().get(), indices.size(),
 		                     idx, PETSC_COPY_VALUES, &velocity_is);
 	  }
 	  else
 	  {
 	    std::cout << "num dofs " << i << " = " << indices.size() << std::endl;
-	    int ierr = ISCreateLibMesh(sys->comm().get(), indices.size(),
+	    ISCreateLibMesh(sys->comm().get(), indices.size(),
 		                     idx, PETSC_COPY_VALUES, &pressure_is);
 
 	  }
   }
  
+	return 0;
 
 }
 
@@ -3796,7 +4120,7 @@ void NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
 int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitSystem * system)
 {
 
-  PetscErrorCode ierr;
+	PetscErrorCode ierr;	// unused
 
 	//get petsc solver
 	PetscLinearSolver<Number>* system_linear_solver =
@@ -3807,7 +4131,7 @@ int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitS
 	// check the number of dofs
 	dof_id_type num_dofs = system->n_dofs();
 
-	if(num_dofs < 1000)
+	if(num_dofs < 2000)
 	{
 		std::cout << "Calculating all eigenvalues for preconditioned system." << std::endl;
 		PetscInt nmax = num_dofs;
@@ -3815,12 +4139,24 @@ int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitS
 		PetscReal c[num_dofs];		
 		
 		std::cout << "Computing eigenvalues..." << std::endl;
-		ierr = KSPComputeEigenvaluesExplicitly(system_ksp,nmax,r,c);
+		ierr = KSPComputeEigenvaluesExplicitly(system_ksp,nmax,r,c); CHKERRQ(ierr);
 
 		std::cout << "Printing eigenvalues:" << std::endl;
 		for(unsigned int i=0; i<num_dofs; i++)
 		{
 			std::cout << " eig " << i << " = " << r[i] << " + " << c[i] << "i" << std::endl;
+		}
+
+		if(es->parameters.get<bool> ("write_eigenvalues"))
+		{
+			eigenvalues_file << t_step << "\t" << nonlinear_iteration;
+
+			for(unsigned int i=0; i<num_dofs; i++)
+			{
+				eigenvalues_file << "\t" << r[i] << "\t" << c[i];
+			}
+
+			eigenvalues_file << std::endl;
 		}
 	}
 	else
@@ -3831,7 +4167,7 @@ int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitS
 	}
 
 	
-
+	return 0;
 }
 
 // ********************************************************************************** //

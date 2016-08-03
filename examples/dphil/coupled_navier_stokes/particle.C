@@ -16,7 +16,7 @@ Particle::Particle (EquationSystems& es_in,Point& p, const Elem* element, unsign
 
 	position = p;
 
-	const MeshBase& mesh = es->get_mesh();
+	//const MeshBase& mesh = es->get_mesh();	// unused
 
 	current_elem = element;	//probz illegal but oh well
 
@@ -207,8 +207,8 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 	else if(impaction)
 	{
 
-		double Re_p = 0.;
-		double C_D = 0.;
+		//double Re_p = 0.;	// unused
+		//double C_D = 0.;	// unused
 		double F_D = 0.;
 		
 		
@@ -300,7 +300,7 @@ void Particle::move ()
 	system =
   	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
-	const MeshBase& mesh = es->get_mesh();
+	//const MeshBase& mesh = es->get_mesh();	// unused
 
 	current_velocity = compute_velocity(); //calculate velocity for the current timestep
 	//std::cout << "current_velocity = " << current_velocity << std::endl;
@@ -367,7 +367,7 @@ void Particle::move ()
 		//4 - havent found anything freeze particle and say it is stuck
 
 
-		bool temporary_method = false;
+		//bool temporary_method = false;	// unused
 		bool element_found = false;
 		//now find what element we are in, search neighbours
 
