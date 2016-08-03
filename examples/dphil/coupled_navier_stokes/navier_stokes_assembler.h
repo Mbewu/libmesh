@@ -68,13 +68,14 @@ class NavierStokesAssembler : public System::Assembly
 	
 	private:
 		EquationSystems* es;
-		std::vector<Airway>& airway_data;
-		int n_initial_3d_elem;
 		std::vector<double> pressure_values;
 		std::vector<double> flux_values;
-		bool coupled;
-		std::vector<unsigned int> subdomains_1d;
 		bool preconditioner;
+
+		std::vector<unsigned int> subdomains_1d;
+		std::vector<Airway>& airway_data;
+		int n_initial_3d_elem;
+		bool coupled;
 };
 
 #endif //__navier_stokes_assembler_assembly_h__

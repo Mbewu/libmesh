@@ -222,7 +222,7 @@ public:
 				if(basis_2.size() < 1e-10)
 				{
 					std::cout << "error in surface_boundary.h, basis for surface cannot be found" << std::endl;
-					std:exit(0);
+					std::exit(0);
 				}	
 
 
@@ -824,13 +824,19 @@ public:
 
 			if(libmesh_geometry)
 			{
-				std::cout << "no support for function SurfaceBoundary::get_max_radius() for 3D libmesh geometries... exiting" << std::endl;
-				std::exit(0);
+				//std::cout << "no support for function SurfaceBoundary::get_max_radius() for 3D libmesh geometries... exiting" << std::endl;
+				//std::exit(0);
+				std::cout << "assuming square boundary for libmesh 3D geometry" << std::endl;
+				max_radius = sqrt(area/2.0);
+		
 			}
+			else
+			{
 
-			for(unsigned int i=0; i<boundary_point_radii.size(); i++)
-				if(boundary_point_radii[i] > max_radius)
-					max_radius = boundary_point_radii[i];
+				for(unsigned int i=0; i<boundary_point_radii.size(); i++)
+					if(boundary_point_radii[i] > max_radius)
+						max_radius = boundary_point_radii[i];
+			}
 		}
 		else
 		{

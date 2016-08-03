@@ -80,7 +80,7 @@ public:
 		//std::cout << "X/Y = " << x/y << std::endl;
 
 		
-		double r_before_normed = r/0.5;
+		//double r_before_normed = r/0.5;	// unused
 
 		if(along_line)
 		{
@@ -246,6 +246,7 @@ public:
 	{
 		//we want the thing to go in the negative normal direction
 		double inflow_magnitude = (*this)(p,time);
+		double angle_of_inflow = es->parameters.get<double> ("angle_of_inflow");
 
 
 		// use the object if defined otherwise defaults
@@ -259,6 +260,17 @@ public:
 		}
 		else 
 			normal = surface_boundary_object->get_normal();
+
+
+		// potentially rotate the flow direction
+		if(fabs(angle_of_inflow) > 1e-10)
+		{
+			Point old_normal;
+			old_normal = normal;
+			normal(0) = old_normal(0)*cos(angle_of_inflow) - old_normal(1)*sin(angle_of_inflow);
+			normal(1) = old_normal(0)*sin(angle_of_inflow) + old_normal(1)*cos(angle_of_inflow);
+		}
+
 
 		// need a special case for womersley where we want to impose over whole volume initially
 		if(!es->parameters.get<bool> ("prescribed_womersley"))

@@ -35,10 +35,16 @@ PetscErrorCode custom_outer_monitor(KSP ksp,PetscInt n,PetscReal rnorm,void *dum
 	ierr = KSPGetIterationNumber(ksp,&num_outer_its); CHKERRQ(ierr);
 	ierr = KSPGetIterationNumber(subksp[0],&num_inner_velocity_its); CHKERRQ(ierr);
 
-	//ierr = PetscPrintf(PETSC_COMM_WORLD,"  in ksp custom monitor: num_velocity_its = %D\n",num_inner_pressure_its); CHKERRQ(ierr);
+	//ierr = PetscPrintf(PETSC_COMM_WORLD,"\n  in ksp custom monitor\n"); CHKERRQ(ierr);
+
 
 	MonolithicMonitorCtx *mono_ctx = (MonolithicMonitorCtx*)dummy;
-	mono_ctx->total_velocity_iterations += num_inner_velocity_its;
+
+	// the zeroth iteration may take the iterations from the previous nonlinear step
+	if(num_outer_its > 0)
+		mono_ctx->total_velocity_iterations += num_inner_velocity_its;
+
+	//std::cout << "total velocity iterations = " << mono_ctx->total_velocity_iterations << std::endl;
 	//mono_ctx->total_convection_diffusion_iterations = 1000;
 	//total_inner_pressure_its += num_inner_pressure_its;
   return(0);
@@ -71,6 +77,60 @@ PetscErrorCode custom_inner_pressure_monitor(KSP ksp,PetscInt n,PetscReal rnorm,
   return(0);
 }
 
+
+PetscErrorCode custom_inner_velocity_monitor(KSP ksp,PetscInt n,PetscReal rnorm,void *dummy)
+{
+	PetscErrorCode ierr;
+
+	ierr = PetscPrintf(PETSC_COMM_WORLD,"\n  in ksp custom inner velocity monitor\n"); CHKERRQ(ierr);
+
+	ierr = PetscPrintf(PETSC_COMM_WORLD,"    %D KSP Residual norm %g\n",n,rnorm); CHKERRQ(ierr);
+
+	Vec solution;
+	KSPBuildSolution(ksp,NULL,&solution);
+
+	double norm;
+	VecNorm(solution,NORM_2,&norm);
+	std::cout << "solution norm = " << norm << std::endl;
+
+  return(0);
+}
+
+
+PetscErrorCode compute_initial_guess(KSP ksp,Vec x,void *ctx)
+{
+	//PetscErrorCode ierr;	// unused
+
+	InitialGuessCtx *initial_guess_ctx = (InitialGuessCtx*)ctx;
+	VecCopy(initial_guess_ctx->inner_solution,x);
+
+	std::cout << "WHAAAAAAAAAAAAAAAAAAAAAAT" << std::endl;
+	
+	double norm;
+	VecNorm(initial_guess_ctx->inner_solution,NORM_2,&norm);
+	std::cout << "inner solution norm = " << norm << std::endl;
+	VecNorm(x,NORM_2,&norm);
+	std::cout << "initial guess norm = " << norm << std::endl;
+
+	return(0);
+	
+}
+
+
+
+
+PetscErrorCode compute_rhs(KSP ksp,Vec b,void *ctx)
+{
+	std::cout << "do nothing in rhs" << std::endl;
+	return(0);
+}
+
+PetscErrorCode compute_matrix(KSP ksp,Mat jac,Mat B,void *ctx)
+{
+	std::cout << "do nothing in matrix" << std::endl;
+	return(0);
+
+}
 
 
 // ***** PCSHELL preconditioner
@@ -577,10 +637,10 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
                        num_coupling_points,NULL,num_coupling_points,NULL,&new_T);
 
 	// loop over the columns
-	for(unsigned int i=0; i<num_coupling_points; i++)
+	for(unsigned int i=0; i<(unsigned int)num_coupling_points; i++)
 	{
 		PetscScalar col_number[1];
-		PetscInt coupling_point[1] = {i};	// the coupling point we are interested in (must be an array...)
+		PetscInt coupling_point[1] = {(PetscInt)i};	// the coupling point we are interested in (must be an array...)
 		ierr = VecGetValues(non_zero_cols,1,coupling_point,col_number);
 
 		// extract the correct column as a Vec
@@ -590,7 +650,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 		ierr = MatSolve(F,Bt_col,T_col);
 
 		// loop over the rows for the other bit of the matrix multiplication		
-		for(unsigned int j=0; j<num_coupling_points; j++)
+		for(unsigned int j=0; j<(unsigned int)num_coupling_points; j++)
 		{
 			PetscScalar row_number[1];
 			coupling_point[0] = j;			// the coupling point we are interested in (must be an array...)
@@ -663,7 +723,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 /*
    Monolithic3ShellPCSetUp - This solves the matrix in the schur complement vector by vector.
 */
-PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp)
+PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur)
 {
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
@@ -671,6 +731,10 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	//ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+
+	// ********* ASSOC outer ksp ************************** //
+	shell->outer_ksp = _outer_ksp;
+
 
 	// ********* SETUP VELOCITY MATRIX KSP **************** //
 
@@ -685,11 +749,11 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 
 
 	// Get the matrices we need from the system
-	Mat A11;
+	Mat A11,Bt;
 	Mat S;
 
 	ierr = KSPGetOperators(schur_ksp,&S,NULL); CHKERRQ(ierr);
-	ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,NULL,NULL,&A11);
+	ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,NULL,&A11);
 
 	// copy the schur_complement_approx containing the stokes approximation to the S_approx
 	ierr = MatDuplicate(schur_complement_approx,MAT_COPY_VALUES,&shell->S_approx);
@@ -699,8 +763,23 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	ierr = MatScale(shell->S_approx,-1.0);
 
 
+	// only use the A11
+	ierr = MatScale(shell->S_approx,0.0);
+	ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
+	ierr = MatScale(shell->S_approx,-1.0);
 
 
+	if(negative_schur)
+	{
+		ierr = MatScale(shell->S_approx,-1.0);
+		std::cout << "hello, scaling the schur approx" << std::endl;
+	}
+
+
+
+
+
+	shell->Bt = Bt;
 
 
 	// setup up the operators for the solve later
@@ -844,7 +923,7 @@ PetscErrorCode LSCScaledShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_
 
 
 
-PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_ksp)
+PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_ksp, bool negative_bfbt)
 {
 	printf ("Inside shell pc lsc scaled stabilised james setup\n");
   NSShellPC  *shell;
@@ -918,6 +997,27 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	Vec D_r_vec_sqrt;
 	MatDiagonalScale(Bt_scaled,shell->lsc_scale,NULL);
 	MatMatMult(B,Bt_scaled,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&shell->lsc_laplacian_matrix);		// could possibly use MAT_REUSE_MATRIX
+
+	// sometimes, if we have elements that only have nodes on dirichlet boundaries, we get zero rows, we need to set them to 1.0 on the diagonal
+	IS zero_diagonals;
+	Vec lap_diag;
+	MatFindZeroDiagonals(shell->lsc_laplacian_matrix,&zero_diagonals);
+	MatGetVecs(shell->lsc_laplacian_matrix,&lap_diag,NULL);	//make lap_diag the correct size
+	VecISSet(lap_diag,zero_diagonals,1.0);	// set it to one where there is a zero diagonal
+	
+	//PetscInt lap_diag_size;
+	//VecGetSize(lap_diag,&lap_diag_size);
+	//PetscInt lsc_size;
+	//VecGetSize(shell->lsc_scale,&lsc_size);
+	//std::cout << "lap diag size = " << lap_diag_size << std::endl;
+	//std::cout << "lsc size = " << lsc_size << std::endl;
+	
+
+
+	//VecPointwiseMult(lap_diag,shell->lsc_scale,lap_diag);	// scale it appropriately
+	MatDiagonalSet(shell->lsc_laplacian_matrix,lap_diag,ADD_VALUES);	// add to diagonal
+	ISDestroy(&zero_diagonals);
+	VecDestroy(&lap_diag);
 
 	//std::cout << "lsc_laplacian" << std::endl;
 	//MatView(shell->lsc_laplacian_matrix,PETSC_VIEWER_STDOUT_SELF);
@@ -1040,6 +1140,14 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 
    	PetscRandomDestroy(&rctx);
 	
+	std::cout << "gamma = " << gamma << std::endl;
+	std::cout << "alpha = " << alpha << std::endl;
+
+	//std::cout << "B:" << std::endl;
+	//MatView(B,PETSC_VIEWER_STDOUT_WORLD);
+
+	//std::cout << "Bt:" << std::endl;
+	//MatView(Bt,PETSC_VIEWER_STDOUT_WORLD);
 
 	//std::cout << "hello?" << std::endl;
 
@@ -1052,6 +1160,16 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	//std::cout << "hello?" << std::endl;
 	// ********** SETUP \alpha D_inv
 	VecScale(shell->lsc_stab_alpha_D_inv,alpha);
+
+
+	if(negative_bfbt)
+	{
+		shell->neg_schur = true;
+	}
+	else
+	{
+		shell->neg_schur = false;
+	}
 	
 
 
@@ -1271,12 +1389,12 @@ PetscErrorCode SIMPLECShellPCSetUp(PC pc, IS velocity_is, IS pressure_is, KSP sc
 
 	// instead of the diagonal we use the absolute value of the rowsum, this doesn't work so try sum of abs values
 	PetscInt          rstart,rend;
-	PetscInt          row,ncols,j,nrows;
+	PetscInt          row,ncols,j; // ,nrows; // unused
 	PetscReal         val;
 	const PetscInt    *cols;
 	const PetscScalar *vals;
 	MatGetOwnershipRange(shell->A,&rstart,&rend);
-	nrows = 0;
+	//nrows = 0;	// unused
 	for (row=rstart; row<rend; row++) {
 		MatGetRow(shell->A,row,&ncols,&cols,&vals);
 		val  = 0.0;
@@ -1435,7 +1553,7 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
-	PetscLogStage pcd_stage;
+	//PetscLogStage pcd_stage;	// unused
 	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
@@ -1495,7 +1613,7 @@ PetscErrorCode PCD2ShellPCApply(PC pc,Vec x,Vec y)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
-	PetscLogStage pcd2_stage;
+	//PetscLogStage pcd2_stage;	// unused
 	ierr = PetscLogStagePush(1);
 
 	printf ("in PCD preconditioner\n");
@@ -1592,11 +1710,100 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 
   	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
+	double norm;	
+
+	PC outer_pc;
+	KSPGetPC(shell->outer_ksp,&outer_pc);
+
 	
+/*
+	{
+		int num_splits = 0;
+		KSP* subksp;	//subksps
+		ierr = PCFieldSplitGetSubKSP(outer_pc,&num_splits,&subksp); CHKERRQ(ierr);
+
+
+		PetscReal residual_norm;
+		KSPGetResidualNorm(subksp[0],&residual_norm);
+
+		std::cout << "residual norm = " << residual_norm << std::endl;
+
+
+		std::cout << "ya" << std::endl;
+		VecNorm(shell->initial_guess_ctx->inner_solution,NORM_2,&norm);
+		std::cout << "inner solution norm before = " << norm << std::endl;
+
+		//KSPBuildSolution(subksp[0],shell->initial_guess_ctx->inner_solution,NULL);
+
+		std::cout << "hello" << std::endl;
+
+		VecNorm(shell->initial_guess_ctx->inner_solution,NORM_2,&norm);
+		std::cout << "inner solution norm after = " << norm << std::endl;
+
+		Mat Amat,Pmat;
+		KSPGetOperators(subksp[0],&Amat,&Pmat);
+		KSPSetComputeOperators(subksp[0],compute_matrix,NULL);
+		KSPSetOperators(subksp[0],Amat,Pmat);
+	
+	}
+	*/
 	// apply the preconditioner (lu)	
 	PC local_velocity_pc;
 	ierr = KSPGetPC(shell->inner_velocity_ksp,&local_velocity_pc); CHKERRQ(ierr);
 	ierr = PCApply(local_velocity_pc,x,y); CHKERRQ(ierr);
+
+
+
+	// let's try and change the rhs of the navier stokes solve bit...	
+	// get the H^t matrix
+	//	Mat S,Bt;	// unused
+	//ierr = KSPGetOperators(shell->outer_ksp,&S,NULL);// CHKERRQ(ierr);
+	//ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,NULL,NULL);
+	//Bt = shell->Bt;	// unused
+	
+
+	IS ns_is,rd_is;
+	std::string split_1 = "0";
+	std::string split_2 = "1";
+	PCFieldSplitGetIS(outer_pc,split_1.c_str(),&ns_is);
+	PCFieldSplitGetIS(outer_pc,split_2.c_str(),&rd_is);
+
+	// get the rhs vec
+	Vec rhs_vec;
+	Vec rhs_sub_vec;
+	KSPGetRhs(shell->outer_ksp,&rhs_vec);
+	VecGetSubVector(rhs_vec,ns_is,&rhs_sub_vec);
+
+	VecNorm(rhs_vec,NORM_2,&norm);
+
+	// get the solution vec?
+	Vec rd_vec;
+	Vec rd_sub_vec;
+	//KSPGetSolution(shell->outer_ksp,&rd_vec);
+	KSPBuildSolution(shell->outer_ksp,NULL,&rd_vec);
+
+	VecNorm(rd_vec,NORM_2,&norm);
+	VecGetSubVector(rd_vec,rd_is,&rd_sub_vec);
+
+	VecNorm(rd_sub_vec,NORM_2,&norm);
+	//VecView(rd_sub_vec,PETSC_VIEWER_STDOUT_SELF);
+
+	VecNorm(rhs_sub_vec,NORM_2,&norm);
+
+	Vec new_vec;
+	VecDuplicate(rhs_sub_vec,&new_vec);
+	
+
+	//MatMultAdd(Bt,rd_sub_vec,rhs_sub_vec,rhs_sub_vec);
+	//MatMultAdd(Bt,rd_sub_vec,new_vec,new_vec);
+
+
+	VecNorm(rhs_sub_vec,NORM_2,&norm);
+
+	
+	VecNorm(rhs_vec,NORM_2,&norm);
+
+
 
 
 
@@ -1621,12 +1828,12 @@ PetscErrorCode LSCShellPCApply(PC pc,Vec x,Vec y)
 
 	printf ("inside shell pc lsc james pcapply");
 
-	PetscLogStage pcd_stage;
+	//PetscLogStage pcd_stage;	// unused
 	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
 
-  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+  	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 
 	Mat pcmat;
 	ierr = PCGetOperators(pc,&pcmat,NULL); CHKERRQ(ierr);
@@ -1646,11 +1853,11 @@ PetscErrorCode LSCShellPCApply(PC pc,Vec x,Vec y)
 
 	MatMult(C,shell->temp_vec_2,shell->temp_vec_3);
 	KSPSolve(shell->inner_lap_ksp,shell->temp_vec_3,y);
+	ierr = PetscLogStagePop();
 	return(0);
 
 
 
-	ierr = PetscLogStagePop();
 
   return 0;
 }
@@ -1667,7 +1874,7 @@ PetscErrorCode LSCScaledShellPCApply(PC pc,Vec x,Vec y)
 
 	printf ("inside shell pc lsc james pcapply");
 
-	PetscLogStage pcd_stage;
+	//	PetscLogStage pcd_stage;	// unused
 	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
@@ -1712,8 +1919,8 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
 
 	//printf ("inside shell pc lsc scaled stabilised james pcapply");
 
-	PetscLogStage pcd_stage;
-	//ierr = PetscLogStagePush(1);
+	//PetscLogStage pcd_stage;	// unused
+	ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
 
@@ -1725,7 +1932,11 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
 	Mat A,B,C;
 	MatSchurComplementGetSubMatrices(pcmat,&A,NULL,&B,&C,NULL);
 
+	//Mat lap_mat;
+	//KSPGetOperators(shell->inner_lap_ksp,&lap_mat,NULL); CHKERRQ(ierr);
+	//MatView(lap_mat,PETSC_VIEWER_STDOUT_WORLD);
 	KSPSolve(shell->inner_lap_ksp,x,shell->temp_vec_3);
+
 
 	//std::cout << "x: " << std::endl;
 	double norm;
@@ -1791,11 +2002,16 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
 	VecNorm(y,NORM_2,&norm);
 	//VecView(r_u,PETSC_VIEWER_STDOUT_SELF);
 	//std::cout << norm << std::endl;
-	return(0);
+
+
+	// experiment in shifting eigenvalues
+
+	if(shell->neg_schur)
+		VecScale(y,-1.0);
 
 
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
   return 0;
 }
@@ -1810,7 +2026,7 @@ PetscErrorCode SIMPLEShellPCApply(PC pc,Vec x,Vec y)
 
 	printf ("inside shell pc lsc james pcapply");
 
-	PetscLogStage pcd_stage;
+	//PetscLogStage pcd_stage;	// unused
 	//ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
@@ -1964,7 +2180,7 @@ PetscErrorCode SIMPLERShellPCApply(PC pc,Vec x,Vec y)
 
 	printf ("inside shell pc lsc james pcapply");
 
-	PetscLogStage pcd_stage;
+	//	PetscLogStage pcd_stage;	// unused
 	//ierr = PetscLogStagePush(1);
 
 	//printf ("in PCD preconditioner\n");
@@ -2156,7 +2372,7 @@ PetscErrorCode NSShellDestroy(PC pc)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(1);
+	ierr = PetscLogStagePush(1);
   std::cout << "in shell destroy" << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -2177,7 +2393,7 @@ PetscErrorCode NSShellDestroy(PC pc)
   ierr = PetscFree(shell);CHKERRQ(ierr);
 	
   std::cout << "done shell destroy" << std::endl;
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
   return 0;
 }
@@ -2251,7 +2467,7 @@ PetscErrorCode MatShellMultFull(Mat A, Vec vx, Vec vy)
 	KSP schur_ksp = ctx->schur_ksp;
 
 	// setup up the operators for the first inner solve
-	Mat S, Pmat;
+	Mat S;	//, Pmat;	// unused
 	//MatStructure mat_structure;
 
 	//MatView(pressure_laplacian_matrix->mat(),PETSC_VIEWER_STDOUT_SELF);

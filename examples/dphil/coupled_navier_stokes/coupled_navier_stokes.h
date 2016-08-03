@@ -145,6 +145,7 @@
 
 // Needed for cast to petsc matrix
 #include "libmesh/petsc_matrix.h"
+#include "libmesh/petsc_vector.h"
 
 
 
@@ -158,6 +159,11 @@
 
 // *** stuff for shell pc
 
+
+typedef struct {
+	Vec inner_solution;
+} InitialGuessCtx;
+
 /* Define context for user-provided preconditioner */
 typedef struct {
   Mat pressure_mass_matrix;
@@ -170,13 +176,17 @@ typedef struct {
   KSP inner_lap_ksp;
   KSP inner_schur_ksp;
   KSP inner_velocity_ksp;
+  KSP outer_ksp;
   Vec temp_vec;
   Vec temp_vec_2;
   Vec temp_vec_3;
   Vec lsc_scale;
   Mat lsc_laplacian_matrix;
   Vec lsc_stab_alpha_D_inv;
+	bool neg_schur;
   PetscInt total_iterations;
+  Mat Bt;
+  InitialGuessCtx *initial_guess_ctx;
 } NSShellPC;
 
 typedef struct {
@@ -216,6 +226,8 @@ typedef struct {
 
 
 
+
+
 /* Declare routines for user-provided preconditioner */
 extern PetscErrorCode ShellPCCreate(NSShellPC**);
 extern PetscErrorCode ShellPCCreate(SIMPLEShellPC**);
@@ -226,14 +238,14 @@ extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode MonolithicShellPCSetUp(PC,Mat,KSP);
-extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP,KSP,bool);
 extern PetscErrorCode Monolithic2ShellPCSetUp(PC,Mat,Vec,Vec,KSP);
 extern PetscErrorCode MonolithicShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode LSCShellPCSetUp(PC,KSP);
 extern PetscErrorCode LSCShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode LSCScaledShellPCSetUp(PC,Mat,KSP);
 extern PetscErrorCode LSCScaledShellPCApply(PC,Vec x,Vec y);
-extern PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC,Mat,KSP);
+extern PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC,Mat,KSP,bool);
 extern PetscErrorCode LSCScaledStabilisedShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode SIMPLEShellPCSetUp(PC,IS,IS,KSP);
 extern PetscErrorCode SIMPLECShellPCSetUp(PC,IS,IS,KSP);
@@ -244,7 +256,12 @@ extern PetscErrorCode SIMPLEShellDestroy(PC);
 
 extern PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
 extern PetscErrorCode custom_inner_pressure_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
+extern PetscErrorCode custom_inner_velocity_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
+extern PetscErrorCode compute_initial_guess(KSP ksp, Vec x, void *ctx);
 
+
+extern PetscErrorCode compute_matrix(KSP,Mat,Mat,void*);
+extern PetscErrorCode compute_rhs(KSP,Vec,void*);
 
 
 /* Declare routines for user-provided A_p = BQ^-1Bt */
@@ -269,7 +286,7 @@ public:
 	NavierStokesCoupled(LibMeshInit & init, std::string input_file, std::string input_file_particle, GetPot& command_line);
 
 	// read in parameters from file and give them to the parameters object.
-	void read_parameters();
+	int read_parameters();
 
 	void read_particle_parameters();
 
@@ -313,7 +330,7 @@ public:
 
 	void update_time_scaling();
 
-	void solve_1d_system();
+	int solve_1d_system();
 
 	void set_radii();
 
@@ -394,9 +411,13 @@ public:
 
 	int compute_and_output_eigenvalues(TransientLinearImplicitSystem * system);
 
-	void setup_is_simple (TransientLinearImplicitSystem * sys, PC my_pc);
+	int setup_is_simple (TransientLinearImplicitSystem * sys, PC my_pc);
 
-	void construct_schur_stokes_matrix(KSP schur_ksp);
+	int construct_schur_stokes_matrix(TransientLinearImplicitSystem * sys, KSP schur_ksp);
+
+
+
+	int test_post_solve(TransientLinearImplicitSystem * sys);
 
 
 private:
@@ -440,6 +461,7 @@ private:
 	bool sim_3d;
 	bool sim_1d;
 	std::ofstream output_file;
+	std::ofstream eigenvalues_file;
 	std::ofstream parameter_output_file;
 	std::ofstream particle_output_file;
 	std::ofstream deposition_output_file;
@@ -480,6 +502,8 @@ private:
 	std::vector<unsigned int> subdomains_3d;		//list of subdomain ids that are 3d (i.e. 3d airways) 
 	unsigned int total_nonlinear_iterations;		//list of subdomain ids that are 3d (i.e. 3d airways)
 	unsigned int local_linear_iterations;		//list of subdomain ids that are 3d (i.e. 3d airways) 
+	int total_linear_iterations;
+	int total_max_iterations;
 	//SurfaceBoundary inflow_surface_boundary_object;
 	std::vector<SurfaceBoundary* > surface_boundaries;
 	unsigned int nonlinear_iteration;
@@ -491,6 +515,7 @@ private:
 	std::vector<std::vector<double> > node_1d_data;
 	unsigned int num_nodes_1d;
 	std::vector<unsigned int> num_generations; //num_generations for each tree
+	bool ic_set;
 
 	// particle deposition stuff
 	unsigned int particle_deposition;
@@ -517,8 +542,6 @@ private:
 	std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
 	std::vector<std::vector<double> > tb_efficiency_per_generation;	// [timestep][generation] tracheo-bronchial efficiency of deposition summed over all branches in this generation
 	int total_particles_inhaled;
-	int total_linear_iterations;
-	int total_max_iterations;
 	int stokes_gmres_iterations;
 	bool shell_pc_created;
 	bool mono_shell_pc_created;
@@ -542,10 +565,12 @@ private:
 	NSShellPC  *shell;    /* user-defined preconditioner context */
 	NSShellPC  *mono_shell;    /* user-defined preconditioner context */
 	NSShellPC  *schur_stokes_shell;    /* user-defined preconditioner context */
+	NSShellPC  *post_solve_shell;    /* user-defined preconditioner context */
 	SIMPLEShellPC  *simple_shell;    /* user-defined preconditioner context */
 
 	PCD2ShellMatrixCtx mat_ctx;
 	MonolithicMonitorCtx *mono_ctx;
+	InitialGuessCtx *initial_guess_ctx;
 
 
 };

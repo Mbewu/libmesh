@@ -164,7 +164,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		// ******* NOW DO THE 1D TREE COUPLINGS
 		// these should be fine because we will probably only ever use 1d elements, but maybe not
     const DofMap &dof_map = system->get_dof_map();
-    const unsigned int sys_num = system->number();
+    //const unsigned int sys_num = system->number();	// unused variable
 		std::vector<int> variable_numbers_1d;
     variable_numbers_1d.push_back(system->variable_number("P"));
     variable_numbers_1d.push_back(system->variable_number("Q"));

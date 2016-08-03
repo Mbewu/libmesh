@@ -509,7 +509,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_tb_daughters
 		if(es->parameters.get<unsigned int>("alveolated_1d_tree"))
 		{
 			//generate temporary alveolar tree from
-			unsigned int num_alveolar_generations = airway_data[parent_id].get_num_alveolar_generations();
+			//unsigned int num_alveolar_generations = airway_data[parent_id].get_num_alveolar_generations();	// unused
 			//this should construct a tree from the last parent branch
 			construct_temporary_alveolated_1d_tree (parent_id);
 			// there is no deposition in the first branch as this is part of the tracheobronchial tree
@@ -546,8 +546,8 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 	{
 
 		//need to calculate the separation of flow based on area.
-		double daughter_1_radius = temporary_alveolar_tree[daughter_1_id][6];
-		double daughter_2_radius = temporary_alveolar_tree[daughter_2_id][6];
+		//double daughter_1_radius = temporary_alveolar_tree[daughter_1_id][6];	// unused
+		//double daughter_2_radius = temporary_alveolar_tree[daughter_2_id][6];	// unused
 
 		// get the proportion of flow entering
 		double daughter_1_proportion = temporary_alveolar_tree[daughter_1_id][4];	// for the flow
@@ -603,7 +603,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 				alveolar_efficiency_per_generation[t_step_in][tb_generation + alveolar_generation] += deposition_efficiency;
 
 				//calculate time particle reaches end of tube. distance / velocity =  length / (flow_rate/area)
-				double daughter_1_area = M_PI * pow(temporary_alveolar_tree[daughter_1_id][6],2.0);
+				//double daughter_1_area = M_PI * pow(temporary_alveolar_tree[daughter_1_id][6],2.0);	// unused
 				parent_end_time = current_time;
 				daughter_1_initial_weight = daughter_1_initial_weight - deposition_efficiency;
 
@@ -680,7 +680,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 
 					double time_spent_in_alveoli = current_time - parent_end_time;
 					double weight_in_alveoli = daughter_1_initial_weight;
-					double size_of_alveoli = 1.0;
+					//double size_of_alveoli = 1.0;	// unused
 
 					double proportion_deposited_in_alveoli = calculate_deposition_in_alveoli(time_spent_in_alveoli);
 					double deposited_in_alveoli = weight_in_alveoli* proportion_deposited_in_alveoli;
@@ -771,7 +771,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 				alveolar_efficiency_per_generation[t_step_in][tb_generation + alveolar_generation] += deposition_efficiency;
 
 				//calculate time particle reaches end of tube. distance / velocity =  length / (flow_rate/area)
-				double daughter_2_area = M_PI * pow(temporary_alveolar_tree[daughter_2_id][6],2.0);
+				//double daughter_2_area = M_PI * pow(temporary_alveolar_tree[daughter_2_id][6],2.0);	// unused
 				parent_end_time = current_time;
 				daughter_2_initial_weight = daughter_2_initial_weight - deposition_efficiency;
 
@@ -840,7 +840,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 
 					double time_spent_in_alveoli = current_time - parent_end_time;
 					double weight_in_alveoli = daughter_2_initial_weight;
-					double size_of_alveoli = 1.0;
+					//double size_of_alveoli = 1.0;	// unused
 
 					double proportion_deposited_in_alveoli = calculate_deposition_in_alveoli(time_spent_in_alveoli);
 					double deposited_in_alveoli = weight_in_alveoli * proportion_deposited_in_alveoli;
@@ -882,6 +882,8 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_daug
 }
 
 
+
+
 //calculate the deposition efficiency for a particle entering the trachea at time_in
 void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_parent
 		(unsigned int t_step_in,  unsigned int alveolar_id,double daughter_end_time, double daughter_end_flow, double daughter_end_weight)
@@ -896,7 +898,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_pare
 	int super_parent_id = (int)temporary_alveolar_tree[alveolar_id][0];
 	double branch_flow = 0.;
 	unsigned int alveolar_generation = (unsigned int)temporary_alveolar_tree[alveolar_id][7];
-	unsigned int num_alveolar_generations = airway_data[temporary_alveolar_tree[alveolar_id][0]].get_num_alveolar_generations();
+	//unsigned int num_alveolar_generations = airway_data[temporary_alveolar_tree[alveolar_id][0]].get_num_alveolar_generations();	// unused
 	
 	bool end_time = false;
 	// check if we are at the end of the tree
@@ -954,15 +956,15 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_pare
 
 				//now calculate probability in acinus, generation/total generations
 				unsigned int tb_generation = airway_data[temporary_alveolar_tree[alveolar_id][0]].get_generation();
-				double probability_in_alveoli = alveolar_generation/num_alveolar_generations;
-				double deposition_in_alveoli = probability_in_alveoli * deposition_efficiency;
+				//double probability_in_alveoli = alveolar_generation/num_alveolar_generations;		// unused
+				//double deposition_in_alveoli = probability_in_alveoli * deposition_efficiency;	// unused
 
 				// a proportion comes from the alveoli
 				double weight_in_alveoli = temporary_alveolar_tree[alveolar_id][13];
 				temporary_alveolar_tree[alveolar_id][13] = 0.;
 				double time_spent_in_alveoli = daughter_end_time - temporary_alveolar_tree[alveolar_id][14];
 				temporary_alveolar_tree[alveolar_id][14] = 0.;
-				double size_of_alveoli = 1.0;
+				//double size_of_alveoli = 1.0;	// unused
 
 				double proportion_deposited_in_alveoli = calculate_deposition_in_alveoli(time_spent_in_alveoli);
 				double deposited_in_alveoli = weight_in_alveoli * proportion_deposited_in_alveoli;
@@ -1000,7 +1002,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_alveolar_pare
 			temporary_alveolar_tree[alveolar_id][13] = 0.;
 			double time_spent_in_alveoli = daughter_end_time - temporary_alveolar_tree[alveolar_id][14];
 			temporary_alveolar_tree[alveolar_id][14] = 0.;
-			double size_of_alveoli = 1.0;
+			//double size_of_alveoli = 1.0;	// unused
 
 			double proportion_deposited_in_alveoli = calculate_deposition_in_alveoli(time_spent_in_alveoli);
 			double deposited_in_alveoli = weight_in_alveoli * proportion_deposited_in_alveoli;
@@ -1043,7 +1045,7 @@ void HofmannParticleDeposition::calculate_deposition_efficiency_in_tb_parent
 	int parent_id = airway_data[branch_id].get_parent();
 	
 	//need to calculate the separation of flow based on area.
-	double branch_radius = airway_data[branch_id].get_radius();
+	//double branch_radius = airway_data[branch_id].get_radius();	// unused
 
 	double branch_flow = 0.;
 

@@ -14,7 +14,7 @@ void OptimisedStabilisedAssembler3D::assemble(ErrorVector&)// error_vector)
 		std::cout << "Begin 2D assembly... ";
 
 	TransientLinearImplicitSystem * system;
-	TransientLinearImplicitSystem * system_neumann;
+	TransientLinearImplicitSystem * system_neumann = NULL;
   // Get a reference to the Stokes system object.
 	if(pressure_coupled)
 	{

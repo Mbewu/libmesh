@@ -109,19 +109,20 @@ class NSAssembler3D : public System::Assembly
 		std::map<const int,double> 			interp_flow_bc_value;
 		std::map<const int,std::vector<Real> > boundary_centre;
 		std::map<const int,Real> 							boundary_radius;
-		bool pressure_coupled;
 		std::vector<dof_id_type> primary_pressure_boundary_nodes_1d;
 		std::vector<dof_id_type> secondary_pressure_boundary_nodes_1d;
 		std::vector<dof_id_type> primary_flux_boundary_nodes_1d;
 		std::vector<dof_id_type> secondary_flux_boundary_nodes_1d;
-		bool estimating_error;
-		bool threed;
 		std::vector<SurfaceBoundary* >* surface_boundaries;
 		std::vector<unsigned int> subdomains_3d;
 		std::vector<unsigned int> subdomains_1d;
-		int n_initial_3d_elem;
 
 		std::vector<Airway> airway_data;
+
+		int n_initial_3d_elem;
+		bool pressure_coupled;
+		bool estimating_error;
+		bool threed;
 
 };
 
