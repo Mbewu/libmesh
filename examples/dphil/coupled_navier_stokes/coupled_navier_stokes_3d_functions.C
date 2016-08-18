@@ -2560,7 +2560,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		std::cout << "Setting up Velocity Monolithic preconditioner." << std::endl;
 	
-
+		//ierr = KSPSetUp(system_ksp); CHKERRQ(ierr); maybe
 		KSP* subksp;	//subksps
 		ierr = PCFieldSplitGetSubKSP(pc,NULL,&subksp); CHKERRQ(ierr);
 
@@ -2831,21 +2831,28 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// Do setup of preconditioner
 		if(es->parameters.get<bool>("schur_stokes_precompute") && es->parameters.get<bool>("multiple_column_solve"))
 		{
-			std::cout << "3333333" << std::endl;
 			ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement")); CHKERRQ(ierr);
 		}
 		else if(es->parameters.get<bool>("multiple_column_solve"))
 		{
-			std::cout << "2222222" << std::endl;
 			ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1]); CHKERRQ(ierr);
 		}
 		else
 		{
-			std::cout << "11111111" << std::endl;
 			ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 		}
 
 
+		if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
+		{
+			PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
+			function_ptr = &custom_outer_monitor;
+
+			mono_ctx->total_velocity_iterations = 0;
+			mono_ctx->total_convection_diffusion_iterations = 0;
+
+			ierr = KSPMonitorSet(system_ksp,function_ptr,mono_ctx,NULL); CHKERRQ(ierr);
+		}
 
 		// let the method know we have calculated the shell preconditioner at least once before
 		mono_shell_pc_created = true;
