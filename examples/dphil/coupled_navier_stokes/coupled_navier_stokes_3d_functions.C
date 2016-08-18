@@ -1776,7 +1776,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 	if(es->parameters.get<unsigned int>("newton") == 3 && sim_type != 3)
 	{
-		std::cout << "Stokes so only one iteration required" << std::endl;
+		std::cout << "Semi-implicit so only one iteration required" << std::endl;
 		return true;
 	}
 	
@@ -1839,7 +1839,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		}
   	return true;
  	}
-	else if(nonlinear_iteration > es->parameters.get<unsigned int>("max_newton_iterations"))
+	else if(nonlinear_iteration >= es->parameters.get<unsigned int>("max_newton_iterations"))
 	{
 
   			std::cout << " Nonlinear solver did not converge by step "
@@ -2159,8 +2159,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	ierr = KSPGetIterationNumber(system_ksp,&num_outer_its); CHKERRQ(ierr);
 
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") >= 6
-		&& es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2
-		&& es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 12)
+		&& es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
 	{
 		num_outer_its = mono_ctx->total_velocity_iterations;
 	}
@@ -2235,7 +2234,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	// the navier stokes 3d1d preconditioners need to be deleted, not zeroed cause not reassembled
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
 	{
 
 		std::cout << "hiya" << std::endl;
@@ -2251,7 +2251,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	if((es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
 		&& es->parameters.get<bool>("multiple_column_solve"))
 	{
 
@@ -2544,7 +2545,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
 		{
 
 			// now set up the shell preconditioner
@@ -2615,7 +2617,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			// for schur stokes velocity (11) we need the stokes velocity only matrix that is assembled into Velocity Matrix
 			// for the other methods we just require the system matrix
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11	|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
 			{
 				velocity_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 				system->request_matrix("Velocity Matrix")->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
@@ -2630,6 +2632,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			}
 	
 	
+
+
 
 
 
@@ -2750,7 +2754,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				ierr = VecAssemblyEnd(non_zero_rows); CHKERRQ(ierr);
 
 
-				if(es->parameters.get<bool>("schur_stokes_precompute")  && nonlinear_iteration == 1 && t_step == 1)
+				if(nonlinear_iteration == 1 && t_step == 1)
 				{
 					construct_schur_stokes_matrix(system,subksp[1]);
 				}
@@ -2767,7 +2771,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 
-
+			std::cout << "YES" << std::endl;
 
 
 
@@ -2830,11 +2834,16 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			// (Optional) Set a name for the preconditioner, used for PCView() 
 			ierr = PCShellSetName(schur_pc,"Monolithic Schur Complement Preconditioner"); CHKERRQ(ierr);
 
+			bool schur_0d = false;
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+				schur_0d = true;
+
+			std::cout << "YES" << std::endl;
 			// Do setup of preconditioner
-			if(es->parameters.get<bool>("schur_stokes_precompute") && es->parameters.get<bool>("multiple_column_solve"))
+			if(es->parameters.get<bool>("multiple_column_solve"))
 			{
 			
-				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement")); CHKERRQ(ierr);
+				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d); CHKERRQ(ierr);
 			}
 			else if(es->parameters.get<bool>("multiple_column_solve"))
 			{
@@ -2845,6 +2854,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
 			}
 
+			std::cout << "YES" << std::endl;
 
 
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
@@ -2861,7 +2871,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			mono_shell_pc_created = true;
 
 		}
-	}
+	//}
 
 	// all preconditioners except direct and straight gmres
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") > 1)

@@ -540,7 +540,7 @@ petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 10
+preconditioner_type_3d1d = 12
 # 0 - direct, 1 - gmres (ilu etc) 2 - pressure mass matrix
 preconditioner_type_schur_stokes = 0
 monolithic_navier_stokes_preonly = 1
@@ -636,7 +636,8 @@ mesh_file = meshes/backward_facing_step_2.msh #usual
 mesh_file = meshes/multi_bifurcation_2.msh #usual 2 coarse
 mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2_coarse.msh
 #mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2x2_coarse.msh
-mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_ref1_2.msh
+#mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_ref1_2.msh
+mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
 inflow_bdy_id = 0 	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 1
@@ -648,7 +649,7 @@ period = 1000.0
 dt = 5.0
 newton = 0
 viscosity_controlled = false
-max_newton_iterations = 100
+max_newton_iterations = 30
 multiply_system_by_dt = false
 restart_time = 0.
 restart_time_step = 0

@@ -753,7 +753,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					// note: newton methods have a term here, 
 					// semi-implicit as currently implemented does not.
 					
-					if (!stokes && newton < 3)
+					if (!stokes && (newton > 0 && newton < 3))
 					{
 						if (convective_form)
 						{
@@ -888,7 +888,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									std::exit (0);
 								}
 
-								if(es->parameters.get<unsigned int> ("newton") < 3) // implicit
+								if(newton < 3) // implicit
 								{
 									Kuu (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
 									Kvv (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
@@ -915,7 +915,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 							// **************** Newton Convection (Reaction) Tangent Terms ***************** //
 							// convective or conservative form.
-							if (newton < 2)
+							// for some reason this causes problems on some meshes...
+							if (newton > 0 && newton < 2)
 							{
 								if (convective_form)
 								{
@@ -2100,142 +2101,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					{
 						int boundary_id = boundary_ids[0];	// should only have one hopefully
 
-			    // mean pressure or moghadam resistance
-			    double mean_pressure = bc_value[boundary_id];
-			    //mean_pressure = 2.;
 
-			    // TEST
-			    //std::cout << "resistance = " << mean_pressure << std::endl;
-
-			    if (bc_type[boundary_id].compare ("neumann") == 0)
-			      mean_pressure = 0;
-
-			    // if coupled then we want the inflow to possibly be timeflow controlled, but future work
-			    if (es->parameters.get <
-				unsigned int >("sim_type") == 0
-				|| es->parameters.get <
-				unsigned int >("sim_type") == 2)
-			      mean_pressure *=
-				es->parameters.get < double >("time_scaling");
-
-			    //at the moment we just to a vector in normal direction for stress
-			    double stress_mag = bc_value[boundary_id];
-			    if (es->parameters.get <
-				unsigned int >("sim_type") == 0
-				|| es->parameters.get <
-				unsigned int >("sim_type") == 2)
-			      stress_mag *=
-				es->parameters.get < double >("time_scaling");
-
-			    DenseMatrix < Number > stress;
-			    DenseVector < Number > normal_stress;
-			    unsigned int dimension = 3;
-			    if (!threed)
-			      dimension = 2;
-			    stress.resize (dimension, dimension);
-			    normal_stress.resize (dimension);
-
-			    //make stress identity times constant
-			    stress (0, 0) = 1.0;
-			    stress (1, 1) = 1.0;
-			    if (threed)
-			      stress (2, 2) = 1.0;
-			    stress *= stress_mag;
-
-
-
-			    fe_vel_face->reinit (elem, s);
-			    fe_pres_face->reinit (elem, s);
-
-
-			    std::vector < Real > JxW_face = JxW_face_elem;
-			    //if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
-			    if (es->parameters.get <
-				unsigned int >("geometry_type") == 5)
-			      {
-				for (unsigned int qp = 0;
-				     qp < qface.n_points (); qp++)
-				  JxW_face[qp] *= qpoint_face[qp] (1);
-			      }
-
-
-			    if (multiply_system_by_dt)
-			      {
-				for (unsigned int qp = 0;
-				     qp < qface.n_points (); qp++)
-				  {
-				    JxW_face[qp] *= dt;
-				  }
-			      }
-
-			    std::vector < double >temp_vector (n_u_dofs);
-			    std::vector < std::vector <
-			      double > >temp_matrix_1 (n_u_dofs,
-						      std::vector <
-						      double >(n_u_dofs));
-			    std::vector < std::vector <
-			      double > >temp_matrix_2 (n_u_dofs,
-						      std::vector <
-						      double >(n_u_dofs));
-			    double extra_terms = 0;
-			    double actual_terms = 0;
-			    double actual_terms_2 = 0.;
-			    //std::cout << "no gps = " << qface.n_points() << std::endl;
-			    //std::cout << "no u_dofs = " << n_u_dofs << std::endl;
-
-			    for (unsigned int qp = 0; qp < qface.n_points ();
-				 qp++)
-			      {
-
-				//std::cout << "face qpoint = " << qpoint_face[qp] << std::endl;
-
-				if (bc_type[boundary_id].compare ("stress") ==
-				    0)
-				  {
-				    normal_stress (0) =
-				      stress (0,
-					      0) * qface_normals[qp] (0) +
-				      stress (0, 1) * qface_normals[qp] (1);
-				    if (threed)
-				      {
-					normal_stress (0) +=
-					  stress (0,
-						  2) * qface_normals[qp] (2);
-				      }
-
-				    normal_stress (1) =
-				      stress (1,
-					      0) * qface_normals[qp] (0) +
-				      stress (1, 1) * qface_normals[qp] (1);
-				    if (threed)
-				      {
-					normal_stress (1) +=
-					  stress (1,
-						  2) * qface_normals[qp] (2);
-				      }
-
-				    if (threed)
-				      normal_stress (2) =
-					stress (2,
-						0) * qface_normals[qp] (0) +
-					stress (2,
-						1) * qface_normals[qp] (1) +
-					stress (2, 2) * qface_normals[qp] (2);
-				  }
-				else if (bc_type[boundary_id].
-					 compare ("pressure") == 0)
-				  {
-				    normal_stress (0) =
-				      mean_pressure * qface_normals[qp] (0);
-				    normal_stress (1) =
-				      mean_pressure * qface_normals[qp] (1);
-				    if (threed)
-				      {
-					normal_stress (2) =
-					  mean_pressure *
-					  qface_normals[qp] (2);
-				      }
-				  }
 
 						// *********** PRECONDITIONER BOUNDARY CONDITIONS ************** //
 						// want to get the pressure dofs that are on the dirichlet inflow boundary

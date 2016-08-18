@@ -239,7 +239,7 @@ extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode MonolithicShellPCSetUp(PC,Mat,KSP);
-extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP,KSP,bool);
+extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP,KSP,bool,bool);
 extern PetscErrorCode Monolithic2ShellPCSetUp(PC,Mat,Vec,Vec,KSP);
 extern PetscErrorCode MonolithicShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode LSCShellPCSetUp(PC,KSP);
