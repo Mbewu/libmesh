@@ -72,6 +72,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 	const bool compliance_1d = es->parameters.get<bool>("compliance_1d");
 	const bool inertance_1d = es->parameters.get<bool>("inertance_1d");
   const unsigned int resistance_type_1d = es->parameters.get<unsigned int>("resistance_type_1d");
+	const unsigned int scale_mono_preconditioner = es->parameters.get<unsigned int>("scale_mono_preconditioner");
 
 	// if we are doing a reynolds_number_calculation we need to get the viscosity from reynolds_number
 	// length scale and velocity scale being 1
@@ -107,6 +108,9 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   std::vector<dof_id_type> dof_indices_daughter_1_p;
   std::vector<std::vector<dof_id_type> > dof_indices_siblings_q;
   std::vector<std::vector<dof_id_type> > dof_indices_siblings_p;
+
+	// resistance scaling value
+	double mono_preconditioner_resistance_scaling = 0.;
 
   // Now we will loop over all the elements in the mesh that
   // live on the local processor. We will compute the element
@@ -325,6 +329,23 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					R=R;
 					airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
+
+
+			// set the resistance to be used by the monolithic preconditioner
+			if(generation == 0)
+			{
+				if(R > mono_preconditioner_resistance_scaling)
+				{
+					mono_preconditioner_resistance_scaling = R;
+					std::cout << "l = " << l << std::endl;
+					std::cout << "viscosity = " << viscosity << std::endl;
+					std::cout << "r = " << r << std::endl;
+					std::cout << "M_PI = " << M_PI << std::endl;
+
+				}
+			}
+
+
 
 			// unused
 			//double flow_scale = es->parameters.get<double>("velocity_scale") * 
@@ -549,6 +570,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
     }// end of subdomain conditional
 	}// end of element loop
+
+
+	es->parameters.set<double> ("mono_preconditioner_resistance_scaling") = mono_preconditioner_resistance_scaling;
+	std::cout << "mono_preconditioner_resistance_scaling set to be = " << es->parameters.get<double> ("mono_preconditioner_resistance_scaling") << std::endl;
+	if(scale_mono_preconditioner == 0)
+		std::cout << "scaling not used" << std::endl;
+
+	std::cout << "length_scale = " << length_scale << std::endl;
+	std::cout << "velocity_scale = " << velocity_scale << std::endl;
+
 
   // That's it.
 	//system->matrix->close();

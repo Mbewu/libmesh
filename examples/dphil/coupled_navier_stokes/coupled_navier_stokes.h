@@ -150,6 +150,7 @@
 
 
 #include "libmesh/point_locator_base.h"
+#include "libmesh/point_locator_base.h"
 
 // for element type names
 #include "libmesh/elem_type.h"
@@ -238,7 +239,7 @@ extern PetscErrorCode PCDShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode PCD2ShellPCSetUp(PC,Mat,Mat,Mat,Mat,KSP);
 extern PetscErrorCode PCD2ShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode MonolithicShellPCSetUp(PC,Mat,KSP);
-extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP,KSP,bool);
+extern PetscErrorCode Monolithic3ShellPCSetUp(PC,Mat,KSP,KSP,bool,bool,double);
 extern PetscErrorCode Monolithic2ShellPCSetUp(PC,Mat,Vec,Vec,KSP);
 extern PetscErrorCode MonolithicShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode LSCShellPCSetUp(PC,KSP);
@@ -419,6 +420,9 @@ public:
 
 	int test_post_solve(TransientLinearImplicitSystem * sys);
 
+	// read the input boundary conditions for an uncoupled simulation
+	int read_input_boundary_conditions();
+
 
 private:
 
@@ -480,6 +484,7 @@ private:
 	std::vector<double> previous_pressure_values_1d;
 	std::vector<double> previous_flux_values_1d;
 	std::vector<double> input_pressure_values_3d;
+	std::vector<double> input_flux_values_1d;
 	AutoPtr<AugmentSparsityOnInterface> augment_sparsity;
 	//std::string _input_file;
 	std::string input_file;
@@ -545,6 +550,10 @@ private:
 	int stokes_gmres_iterations;
 	bool shell_pc_created;
 	bool mono_shell_pc_created;
+
+	std::vector<std::vector<double> > all_input_pressure_values_3d;
+	std::vector<std::vector<double> > all_input_flux_values_0d;
+	std::string input_boundary_conditions_filename;
 
 	// preconditioner stuff
 	PetscMatrix<Number>* pressure_mass_matrix;

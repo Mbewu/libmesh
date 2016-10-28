@@ -723,7 +723,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 /*
    Monolithic3ShellPCSetUp - This solves the matrix in the schur complement vector by vector.
 */
-PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur)
+PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur, bool schur_0d, double scaling_factor)
 {
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
@@ -758,15 +758,13 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	// copy the schur_complement_approx containing the stokes approximation to the S_approx
 	ierr = MatDuplicate(schur_complement_approx,MAT_COPY_VALUES,&shell->S_approx);
 	
-	// S_approx = A11 - S_approx
+	// S_approx = A11 - S_approx or S_approx = A11
+	if(schur_0d)
+		ierr = MatScale(shell->S_approx,0.0);
+
 	ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
 	ierr = MatScale(shell->S_approx,-1.0);
 
-
-	// only use the A11
-	ierr = MatScale(shell->S_approx,0.0);
-	ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
-	ierr = MatScale(shell->S_approx,-1.0);
 
 
 	if(negative_schur)
@@ -776,6 +774,9 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	}
 
 
+	// scale for resistance
+	ierr = MatScale(shell->S_approx,scaling_factor);
+		
 
 
 
@@ -1802,7 +1803,6 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 
 	
 	VecNorm(rhs_vec,NORM_2,&norm);
-
 
 
 

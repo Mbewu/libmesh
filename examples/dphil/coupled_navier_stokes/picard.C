@@ -753,7 +753,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					// note: newton methods have a term here, 
 					// semi-implicit as currently implemented does not.
 					
-					if (!stokes && newton < 3)
+					if (!stokes && (newton > 0 && newton < 3))
 					{
 						if (convective_form)
 						{
@@ -888,7 +888,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									std::exit (0);
 								}
 
-								if(es->parameters.get<unsigned int> ("newton") < 3) // implicit
+								if(newton < 3) // implicit
 								{
 									Kuu (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
 									Kvv (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
@@ -915,7 +915,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 							// **************** Newton Convection (Reaction) Tangent Terms ***************** //
 							// convective or conservative form.
-							if (newton < 2)
+							// for some reason this causes problems on some meshes...
+							if (newton > 0 && newton < 2)
 							{
 								if (convective_form)
 								{
@@ -3034,7 +3035,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
-							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12
+							|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 							system->get_matrix ("Preconditioner").add (dof_indices[i], pressure_1d_index,Fe_coupled_p (i));
 
 						}
@@ -3059,7 +3061,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
-					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 							system->get_matrix ("Preconditioner").add (flux_1d_index, dof_indices[i],Fe_coupled_u (i));
 						}
 					}

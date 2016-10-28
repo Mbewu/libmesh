@@ -793,8 +793,6 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	unsigned int num_generations_3 = es->parameters.get<unsigned int> ("num_generations_3");
 	unsigned int num_generations_4 = es->parameters.get<unsigned int> ("num_generations_4");
 
-
-
 	// okay we want to make this general so that for a simulation in which it is 
 	// only a 1d simulation.
 
@@ -961,11 +959,19 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			airway_data[airway_data.size() - 1].set_tree_number(i);
 						
 
+
 			double radius = airway_data[airway_data.size() - 1].get_length()/length_diam_ratio_true/2.0;
+
+
+
 			if(es->parameters.get<bool> ("half_initial_length"))
 			{
 				radius *= 2.0;
 			}
+
+			std::cout << "radius = " << radius << std::endl;
+			std::cout << "half length = " << airway_data[airway_data.size() - 1].get_length() << std::endl;
+			std::cout << "length_diam_ratio_true = " << length_diam_ratio_true << std::endl;
 
 			// if we are doing a twod approx then we need to change the radius
 			if(es->parameters.get<bool> ("twod_oned_tree"))
@@ -1698,6 +1704,13 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 					}
 				}
 			}
+		}
+
+		
+		// set input pressure boundary conditions
+		if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_conditions"))
+		{
+			input_flux_values_1d = all_input_flux_values_0d[t_step];
 		}
 
 	}
