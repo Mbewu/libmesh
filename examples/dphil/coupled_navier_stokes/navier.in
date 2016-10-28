@@ -329,12 +329,12 @@ petsc_3d_outer_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns
 #petsc_3d_outer_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor -ns3d_ksp_view'
 
 ##### 3D inner velocity solver options #####
-petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
+#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_0_ksp_monitor -ns3d_pc_mg_log'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type preonly -ns3d_fieldsplit_0_pc_type lu -ns3d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_0_ksp_monitor'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type euclid -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 #petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type hypre -ns3d_fieldsplit_0_pc_hypre_type boomeramg --ns3d_fieldsplit_0_pc_hypre_boomeramg_cycle_type W -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_down 1 -ns3d_fieldsplit_0_pc_hypre_boomeramg_grid_sweeps_up 4 -ns3d_fieldsplit_0_pc_hypre_boomeramg_relax_weight_all 0.67 -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
-#petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w  -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.5 -mat_no_inode  -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
+petsc_3d_inner_velocity_solver_options = '-ns3d_fieldsplit_0_ksp_type gmres -ns3d_fieldsplit_0_pc_type ml -ns3d_fieldsplit_0_pc_mg_cycle_type w  -ns3d_fieldsplit_0_pc_mg_smoothup 4 -ns3d_fieldsplit_0_pc_mg_smoothdown 1 -ns3d_fieldsplit_0_mg_levels_pc_sor_omega 0.5 -mat_no_inode  -ns3d_fieldsplit_0_ksp_rtol 1e-6 -ns3d_fieldsplit_0_ksp_monitor'
 
 #### 3D inner pressure solver options #####
 petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -ns3d_fieldsplit_1_pc_type lu -ns3d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_ksp_monitor'
@@ -343,14 +343,14 @@ petsc_3d_inner_pressure_solver_options = '-ns3d_fieldsplit_1_ksp_type preonly -n
 
 
 #### 3D preconditioner options #####
-#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns3d_fieldsplit_1_pc_mass_pc_type ml -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_mass_ksp_monitor'
+petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type cg -ns3d_fieldsplit_1_pc_mass_pc_type ml -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_mass_ksp_monitor'
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type jacobi -ns3d_fieldsplit_1_pc_mass_ksp_rtol 1e-6'
-petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
+#petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 #petsc_3d_schur_mass_solver_options = '-ns3d_fieldsplit_1_pc_mass_ksp_type preonly -ns3d_fieldsplit_1_pc_mass_pc_type lu -ns3d_fieldsplit_1_pc_mass_pc_factor_mat_solver_package superlu_dist'
 
-#petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type cg -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
+petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type cg -ns3d_fieldsplit_1_pc_lap_pc_type ml -ns3d_fieldsplit_1_pc_lap_ksp_rtol 1e-6 -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 #petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package umfpack'
-petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package superlu_dist'
+#petsc_3d_schur_lap_solver_options = '-ns3d_fieldsplit_1_pc_lap_ksp_type preonly -ns3d_fieldsplit_1_pc_lap_pc_type lu -ns3d_fieldsplit_1_pc_lap_pc_factor_mat_solver_package superlu_dist'
 
 ##### 1D solver options #####
 petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns1d_ksp_view'
@@ -411,4 +411,5 @@ write_interval = 0.75
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
-element_length_scaling = 1.25
+element_length_scaling = 0.7
+output_folder = /data/comp-respiratory-modelling/jmbewu/results/new_test/
