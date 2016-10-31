@@ -3035,7 +3035,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
 							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
-							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+							|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12
+							|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 							system->get_matrix ("Preconditioner").add (dof_indices[i], pressure_1d_index,Fe_coupled_p (i));
 
 						}
@@ -3060,7 +3061,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 9
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 10
 					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 11
-					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12)
+					  			|| es->parameters.get <unsigned int >("preconditioner_type_3d1d") == 12
+									|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 							system->get_matrix ("Preconditioner").add (flux_1d_index, dof_indices[i],Fe_coupled_u (i));
 						}
 					}

@@ -334,6 +334,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		
 	}
 
+	// ************* READ IN BOUNDARY CONDITIONS FOR PROBLEM ****** //
+	if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))
+	{
+		// read the input boundary conditions for an uncoupled simulation
+		int read_input_boundary_conditions();
+
+	}
+
 
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
@@ -1626,6 +1634,16 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"negative_mono_schur_complement",false);
 	set_bool_parameter(infile,"negative_bfbt_schur_complement",false);
 
+	// scale monolithic preconditioner by resistance
+	// 0 - no scaling
+	// 1 - scale by resistance of first pipe, max over all boundaries, min 1.0
+	set_unsigned_int_parameter(infile,"scale_mono_preconditioner",0);
+	set_double_parameter(infile,"mono_preconditioner_resistance_scaling",1.0);
+
+	set_string_parameter(infile,"boundary_conditions_folder","");
+	set_bool_parameter(infile,"known_boundary_conditions",false);
+
+	set_bool_parameter(infile,"renumber_nodes_and_elements",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -2084,6 +2102,19 @@ int NavierStokesCoupled::read_parameters()
 		std::cout << "Negative BFBt schur complement currently only implemented for scaled stabilsated bfbt. Changning to positive BFBt schur complement." << std::endl;
 		es->parameters.set<bool> ("negative_bfbt_schur_complement") = false;
 		
+	}
+
+
+	// ***************** make sure that for sim_type 1 everything is correctly specified ********** //
+	if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_values"))
+	{
+		// check that folder has been specified
+		if(es->parameters.get<std::string> ("boundary_conditions_filename").empty())
+		{
+			std::cout << "Folder for getting boundary conditions for partitioned simulation not specified." << std::endl;
+			std::cout << "Exiting..." << std::endl;
+			std::exit(0);
+		}
 	}
 
 
@@ -2617,6 +2648,93 @@ void NavierStokesCoupled::read_timesteps()
 
 }
 
+
+// read the input boundary conditions for an uncoupled simulation
+int NavierStokesCoupled::read_input_boundary_conditions()
+{
+	std::cout << "Reading input boundary conditions file." << std::endl;
+
+	// read the file 
+	std::ifstream input_boundary_conditions_file(es->parameters.get<std::string>("input_boundary_conditions_filename"));
+	if(!input_boundary_conditions_file.good())
+	{
+		std::cout << "Error reading input boundary conditions file." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+	// put data from file into vector of vectors all_input_pressure_values_3d and all_input_flux_values_0d
+	// 1 - read first line and make sure it has the right number of elements
+	std::string first_line;
+	std::getline(input_boundary_conditions_file,first_line);
+	std::istringstream iss(first_line);
+	std::string temp_string;
+	unsigned int count = 0;
+	while (iss.good()) // while the stream is not empty
+  {
+  	iss >> temp_string; //get data from the stream up to next whitespace
+		count++;
+  }
+	std::cout << "count = " << count << std::endl;
+	unsigned int num_input_boundary_ids = (count - 4)/4;
+	std::cout << "number of input boundary ids = " << num_input_boundary_ids << std::endl;
+	std::cout << "number of boundary ids in current simulation = " << boundary_ids.size() << std::endl;
+	if(num_input_boundary_ids != boundary_ids.size())
+	{
+		std::cout << "Error. Number of input boundary ids not equal to number of boundary ids in current simulation." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+	// 2 - read all the lines and put the data where it's supposed to go
+	// * discard the first 2 + num_input_boundary_ids
+	// * put the next num_input_boundary_ids into all_input_pressure_values_3d
+	// * put the next num_input_boundary_ids into all_input_flux_values_0d
+	// * next line
+	std::string current_line;
+	double disc = 0.;
+	while(std::getline(input_boundary_conditions_file,current_line))
+	{		
+		std::istringstream ciss(current_line);
+
+		// discard 2
+		ciss >> disc >> disc;
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> disc;
+
+		// put the next num_input_boundary_ids into a vector for pressure 3d
+		std::vector<double> temp_input_pressure_values_3d(num_input_boundary_ids);
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> temp_input_pressure_values_3d[i];
+
+		// put the next num_input_boundary_ids into a vector for flux 0d
+		std::vector<double> temp_input_flux_values_0d(num_input_boundary_ids);
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> temp_input_flux_values_0d[i];
+
+		// put the vectors into global vectors for all timesteps
+		all_input_pressure_values_3d.push_back(temp_input_pressure_values_3d);
+		all_input_flux_values_0d.push_back(temp_input_flux_values_0d);
+		
+	}
+	
+	// check that the number of timesteps in the same
+	unsigned int total_num_timesteps = (unsigned int)(es->parameters.get<double>("end_time")/es->parameters.get<double>("dt"));
+	unsigned int input_num_timesteps = all_input_pressure_values_3d.size();
+
+	std::cout << "total expected number of timesteps = " << total_num_timesteps << std::endl;
+	std::cout << "input number of timesteps = " << input_num_timesteps << std::endl;
+
+	if(total_num_timesteps != input_num_timesteps)
+	{
+		std::cout << "Error, number of input timesteps not equal to number of expected timesteps." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+	// set input boundary conditions for first timestep
+	input_pressure_values_3d = all_input_pressure_values_3d[t_step];
+	input_flux_values_1d = all_input_flux_values_0d[t_step];
+}
 
 
 void NavierStokesCoupled::print_flux_and_pressure()

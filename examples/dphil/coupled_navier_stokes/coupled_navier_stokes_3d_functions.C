@@ -51,6 +51,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		std::cout << "Refining mesh." << std::endl;
 		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
 
+
 		std::cout << "Scaling mesh." << std::endl;
 		double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
 		MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
@@ -88,6 +89,8 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
 
 	}
+
+
 
 	//scale the mesh to make length scale
 
@@ -1181,6 +1184,16 @@ std::cout << "lakka" << std::endl;
 
 
 
+	// Renumbering
+	if (es->parameters.get<bool> ("renumber_nodes_and_elements"))
+	{
+		std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
+		std::cout << "RENUMBERING" << std::endl;
+		
+	  mesh.allow_renumbering(true);
+	  mesh.renumber_nodes_and_elements();
+	}
+
 
 }
 
@@ -1358,6 +1371,12 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 				flux_values_3d[i] = picard->calculate_flux(i);
 				pressure_values_3d[i] = picard->calculate_pressure(i);
 			}
+		}
+
+		// set input pressure boundary conditions
+		if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_conditions"))
+		{
+			input_pressure_values_3d = all_input_pressure_values_3d[t_step];
 		}
 	}
 	else
@@ -2235,7 +2254,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	// the navier stokes 3d1d preconditioners need to be deleted, not zeroed cause not reassembled
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 	{
 
 		std::cout << "hiya" << std::endl;
@@ -2252,7 +2272,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 		&& es->parameters.get<bool>("multiple_column_solve"))
 	{
 
@@ -2546,7 +2567,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 		{
 
 			// now set up the shell preconditioner
@@ -2567,7 +2589,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			//ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);	// maybe
 			KSP* subksp;	//subksps
 			ierr = PCFieldSplitGetSubKSP(pc,NULL,&subksp); CHKERRQ(ierr);
-
 
 
 
@@ -2617,7 +2638,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			// for schur stokes velocity (11) we need the stokes velocity only matrix that is assembled into Velocity Matrix
 			// for the other methods we just require the system matrix
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11	|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11	|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 			{
 				velocity_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 				system->request_matrix("Velocity Matrix")->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
@@ -2631,7 +2653,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				velocity_matrix->close();
 			}
 	
-	
+			
 
 
 
@@ -2762,7 +2784,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 			}
 		
-
+			
 
 
 
@@ -2835,15 +2857,25 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			ierr = PCShellSetName(schur_pc,"Monolithic Schur Complement Preconditioner"); CHKERRQ(ierr);
 
 			bool schur_0d = false;
-			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
 				schur_0d = true;
+
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
+				es->parameters.set<bool>("negative_mono_schur_complement") = false;	//because schur diag flips it the wrong way
+
+			double scaling_factor = 1.0;
+			if(es->parameters.get<unsigned int>("scale_mono_preconditioner"))
+				scaling_factor = 1./es->parameters.get<double>("mono_preconditioner_resistance_scaling");
+
+
 
 			std::cout << "YES" << std::endl;
 			// Do setup of preconditioner
 			if(es->parameters.get<bool>("multiple_column_solve"))
 			{
 			
-				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d); CHKERRQ(ierr);
+				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
 			}
 			else if(es->parameters.get<bool>("multiple_column_solve"))
 			{

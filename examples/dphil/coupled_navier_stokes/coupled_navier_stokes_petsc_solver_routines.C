@@ -723,7 +723,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 /*
    Monolithic3ShellPCSetUp - This solves the matrix in the schur complement vector by vector.
 */
-PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur, bool schur_0d)
+PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur, bool schur_0d, double scaling_factor)
 {
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
@@ -774,6 +774,9 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	}
 
 
+	// scale for resistance
+	ierr = MatScale(shell->S_approx,scaling_factor);
+		
 
 
 

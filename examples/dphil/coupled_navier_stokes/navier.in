@@ -1,4 +1,4 @@
-# File for inputting data so don't need command line!
+# File for inputting data so don't need command line!he
 
 ###############################################################################
 ####################### INPUT 3D MESH STUFF #########################################
@@ -345,10 +345,10 @@ petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d
 petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
-#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
+petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
 
 # Euclid (hypre)
-petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres  -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres  -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
 
 # ML
 #petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_ksp_monitor'
@@ -360,14 +360,14 @@ petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmre
 
 
 # using ilu for the amg helps a lot (PREFERRED) changed to use hypre-euclid
-petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 100 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 10 -convection_diffusion_pc_ml_CoarsenScheme Uncoupled -convection_diffusion_pc_ml_EnergyMinimization 2 -convection_diffusion_pc_ml_EnergyMinimizationCheap false -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_pc_mg_Reusable true -convection_diffusion_pc_ml_maxCoarseSize 256 -mat_no_inode -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_mg_levels_pc_type hypre -convection_diffusion_mg_levels_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
+petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 100 -convection_diffusion_ksp_rtol 1e-6 -convection_diffusion_ksp_atol 1e-2 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 10 -convection_diffusion_pc_ml_CoarsenScheme Uncoupled -convection_diffusion_pc_ml_EnergyMinimization 2 -convection_diffusion_pc_ml_EnergyMinimizationCheap false -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_pc_mg_Reusable true -convection_diffusion_pc_ml_maxCoarseSize 256 -mat_no_inode -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_mg_levels_pc_type hypre -convection_diffusion_mg_levels_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
 
 
 
 
 
 # Boomeramg (hypre)
-#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30  -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type boomeramg --convection_diffusion_pc_hypre_boomeramg_cycle_type W -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_down 1 -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_up 4 -convection_diffusion_pc_hypre_boomeramg_relax_weight_all 0.67 -convection_diffusion_ksp_monitor'
+#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30  -convection_diffusion_ksp_rtol 1e-6 -convection_diffusion_ksp_atol 1e-2 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type boomeramg --convection_diffusion_pc_hypre_boomeramg_cycle_type W -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_down 1 -convection_diffusion_pc_hypre_boomeramg_grid_sweeps_up 4 -convection_diffusion_pc_hypre_boomeramg_relax_weight_all 0.67 -convection_diffusion_ksp_monitor'
 
 # Boomeramg vanilla (hypre)
 #petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30  -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type boomeramg -convection_diffusion_ksp_monitor'
@@ -403,7 +403,7 @@ petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonl
 petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package superlu_dist'
 
 # CG ML
-#petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type cg -mass_matrix_pc_type ml -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
+petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type cg -mass_matrix_pc_type ml -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
 
 # Jacobi Preonly
 #petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type jacobi -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
@@ -416,11 +416,10 @@ petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type
 
 # Superlu_dist
 
-petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package superlu_dist'
+#petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package superlu_dist'
 
 # CG ML
-#petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-6 -laplacian_ksp_atol 1e-8 -laplacian_pc_type ml' #  -laplacian_ksp_monitor'
-
+petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-6 -laplacian_ksp_atol 1e-8 -laplacian_pc_type ml' #  -laplacian_ksp_monitor'
 
 
 
@@ -458,7 +457,7 @@ petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_fact
 ##### 3D1D solver options #####
 
 # diagonal
-petsc_3d1d_diagonal_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type additive -ns3d1d_ksp_monitor'
+petsc_3d1d_diagonal_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type diag -ns3d1d_ksp_monitor'
 
 # schur
 petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type upper -ns3d1d_ksp_monitor'
@@ -558,8 +557,8 @@ outer_solver_rtol = 1.e-6
 reynolds_number = 1.0
 streamline_diffusion = true
 stokes = true
-cube_length = 5.0
-cube_length_N = 50 #100
+cube_length = 1.0
+cube_length_N = 10 #100
 cube_width = 1.0
 cube_width_N = 10 #40
 cube_height = 1.
@@ -569,12 +568,12 @@ quads = false #else tris
 stab = true
 alpha = 0.005
 leaky_lid_driven_cavity = true
-threed = false
+threed = true
 pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 gravemeier_element_length = false
 no_refinement = 1
-output_no_refinement = 1		#okay this only works for going to coarser mesh
+output_no_refinement = 1 #okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
 geometry_type = 4
 problem_type = 0
@@ -638,12 +637,11 @@ mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2_coarse.msh
 #mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2x2_coarse.msh
 #mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_ref1_2.msh
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
-
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_1x1.xda
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_2.msh
 inflow_bdy_id = 0 	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
-unsteady = 1
+unsteady = 0
 stokes_ic = false
 angle_of_inflow = 0.	#pi/4
 ramp_duration = .0
@@ -662,7 +660,7 @@ numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
 element_length_scaling = 1.25
 output_nondim = true
-sim_type = 5
+sim_type = 0
 reynolds_number_calculation = true
 no_output = false
 max_initial_picard = 5
@@ -672,6 +670,7 @@ compute_eigenvalues = false
 write_eigenvalues = false
 negative_mono_schur_complement = false
 negative_bfbt_schur_complement = true
+scale_mono_preconditioner = 0
 num_generations_1 = 1
 num_generations_2 = 1
 num_generations_3 = 1
@@ -689,6 +688,7 @@ num_1d_trees = 1
 assume_symmetric_tree = false
 calculate_1d_info_at_coupling_nodes = false
 radius_on_edge = false
+renumber_nodes_and_elements = false
 resistance_type_1d = 0
 output_folder = results/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
 restart_folder = results/test19/
