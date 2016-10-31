@@ -434,7 +434,6 @@ petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-
 
 
 
-
 ##### 1D solver options #####
 petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
@@ -555,9 +554,9 @@ nonzero_initial_guess = true
 post_solve = false
 direct_post_solve = false
 outer_solver_rtol = 1.e-6
-reynolds_number = 500.0
+reynolds_number = 1.0
 streamline_diffusion = true
-stokes = false
+stokes = true
 cube_length = 1.0
 cube_length_N = 10 #100
 cube_width = 1.0
@@ -574,8 +573,8 @@ pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 mesh_input_scaling_1d = 0.067 #1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
 gravemeier_element_length = false
-no_refinement = 0
-output_no_refinement = 0 #okay this only works for going to coarser mesh
+no_refinement = 1
+output_no_refinement = 1 #okay this only works for going to coarser mesh
 pcd_boundary_condition_type = 1 # 0 - none, 1 - original divide by Re, 2 - robin, 3 - ave of f_p, 4 - original just take diag
 geometry_type = 4
 problem_type = 0
@@ -651,7 +650,7 @@ mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_outlets_9_refoutlet_2.xd
 #mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
 inflow_bdy_id = 11	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
-unsteady = 1
+unsteady = 0
 stokes_ic = false
 angle_of_inflow = 0.	#pi/4
 ramp_duration = .0
