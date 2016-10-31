@@ -10,6 +10,7 @@ using namespace libMesh;
 // these values are just magnitude values
 void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values = std::vector<double>(),
+											std::vector<double> flow_values = std::vector<double>(),
 											std::vector<double> previous_flow_values = std::vector<double>(),
 											std::vector<double> previous_previous_flow_values = std::vector<double>()) 
 {
@@ -18,6 +19,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 	//resize so that doesn't break ;)
 	pressure_values.resize(boundary_ids.size());
+	flow_values.resize(boundary_ids.size());
 	const int problem_type    = es->parameters.get<unsigned int>("problem_type");
 	
 	// dirichlet input
@@ -31,7 +33,26 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 			
 		bc_value[boundary_ids[0]] = 0;	//dirichlet will be handled outside this class	
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)
-			bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+				{
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+					std::cout << "pressure[" << i << "] = " << pressure_values[i] << std::endl;
+					std::cout << "flow_values[" << i << "] = " << flow_values[i] << std::endl;
+					std::cout << "bc_value[" << i << "] = " << bc_value[boundary_ids[i]] << std::endl;
+				}
+				else
+				{
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+					std::cout << "oops" << std::endl;
+				}
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
 
 		//here we calculate the interpolated flow value
 		//if steady then this is just 1.
@@ -79,8 +100,19 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 		bc_value[boundary_ids[0]] = pressure_values[0];;//"0.00675896";	//"0.008";
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)
-			bc_value[boundary_ids[i]] = pressure_values[i];//"-100.0";
-
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+				else
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
+		
 
 		//here we calculate the interpolated flow value
 		if(es->parameters.get<bool>("neumann_stabilised"))
@@ -115,8 +147,18 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	
 		bc_value[boundary_ids[0]] = pressure_values[0];	//"0.008";
 		for(unsigned int i = 1; i < boundary_ids.size(); i++)	
-			bc_value[boundary_ids[i]] = pressure_values[i];
-
+		{
+			if(es->parameters.get<bool>("moghadam_coupling"))
+			{
+				// if no flow information then just use zero
+				if(fabs(flow_values[i]) > 1e-10)
+					bc_value[boundary_ids[i]] = pressure_values[i]/flow_values[i];	//these should ideally be zero...
+				else
+					bc_value[boundary_ids[i]] = 0;	//these should ideally be zero...					
+			}
+			else
+				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+		}
 
 		//here we calculate the interpolated flow value
 		if(es->parameters.get<bool>("neumann_stabilised"))
@@ -136,6 +178,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 		}
 	
 	}
+
 			
 
 	
@@ -151,19 +194,19 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 		boundary_radius[boundary_ids[0]] = 0.5;
 	}
 
-
 	if(pressure_coupled)
 	{
 		find_1d_boundary_nodes();
 	}
 
 
+	std::cout << "Done setting 2D/3D BCs." << std::endl;
+
 		
 }
 
 void NSAssembler3D::find_1d_boundary_nodes()
 {
-
   // Get a constant reference to the mesh object.
   const MeshBase& mesh = es->get_mesh();
 
@@ -172,7 +215,6 @@ void NSAssembler3D::find_1d_boundary_nodes()
 	secondary_pressure_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
 	primary_flux_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
 	secondary_flux_boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2);
-
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -200,10 +242,11 @@ void NSAssembler3D::find_1d_boundary_nodes()
   MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
 
+
   for ( ; el != end_el; ++el)
   {
 		const Elem* elem = *el;
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 			//element data object starts numbering from 0
 			//and the values referenced in it also do so need to take this into account
@@ -218,20 +261,25 @@ void NSAssembler3D::find_1d_boundary_nodes()
       dof_map.dof_indices (elem, dof_indices_p, p_var);
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
+			// need to figure out whether we are on daughter 1 or daughter 2			
+			const int current_el_idx = elem->id();
+			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+
       //const unsigned int n_dofs   = 4;
       //const unsigned int n_p_dofs = 2;
 
 			std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
 			if(boundary_ids.size() > 0)
 			{
-				if(boundary_ids[0] > 0 && boundary_ids[0] < 1000)	// shouldn't get here if looking at side 0 anyway
+				if(boundary_ids[0] > 0 && boundary_ids[0] < 1000 && is_daughter_1)	// shouldn't get here if looking at side 0 anyway
 				{
 					primary_pressure_boundary_nodes_1d[boundary_ids[0]] = dof_indices_p[0];
 					secondary_pressure_boundary_nodes_1d[boundary_ids[0]] = dof_indices_p[1];
 					primary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[0];
 					secondary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[1];
 
-					std::cout << "primary_pressure_boundary_nodes_1d" << boundary_ids[0] << "  = " << primary_pressure_boundary_nodes_1d[boundary_ids[0]] << std::endl;
+					//std::cout << "primary_pressure_boundary_nodes_1d" << boundary_ids[0] << "  = " << primary_pressure_boundary_nodes_1d[boundary_ids[0]] << std::endl;
 				}
 			}		
 		}	
@@ -259,6 +307,9 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
 		system =
 	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
+
+
+
 
 	// clear the rhs before adding things in for flux
   system->rhs->zero ();
@@ -304,12 +355,15 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
   MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
+	//for(unsigned int i=0; i<subdomains_3d.size(); i++)
+	//	std::cout << "subdomains[" << i << "] = " << subdomains_3d[i] << std::endl;
+
 
   for ( ; el != end_el; ++el)
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
@@ -450,7 +504,7 @@ double NSAssembler3D::calculate_pressure(const int boundary_id)
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 			// note each element will only have one side on the boundary
 		  for (unsigned int s=0; s<elem->n_sides(); s++)
@@ -607,7 +661,7 @@ void NSAssembler3D::calculate_peclet_number(ErrorVector& error_vector)
   {				
     const Elem* elem = *el;
 		// only solve on the 3d subdomain
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
@@ -768,7 +822,7 @@ double NSAssembler3D::calculate_l2_norm(const unsigned int var_to_calc, bool ref
   {				
 
 	  const Elem* elem = *el;
-		if(elem->subdomain_id() == 0)
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		{
 
 		  dof_map.dof_indices (elem, dof_indices);
@@ -877,7 +931,7 @@ void NSAssembler3D::assemble_preconditioner ()
 
 	//here we just copy the matrix
 	// the stokes pressure mass matrix preconditioner
-	if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 1)
 	{
 		system->get_matrix("Preconditioner").close();
 	}

@@ -9,7 +9,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
                                                            std::vector<dof_id_type> & n_nz,
                                                            std::vector<dof_id_type> & n_oz)
 {
-	std::cout << "baby" << std::endl;
+	std::cout << "baby don lie" << std::endl;
 	
   // get a constant reference to the mesh object
   const MeshBase& mesh = es->get_mesh();
@@ -31,6 +31,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
   const unsigned int p_var = system->variable_number ("P");
   const unsigned int q_var = system->variable_number ("Q");
+	const bool threed = es->parameters.get<bool>("threed");
 
   const DofMap & dof_map = system->get_dof_map();
 
@@ -45,7 +46,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
 	// these boundarynodes -2 are okay because only ever used in the case of coupling
 	interface_elem_node_map.resize(mesh.boundary_info->n_boundary_ids() - 2);
-	tree_elem_elem_map.resize(4);		//for all the things, parent, daughters and sibling
+	tree_elem_elem_map.resize(0);		//for all the things, parent, daughters and sibling
 	boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2, std::vector<unsigned int>(4));
 
 
@@ -55,7 +56,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
     
 		if(coupled)
 		{
-			if(elem->subdomain_id() == 0)
+			if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
 		  {
 		    for (unsigned char side=0; side<elem->n_sides(); side++)
 		    if (elem->neighbor(side) == NULL)
@@ -73,7 +74,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		  }
 		}
 
-    if(elem->subdomain_id() > 0)
+    if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 
 			//***** first calculate the ids on the boundary
@@ -88,12 +89,28 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
 
+
+			//****** next calculate the coupling between 1d elements
+			int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			bool has_parent = airway_data[current_1d_el_idx].has_parent();
+			int parent_el_idx = 0;
+			if(has_parent)
+				parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+			std::vector<unsigned int> daughters_el_idx = airway_data[current_1d_el_idx].get_daughters();
+			for(unsigned int i=0; i<daughters_el_idx.size(); i++)
+				daughters_el_idx[i] += n_initial_3d_elem;
+
+			std::vector<unsigned int> siblings_el_idx = airway_data[current_1d_el_idx].get_siblings();
+			for(unsigned int i=0; i<siblings_el_idx.size(); i++)
+				siblings_el_idx[i] += n_initial_3d_elem;
+			
 			if(coupled)
 			{
 				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
 				if(boundary_ids.size() > 0)
 				{
-					if(boundary_ids[0] > 0 && boundary_ids[0] < 1000)	// shouldn't get here if looking at side 0 anyway
+					if(boundary_ids[0] > 0 && boundary_ids[0] < 1000 && is_daughter_1)	// shouldn't get here if looking at side 0 anyway
 					{
 						boundary_nodes_1d[boundary_ids[0]][0] = dof_indices_p[0];
 						boundary_nodes_1d[boundary_ids[0]][1] = dof_indices_p[1];
@@ -103,30 +120,26 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 				}
 			}
 
-			//****** next calculate the coupling between 1d elements
-			int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-			int parent_el_idx = (int)element_data[current_1d_el_idx][0] + n_initial_3d_elem;
-			int daughter_1_el_idx = (int)element_data[current_1d_el_idx][1] + n_initial_3d_elem;
-			int daughter_2_el_idx = (int)element_data[current_1d_el_idx][2] + n_initial_3d_elem;
-			int sibling_el_idx = (int)element_data[current_1d_el_idx][3] + n_initial_3d_elem;
+			if(has_parent)
+			{
+				std::map<dof_id_type,dof_id_type> temp_map;
+				temp_map[elem->id()] = parent_el_idx;
+				tree_elem_elem_map.push_back(temp_map);
+			}
+			for(unsigned int i=0; i<daughters_el_idx.size(); i++)
+			{
+				std::map<dof_id_type,dof_id_type> temp_map;
+				temp_map[elem->id()] = daughters_el_idx[i];
+				tree_elem_elem_map.push_back(temp_map);
+			}
 
-			//very dirty hack
-			if(parent_el_idx < n_initial_3d_elem)
-				parent_el_idx = current_el_idx;
-
-			if(daughter_1_el_idx  < n_initial_3d_elem)
-				daughter_1_el_idx  = current_el_idx;
-
-			if(daughter_2_el_idx  < n_initial_3d_elem)
-				daughter_2_el_idx  = current_el_idx;
-
-			if(sibling_el_idx  < n_initial_3d_elem)
-				sibling_el_idx  = current_el_idx;
-
-			tree_elem_elem_map[0][elem->id()] = parent_el_idx;
-			tree_elem_elem_map[1][elem->id()] = daughter_1_el_idx;
-			tree_elem_elem_map[2][elem->id()] = daughter_2_el_idx;
-			tree_elem_elem_map[3][elem->id()] = sibling_el_idx;
+			for(unsigned int i=0; i<siblings_el_idx.size(); i++)
+			{
+				std::map<dof_id_type,dof_id_type> temp_map;
+				temp_map[elem->id()] = siblings_el_idx[i];
+				tree_elem_elem_map.push_back(temp_map);
+			}
+			
     }
 
 	}
@@ -151,7 +164,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		// ******* NOW DO THE 1D TREE COUPLINGS
 		// these should be fine because we will probably only ever use 1d elements, but maybe not
     const DofMap &dof_map = system->get_dof_map();
-    const unsigned int sys_num = system->number();
+    //const unsigned int sys_num = system->number();	// unused variable
 		std::vector<int> variable_numbers_1d;
     variable_numbers_1d.push_back(system->variable_number("P"));
     variable_numbers_1d.push_back(system->variable_number("Q"));
@@ -251,7 +264,8 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 		  std::vector<int> variable_numbers_3d;
 		  variable_numbers_3d.push_back(system->variable_number("u"));
 		  variable_numbers_3d.push_back(system->variable_number("v"));
-		  variable_numbers_3d.push_back(system->variable_number("w"));
+			if(threed)
+			  variable_numbers_3d.push_back(system->variable_number("w"));
 		  variable_numbers_3d.push_back(system->variable_number("p")); // just to be safe...
 
 			// vector containing the dof indices for the different variables
@@ -389,5 +403,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
 
   }
+
+	std::cout << "to me" << std::endl;
 	      
 }

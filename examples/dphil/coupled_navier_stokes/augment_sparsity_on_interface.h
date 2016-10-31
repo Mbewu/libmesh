@@ -7,6 +7,7 @@
 #include "libmesh/libmesh.h"
 #include "libmesh/dof_map.h"
 #include "libmesh/equation_systems.h"
+#include "airway.h"
 
 using namespace libMesh;
 
@@ -32,20 +33,23 @@ private:
 
 	std::vector<std::vector<unsigned int> > boundary_nodes_1d;
 
+
+
+	std::vector<unsigned int> subdomains_3d;
+	std::vector<unsigned int> subdomains_1d;
+ 
 	int n_initial_3d_elem;
 
 	bool coupled;
-
-	const std::vector<std::vector<double> > element_data;
- 
+	std::vector<Airway> airway_data;
 
 public:
 
   /**
    * Constructor.
    */
-  AugmentSparsityOnInterface(EquationSystems& _es,const std::vector<std::vector<double> >&  _element_data, unsigned int _n_initial_3d_elem=0, bool _coupled=false)
-			:  es(&_es), n_initial_3d_elem(_n_initial_3d_elem), coupled(_coupled), element_data(_element_data)
+  AugmentSparsityOnInterface(EquationSystems& _es, std::vector<Airway>&  _airway_data, std::vector<unsigned int> _subdomains_3d,std::vector<unsigned int> _subdomains_1d, unsigned int _n_initial_3d_elem=0, bool _coupled=false)
+			:  es(&_es), subdomains_3d(_subdomains_3d), subdomains_1d(_subdomains_1d), n_initial_3d_elem(_n_initial_3d_elem), coupled(_coupled), airway_data(_airway_data)
 	{ 
 		
 };

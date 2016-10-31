@@ -22,14 +22,18 @@ data          = lid_driven_cavity_boundary_function.h  \
 								coupled_assembler.h \
 								augment_sparsity_on_interface.h \
 								augment_sparsity_on_interface.C \
-								coupled_navier_stokes.h \
-								coupled_navier_stokes.C \
-								coupled_navier_stokes_1d_functions.C \
-								coupled_navier_stokes_3d_functions.C \
+								surface_boundary.h \
+								airway.h \
+								airway.C \
 								particle.h \
 								particle.C \
 								hofmann_particle_deposition.h \
 								hofmann_particle_deposition.C \
+								coupled_navier_stokes.h \
+								coupled_navier_stokes.C \
+								coupled_navier_stokes_1d_functions.C \
+								coupled_navier_stokes_3d_functions.C \
+								coupled_navier_stokes_petsc_solver_routines.C \
 								run.sh
 sources       = $(data) run.sh
 

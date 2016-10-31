@@ -1022,7 +1022,7 @@ void ExodusII_IO_Helper_Extended::create(std::string filename)
 
 
 
-/*
+
 void ExodusII_IO_Helper_Extended::initialize_discontinuous(std::string str_title, const MeshBase & mesh)
 {
   if ((_run_only_on_proc0) && (this->processor_id() != 0))
@@ -1081,7 +1081,7 @@ void ExodusII_IO_Helper_Extended::initialize_discontinuous(std::string str_title
 
   EX_CHECK_ERR(ex_err, "Error initializing new Exodus file.");
 }
-*/
+
 
 
 
@@ -1099,6 +1099,8 @@ void ExodusII_IO_Helper_Extended::initialize(std::string str_title, const MeshBa
     num_dim = mesh.spatial_dimension();
 
   num_elem = mesh.n_elem();
+
+	std::cout << "use_discontinuous = " << use_discontinuous << std::endl;
 
   if (!use_discontinuous)
     num_nodes = mesh.n_nodes();
@@ -1173,6 +1175,8 @@ void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh,
   // there may be 'holes' in the numbering, so we write out the node
   // map just to be on the safe side.
   node_num_map.resize(num_nodes);
+
+	std::cout << "use_discontinuous = " << use_discontinuous << std::endl;
 
   if (!use_discontinuous)
   {
@@ -1275,6 +1279,19 @@ void ExodusII_IO_Helper_Extended::write_elements(const MeshBase & mesh, bool use
   typedef std::map<subdomain_id_type, std::vector<dof_id_type> > subdomain_map_type;
   subdomain_map_type subdomain_map;
 
+	// JAMES EDIT
+	// before getting together things we need to figure out how the element numberings will be affected
+	// nodes are written out by looping over elements and writing the nodes so it really depends on the
+	// order in which elements are... if we have 3d ele .. 1d ele .. 3d ele, need a way of figuring out
+	// what node number each has... // okay we just make the map ourselves to save energy and problems
+
+	//loop over all elements and create element node to nodal coordinate map
+	// why is this n_nodes and not n_elem
+	//std::vector<std::vector<int> > elem_node_coord_node_map(mesh.n_nodes());
+	std::vector<std::vector<int> > elem_node_coord_node_map(mesh.n_elem());
+	
+
+  int i = 0;
   MeshBase::const_element_iterator mesh_it = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end = mesh.active_elements_end();
   //loop through element and map between block and element vector
@@ -1282,6 +1299,14 @@ void ExodusII_IO_Helper_Extended::write_elements(const MeshBase & mesh, bool use
     {
       const Elem * elem = *mesh_it;
       subdomain_map[ elem->subdomain_id() ].push_back(elem->id());
+
+			std::vector<int> elem_map(elem->n_nodes(),0);
+		  for (unsigned int n=0; n<elem->n_nodes(); n++)
+		  {
+		    i++;
+				elem_map[n] = i;
+		  }
+			elem_node_coord_node_map[elem->id()] = elem_map;
     }
 
   // element map vector
@@ -1369,10 +1394,11 @@ void ExodusII_IO_Helper_Extended::write_elements(const MeshBase & mesh, bool use
                 }
 
               // FIXME: We are hard-coding the 1-based node numbering assumption here.
+							// JAMES EDIT
                             if (!use_discontinuous)
                 connect[connect_index] = elem->node(elem_node_index)+1;
               else
-                connect[connect_index] = node_counter*num_nodes_per_elem+elem_node_index+1;
+                connect[connect_index] = elem_node_coord_node_map[elem_id][elem_node_index];
             }
 
           node_counter++;

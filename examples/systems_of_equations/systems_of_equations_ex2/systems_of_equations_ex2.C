@@ -170,7 +170,7 @@ int main (int argc, char** argv)
   AutoPtr<NumericVector<Number> >
     last_nonlinear_soln (navier_stokes_system.solution->clone());
 
-  for (unsigned int t_step=0; t_step<n_timesteps; ++t_step)
+  for (unsigned int t_step=1; t_step<n_timesteps; ++t_step)
     {
       // Incremenet the time counter, set the time step size as
       // a parameter in the EquationSystem.
@@ -210,8 +210,19 @@ int main (int argc, char** argv)
           // Close the vector before computing its norm
           last_nonlinear_soln->close();
 
+					std::vector<FEMNormType>	norms;	//if empty will automagically use discrete l2
+
+					std::vector<Real> weights;  // u, v
+					weights.push_back(1.0);
+					weights.push_back(1.0);
+					weights.push_back(0.0);            // p
+
           // Compute the l2 norm of the difference
-          const Real norm_delta = last_nonlinear_soln->l2_norm();
+          //const Real norm_delta = last_nonlinear_soln->l2_norm();
+					const Real norm_delta = navier_stokes_system.calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights));
+					const Real norm_solution = navier_stokes_system.calculate_norm(*navier_stokes_system.solution,SystemNorm(norms, weights));
+
+					const Real nonlin_residual = norm_delta/norm_solution;
 
           // How many iterations were required to solve the linear system?
           const unsigned int n_linear_iterations = navier_stokes_system.n_linear_iterations();
@@ -226,7 +237,7 @@ int main (int argc, char** argv)
                     << ", final residual: "
                     << final_linear_residual
                     << "  Nonlinear convergence: ||u - u_old|| = "
-                    << norm_delta
+                    << nonlin_residual
                     << std::endl;
 
           // Terminate the solution iteration if the difference between
@@ -260,15 +271,17 @@ int main (int argc, char** argv)
           std::ostringstream file_name;
 
           // We write the file in the ExodusII format.
-          file_name << "out_"
+          file_name << "out.e-s."
                     << std::setw(3)
                     << std::setfill('0')
                     << std::right
-                    << t_step + 1
-                    << ".e";
+                    << t_step + 1;
 
-          ExodusII_IO(mesh).write_equation_systems (file_name.str(),
-                                                    equation_systems);
+          //ExodusII_IO(mesh).write_equation_systems (file_name.str(),
+          //                                          equation_systems);
+
+          ExodusII_IO(mesh).write_timestep (file_name.str(),
+                                                    equation_systems,1,t_step*dt);
         }
 #endif // #ifdef LIBMESH_HAVE_EXODUS_API
     } // end timestep loop.
@@ -392,6 +405,8 @@ void assemble_stokes (EquationSystems& es,
   // simulation, you should see that it is monotonically decreasing in time.
   const Real dt    = es.parameters.get<Real>("dt");
   const Real theta = 1.;
+	const bool newton = true;
+	const Real Re = 100.;
 
   // Now we will loop over all the elements in the mesh that
   // live on the local processor. We will compute the element
@@ -521,15 +536,19 @@ void assemble_stokes (EquationSystems& es,
               Fu(i) += JxW[qp]*(u_old*phi[i][qp] -                            // mass-matrix term
                                 (1.-theta)*dt*(U_old*grad_u_old)*phi[i][qp] + // convection term
                                 (1.-theta)*dt*p_old*dphi[i][qp](0)  -         // pressure term on rhs
-                                (1.-theta)*dt*(grad_u_old*dphi[i][qp]) +      // diffusion term on rhs
-                                theta*dt*(U*grad_u)*phi[i][qp]);              // Newton term
+                                (1.-theta)*dt/Re*(grad_u_old*dphi[i][qp]));      // diffusion term on rhs
 
 
               Fv(i) += JxW[qp]*(v_old*phi[i][qp] -                             // mass-matrix term
                                 (1.-theta)*dt*(U_old*grad_v_old)*phi[i][qp] +  // convection term
                                 (1.-theta)*dt*p_old*dphi[i][qp](1) -           // pressure term on rhs
-                                (1.-theta)*dt*(grad_v_old*dphi[i][qp]) +       // diffusion term on rhs
-                                theta*dt*(U*grad_v)*phi[i][qp]);               // Newton term
+                                (1.-theta)*dt/Re*(grad_v_old*dphi[i][qp]));       // diffusion term on rhs
+
+							if(newton)
+							{
+		            Fu(i) += JxW[qp]*(theta*dt*(U*grad_u)*phi[i][qp]);              // Newton term
+		            Fv(i) += JxW[qp]*(theta*dt*(U*grad_v)*phi[i][qp]);               // Newton term
+							}
 
 
               // Note that the Fp block is identically zero unless we are using
@@ -539,18 +558,24 @@ void assemble_stokes (EquationSystems& es,
               for (unsigned int j=0; j<n_u_dofs; j++)
                 {
                   Kuu(i,j) += JxW[qp]*(phi[i][qp]*phi[j][qp] +                // mass matrix term
-                                       theta*dt*(dphi[i][qp]*dphi[j][qp]) +   // diffusion term
-                                       theta*dt*(U*dphi[j][qp])*phi[i][qp] +  // convection term
-                                       theta*dt*u_x*phi[i][qp]*phi[j][qp]);   // Newton term
-
-                  Kuv(i,j) += JxW[qp]*theta*dt*u_y*phi[i][qp]*phi[j][qp];     // Newton term
+                                       theta*dt/Re*(dphi[i][qp]*dphi[j][qp]) +   // diffusion term
+                                       theta*dt*(U*dphi[j][qp])*phi[i][qp]);  // convection term
 
                   Kvv(i,j) += JxW[qp]*(phi[i][qp]*phi[j][qp] +                // mass matrix term
-                                       theta*dt*(dphi[i][qp]*dphi[j][qp]) +   // diffusion term
-                                       theta*dt*(U*dphi[j][qp])*phi[i][qp] +  // convection term
-                                       theta*dt*v_y*phi[i][qp]*phi[j][qp]);   // Newton term
+                                       theta*dt/Re*(dphi[i][qp]*dphi[j][qp]) +   // diffusion term
+                                       theta*dt*(U*dphi[j][qp])*phi[i][qp]);  // convection term
 
-                  Kvu(i,j) += JxW[qp]*theta*dt*v_x*phi[i][qp]*phi[j][qp];     // Newton term
+									if(newton)
+									{
+		                Kuu(i,j) += JxW[qp]*(theta*dt*u_x*phi[i][qp]*phi[j][qp]);   // Newton term
+
+		                Kuv(i,j) += JxW[qp]*theta*dt*u_y*phi[i][qp]*phi[j][qp];     // Newton term
+
+		                Kvu(i,j) += JxW[qp]*theta*dt*v_x*phi[i][qp]*phi[j][qp];     // Newton term
+
+		                Kvv(i,j) += JxW[qp]*(theta*dt*v_y*phi[i][qp]*phi[j][qp]);   // Newton term
+
+									}
                 }
 
               // Matrix contributions for the up and vp couplings.

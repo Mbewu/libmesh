@@ -38,6 +38,7 @@
 //include for general assembly class
 #include "libmesh/system.h"
 
+#include "airway.h"
 
 
 // Bring in everything from the libMesh namespace
@@ -50,8 +51,8 @@ using namespace libMesh;
 class NavierStokesAssembler : public System::Assembly
 {
 	public:
-		NavierStokesAssembler (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _n_initial_3d_elem) :
-			es (&es_in), element_data(element_data_in), n_initial_3d_elem(_n_initial_3d_elem), coupled(false)
+		NavierStokesAssembler (EquationSystems& es_in, std::vector<Airway>& _airway_data,	std::vector<unsigned int> _subdomains_1d, unsigned int _n_initial_3d_elem) :
+			es (&es_in), subdomains_1d(_subdomains_1d), airway_data(_airway_data), n_initial_3d_elem(_n_initial_3d_elem), coupled(false)
 		{
 		}
 
@@ -59,17 +60,21 @@ class NavierStokesAssembler : public System::Assembly
 		void assemble ();
 		void assemble_stokes_steady_0D ();
 		void assemble_stokes_1D ();
-		double calculate_flux (const int boundary_id);
-		double calculate_pressure (const int boundary_id);
+		double calculate_flux (const int boundary_id, const int mid_mesh_element=-1);
+		double calculate_pressure (const int boundary_id, const int mid_mesh_element=-1);
 		void init_bc(std::vector<double> _flux_values, std::vector<double> _pressure_values = std::vector<double>());
 		void set_coupled(bool _coupled) { coupled = _coupled; };
+		void add_to_matrices(TransientLinearImplicitSystem * system, unsigned int row_number, unsigned int col_number, double value);
 	
 	private:
 		EquationSystems* es;
-		std::vector<std::vector<double> >& element_data;
-		int n_initial_3d_elem;
 		std::vector<double> pressure_values;
 		std::vector<double> flux_values;
+		bool preconditioner;
+
+		std::vector<unsigned int> subdomains_1d;
+		std::vector<Airway>& airway_data;
+		int n_initial_3d_elem;
 		bool coupled;
 };
 

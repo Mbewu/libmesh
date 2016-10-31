@@ -132,12 +132,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		exit_program(false),
 		threed(true),
 		total_nonlinear_iterations(0),
+		local_linear_iterations(0),
 		total_linear_iterations(0),
 		total_max_iterations(0),
-		local_linear_iterations(0),
 
 		particle_deposition(false),
-		shell_pc_created(false)
+		shell_pc_created(false),
+		mono_shell_pc_created(false),
+		ic_set(true)
 {
 
 	perf_log.push("total");
@@ -148,6 +150,10 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(particle_deposition == 1)
 		read_timesteps();
 
+	//Airway new_airway;
+	//new_airway.set_generation(5);
+	//std::cout << "generation of new airway = " << new_airway.get_generation() << std::endl;
+	//std::exit(0);
 
 
 
@@ -201,7 +207,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_1d && sim_type != 5)
 	{
 		system_1d = &es->add_system<TransientLinearImplicitSystem> ("ns1d");
-		radius_system = &es->add_system<ExplicitSystem> ("Radius");
+		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
 
 		if(particle_deposition == 2)
 			particle_deposition_system_1d = &es->add_system<ExplicitSystem> ("Particle-Deposition-1D");
@@ -212,19 +218,22 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	{
 		system_coupled = &es->add_system<TransientLinearImplicitSystem> ("ns3d1d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		radius_system = &es->add_system<ExplicitSystem> ("Radius");
+		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
 	}
 
+	mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
 
 	// ************** SET UP 3D STUFF **************** //
 	if(sim_3d)
 	{
 		setup_3d_mesh(&*es,mesh);
 
+		es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
+
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
-			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries));
+			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 		else
-			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries));
+			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
 		if(sim_type == 5)
 		{
@@ -240,8 +249,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		}
 
 	}
-	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
+	// in case not set already
+	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
 	// ******************** SETUP 1D STUFFS ********************* //
 	if(sim_1d)
@@ -249,7 +259,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		setup_1d_mesh();
 		ns_assembler = AutoPtr<NavierStokesAssembler>
-								(new NavierStokesAssembler(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+								(new NavierStokesAssembler(*es,airway_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
 		if(sim_type == 5)
 		{
@@ -265,7 +275,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			//get the extra couplings sorted for the matrix, maybe don't need this?
 			augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-										(new AugmentSparsityOnInterface(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+										(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
 	}
@@ -279,50 +289,65 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		//get the extra couplings sorted for the matrix
 		augment_sparsity = AutoPtr<AugmentSparsityOnInterface>
-									(new AugmentSparsityOnInterface(*es,element_data,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
+									(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem"),true));
 		system_coupled->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
+
+		picard->set_subdomains_1d(subdomains_1d);
+		picard->set_airway_data(airway_data);
 
 	}
 
 	// after things have been setup let us set up the variable scalings for output
-	setup_variable_scalings();
+	if(sim_3d)
+		setup_variable_scalings_3D();
+
+	if(sim_1d)
+		setup_variable_scalings_1D();
 	std::cout << std::endl;
 	
 	//init the equation systems
 	std::cout << "Init equation systems." << std::endl;
 	es->init ();
+	std::cout << "done initing equation systems" << std::endl;
 	init_dof_variable_vectors();
 
 	if(restart)
 	{
-		std::cout << "Reading in data for restart." << std::endl;
 		std::ostringstream file_name;
 		std::ostringstream file_name_es;
 		std::ostringstream file_name_mesh;
 
-		file_name << output_folder.str() << "out_3D";
+		std::cout << "restart_folder = " << restart_folder.str() << std::endl;
+
+		//file_name << output_folder.str() << "out_3D";
+		file_name << restart_folder.str() << "out_3D";
  
 		file_name_es << file_name.str() << "_es_" << std::setw(4) 
 			<< std::setfill('0') << es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
 
+		std::cout << "Reading in data for restart from file:" << std::endl;
+		std::cout << "\t" << file_name_es.str() << std::endl;
+
 		unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
 		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
+		std::cout << "Done reading in data." << std::endl;
+		
+	}
+
+	// ************* READ IN BOUNDARY CONDITIONS FOR PROBLEM ****** //
+	if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))
+	{
+		// read the input boundary conditions for an uncoupled simulation
+		int read_input_boundary_conditions();
+
 	}
 
 
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
 	{
-		//dimensionalise the variables if not doing reynolds number simulation
-		if(!es->parameters.get<bool>("reynolds_number_calculation"))
-		{
-			scale_3d_solution_vector(1.0/es->parameters.get<double>("velocity_scale"),
-														1.0/(es->parameters.get<double>("density") *
-														pow(es->parameters.get<double>("velocity_scale"),2.0)) );
-
-			es->update();
-		}
-
+		es->update();
+		
 		if(sim_type == 5)
 		{
 			last_nonlinear_soln = system_coupled->solution->clone();
@@ -405,6 +430,20 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				output_data_file_name << output_folder.str() << "out.dat";
 				//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
 				output_file.open(output_data_file_name.str().c_str());
+			}
+
+			if(es->parameters.get<bool> ("write_eigenvalues"))
+			{
+				// output the parameters used to file and the header of the out.dat file
+				std::ostringstream eigenvalues_data_file_name;
+
+				eigenvalues_data_file_name << output_folder.str() << "eigenvalues.dat";
+				//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
+				eigenvalues_file.open(eigenvalues_data_file_name.str().c_str());
+
+				eigenvalues_file << "# eigenvalue data file" << std::endl;
+				eigenvalues_file << "# timestep_no\tnonlinear_it\teigenvalue_real\teigenvalue_imag" << std::endl;
+
 			}
 
 			if(!restart)
@@ -533,8 +572,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
+
 				// INCREMENT TIME
 				++t_step;
+
+
+				// choose dt
 				if(particle_deposition && !es->parameters.get<bool> ("unsteady_from_steady"))
 					dt = timestep_sizes[t_step - 1];	//set timestep based on file
 
@@ -542,9 +585,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				{
 					dt = es->parameters.get<Real> ("end_time") - time;
 				}
+
 				time += dt;
-				shell_pc_created = false;
+	
+				// if doing a precalculation to setup an initial condition e.g. stokes, then don't increment time
+				if(es->parameters.get<bool> ("stokes_ic") && !ic_set)
+				{
+					--t_step;
+					time -= dt;
+					ic_set = true;
+				}
+
 				update_times();
+
+				shell_pc_created = false;
+				mono_shell_pc_created = false;
 
 				if(!particle_deposition)
 				{
@@ -589,8 +644,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(sim_3d && sim_type != 5)
 					{
 						nonlinear_iteration = 0;
+						unsigned int nonlinear_iteration_1d = 0;
 						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						local_linear_iterations = 0;
+
+						double shift_value = 0.;
 					
 						//TEMP : this is to test how the different meshes compare
 						//double before_norm = system_3d->solution->l2_norm();
@@ -606,20 +664,40 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					
 								// they're all zero so should be okay...
 								//in the loosely coupled case sim_type 4 use 1d pressure vals
-							
-								picard->init_bc(boundary_ids,input_pressure_values_3d,previous_flux_values_3d,previous_previous_flux_values_3d); 
+								std::vector<double> empty_vec;
+								picard->init_bc(boundary_ids,input_pressure_values_3d,empty_vec,previous_flux_values_3d,previous_previous_flux_values_3d); 
 								if(solve_3d_system_iteration(system_3d))
 									break;
 							}
 							else if(sim_type == 3)
 							{
+								nonlinear_iteration_1d++;
+								es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
 								calculate_1d_boundary_values();
-								picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+
+
+								// if we want to shift the boundary conditions, use the last element as the zero
+								// from the first nonlinear iterations, well the second, after the first 3d solution has been solved.
+								if(es->parameters.get<bool> ("shift_pressure_bc"))
+								{
+									if(nonlinear_iteration_1d == 2)
+										shift_value = pressure_values_1d[pressure_values_1d.size()-1];
+
+									for(unsigned int i=1; i< pressure_values_1d.size(); i++)
+									{
+										pressure_values_1d[i] = pressure_values_1d[i] - shift_value;			
+									}
+								}
+
+								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+
 								if(solve_3d_system_iteration(system_3d))
 									break;
 				
 								calculate_3d_boundary_values();
 								ns_assembler->init_bc(flux_values_3d);
+								for(unsigned int i=0; i<flux_values_3d.size(); i++)
+									std::cout << "flux_values_3d[" << i << "] = " << flux_values_3d[i] << std::endl;
 								solve_1d_system();
 
 								calculate_3d_boundary_values();
@@ -631,7 +709,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							else if(sim_type == 4)
 							{
 								//in the loosely coupled case sim_type 4 use 1d pressure vals
-								picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
+								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
 								if(solve_3d_system_iteration(system_3d))
 									break;
 							}
@@ -660,18 +738,49 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							inflow = es->parameters.get<double>("flow_mag_1d") / 
 											(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
 
-						input_flux_values[0] = 0.0;
+						//input_flux_values[0] = 0.0;
 						std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
-						for(unsigned int i=1; i<input_flux_values.size(); i++)
+						std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
+						std::cout << "inflow = " << inflow  << std::endl;
+						for(unsigned int i=0; i<input_flux_values.size(); i++)
 						{
 							input_flux_values[i] = inflow;
 							std::cout << "inflow = " << inflow << std::endl;
 						}
-						ns_assembler->init_bc(input_flux_values);
-						std::cout << "bye" << std::endl;
-						solve_1d_system();
-						std::cout << "bye" << std::endl;
-						calculate_1d_boundary_values();
+
+						double old_pressure = 0.;
+						double new_pressure = 0.;
+
+						unsigned int nonlinear_iteration_1d = 0;
+						while(true)
+						{
+
+							nonlinear_iteration_1d++;
+							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
+							std::cout << "Nonlinear Iteration 1D = " << es->parameters.get<unsigned int> ("nonlinear_iteration_1d") << std::endl;
+							old_pressure = new_pressure;
+							ns_assembler->init_bc(input_flux_values);
+							std::cout << "bye" << std::endl;
+							solve_1d_system();
+							std::cout << "bye" << std::endl;
+							calculate_1d_boundary_values();
+
+							// stop when pressure has converged
+							new_pressure = pressure_values_1d[1];
+							std::cout << "resistance_type_1d = " << es->parameters.get<unsigned int> ("resistance_type_1d") << std::endl;
+							std::cout << "old pressure = " << old_pressure << std::endl;
+							std::cout << "new pressure = " << new_pressure << std::endl;
+							std::cout << "fabs((new_pressure - old_pressure)/new_pressure) = " << fabs((new_pressure - old_pressure)/new_pressure) << std::endl;
+							if(fabs((new_pressure - old_pressure)/new_pressure) < es->parameters.get<double> ("nonlinear_tolerance_1d"))
+								break;
+
+							if(!es->parameters.get<bool> ("nonlinear_1d"))
+							{
+								std::cout << "linear 1d so no nonlinear iterations required" << std::endl;
+								break;
+							}
+					
+						}
 						print_flux_and_pressure();
 					}
 					else if(sim_type == 4)
@@ -686,14 +795,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					if(sim_type == 5)
 					{
 	
+						std::cout << "hiya" << std::endl;
+						local_linear_iterations = 0;
 						nonlinear_iteration = 0;
+						es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 						while(true)
 						{
 							nonlinear_iteration++;
+							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
+							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration;
 
 							calculate_1d_boundary_values();
-							picard->init_bc(boundary_ids,pressure_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+							picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+							std::cout << "about to calculate 3d boundary values" << std::endl;
 							calculate_3d_boundary_values();
+							std::cout << "done about to calculating 3d boundary values" << std::endl;
 							ns_assembler->init_bc(flux_values_3d);
 
 							if(solve_3d_system_iteration(system_coupled))
@@ -714,16 +830,21 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			
 					perf_log.push("output");
+
+					std::cout << "yeah" << std::endl;
 					// ************ WRITE OUTPUT *************** //								
 					if((!reduce_dt || !unsteady) && !refine_mesh)
 					{
+					std::cout << "yeah" << std::endl;
 						output_sim_data(false);
+					std::cout << "yeah" << std::endl;
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
 							if(sim_3d) {write_3d_solution(true);}
 							if(sim_1d) {write_1d_solution();}
 						}
+					std::cout << "yeah" << std::endl;
 					}
 			
 					perf_log.pop("output");
@@ -751,6 +872,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			}// end timestep loop.
 
 			output_file.close();
+			eigenvalues_file.close();
 			if(particle_deposition)
 				particle_output_file.close();
 
@@ -1051,7 +1173,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	else if (particle_deposition == 2)
 	{
 
-		HofmannParticleDeposition particle_deposition_object(*es,element_data,num_generations[0]);
+		HofmannParticleDeposition particle_deposition_object(*es,airway_data,num_generations[0],subdomains_1d);
 
 		std::cout << "oh and hey babe" << std::endl;
 
@@ -1165,7 +1287,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 // read in parameters from file and give them to the parameters object.
-void NavierStokesCoupled::read_parameters()
+int NavierStokesCoupled::read_parameters()
 {
 
 	// - JAMES always 3D for this one
@@ -1216,7 +1338,7 @@ void NavierStokesCoupled::read_parameters()
 	// 0 - dirichlet-neumann
 	// 1 - pressure-pressure
 	set_unsigned_int_parameter(infile,"problem_type",0);
-	set_bool_parameter(infile,"newton",false);
+	set_unsigned_int_parameter(infile,"newton",0);
 	set_bool_parameter(infile,"direct",true);
 	set_unsigned_int_parameter(infile,"prerefine",0);
 	set_double_parameter(infile,"restart_time",0.0);
@@ -1245,12 +1367,13 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"E",3.3);
 	set_unsigned_int_parameter(infile,"num_generations_1",2);
 	set_unsigned_int_parameter(infile,"num_generations_2",5);
+	set_unsigned_int_parameter(infile,"num_generations_3",1);
+	set_unsigned_int_parameter(infile,"num_generations_4",1);
 	// the petsc stuff
 	// different solver types. default(0), mumps_both(1), superlu_dist_both(2), mumps_1d_iter_3d(3), 
   std::string solver_options = set_string_parameter(infile,"solver_options","");
   output_folder << set_string_parameter(infile,"output_folder","results/");
-  set_string_parameter(infile,"input_1d_node_file","");
-  set_string_parameter(infile,"input_1d_edge_file","");
+  set_string_parameter(infile,"input_1d_file","");
   set_bool_parameter(infile,"_read_1d_mesh",false);
   set_unsigned_int_parameter(infile,"max_newton_iterations",6);
   set_bool_parameter(infile,"compliance_1d",false);
@@ -1364,7 +1487,8 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"flow_mag_3d",1.0);
 	set_double_parameter(infile,"velocity_mag_3d",1.0);
 
-	set_unsigned_int_parameter(infile,"preconditioner_type",0);
+	set_unsigned_int_parameter(infile,"preconditioner_type_3d",0);
+	set_unsigned_int_parameter(infile,"preconditioner_type_3d1d",0);
 
 	set_unsigned_int_parameter(infile,"alveolated_1d_tree",0);
 	set_double_parameter(infile,"alveolar_length_diam_ratio",2.2);
@@ -1376,21 +1500,16 @@ void NavierStokesCoupled::read_parameters()
 	set_unsigned_int_parameter(infile,"impaction_type",0);
 
 	set_bool_parameter(infile,"ksp_view",false);
+	set_bool_parameter(infile,"ksp_view_before",false);
 	set_bool_parameter(infile,"nonzero_initial_guess",false);
+	set_bool_parameter(infile,"nonzero_initial_guess_inner_3d1d",false);
 	set_bool_parameter(infile,"streamline_diffusion",false);
 	set_bool_parameter(infile,"leaky_lid_driven_cavity",false);
 	set_bool_parameter(infile,"pin_pressure",false);
 
 	set_bool_parameter(infile,"fieldsplit",false);
-	set_bool_parameter(infile,"direct",true);
+	set_bool_parameter(infile,"direct",false);
 
-	set_string_parameter(infile,"petsc_3d_outer_solver_options","");
-	set_string_parameter(infile,"petsc_3d_inner_velocity_solver_options","");
-	set_string_parameter(infile,"petsc_3d_inner_pressure_solver_options","");
-	set_string_parameter(infile,"petsc_3d_schur_mass_solver_options","");
-	set_string_parameter(infile,"petsc_3d_schur_lap_solver_options","");
-	set_string_parameter(infile,"petsc_1d_solver_options","");
-	set_string_parameter(infile,"petsc_solver_options","");
 
 	set_bool_parameter(infile,"mesh_dependent_stab_param",false);
 	set_bool_parameter(infile,"gravemeier_element_length",false);
@@ -1400,12 +1519,134 @@ void NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"numerical_continuation_starting_reynolds_number",1.0);
 
 	set_double_parameter(infile,"element_length_scaling",1.0);
+
+	set_bool_parameter(infile,"output_nondim",false);
+	set_bool_parameter(infile,"half_initial_length",false);
+	set_bool_parameter(infile,"twod_oned_tree",false);
+	set_bool_parameter(infile,"initial_segment_length_from_mesh",false);
 	
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
 	
+	set_int_parameter(infile,"inflow_bdy_id",-1);	
 
 
+  set_string_parameter(infile,"input_1d_node_file_2","");
+  set_string_parameter(infile,"input_1d_edge_file_2","");
+
+
+  set_bool_parameter(infile,"match_1d_mesh_to_3d_mesh",false);
+  set_bool_parameter(infile,"assume_symmetric_tree",false);
+  set_bool_parameter(infile,"calculate_1d_info_at_coupling_nodes",false);
+  set_bool_parameter(infile,"radius_on_edge",false);
+
+  set_double_parameter(infile,"nonlinear_tolerance_1d",1e-4);
+  set_bool_parameter(infile,"nonlinear_1d",false);
+
+  set_bool_parameter(infile,"use_centreline_data",false);
+
+  set_bool_parameter(infile,"custom_partitioning",false);
+  set_bool_parameter(infile,"output_resistance_for_each_tree",false);
+  set_bool_parameter(infile,"output_resistance",true);
+
+  set_bool_parameter(infile,"increasing_residuals_exit",true);
+  set_unsigned_int_parameter(infile,"max_initial_picard",0);
+  set_double_parameter(infile,"picard_to_newton_threshold",0.1);
+
+  set_bool_parameter(infile,"shift_pressure_bc",0);
+
+  set_bool_parameter(infile,"compute_eigenvalues",false);
+
+  // petsc options
+	set_string_parameter(infile,"petsc_3d_fieldsplit_solver_options","");
+	set_string_parameter(infile,"petsc_3d_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d_gmres_solver_options","");
+
+
+	set_string_parameter(infile,"petsc_convection_diffusion_solver_options","");
+	set_string_parameter(infile,"petsc_navier_stokes_schur_solver_options","");
+
+	set_string_parameter(infile,"petsc_mass_matrix_solver_options","");
+	set_string_parameter(infile,"petsc_laplacian_solver_options","");
+
+	set_string_parameter(infile,"petsc_1d_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_diagonal_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_schur_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_gmres_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_gmres_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_fieldsplit_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_inner_1d_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_direct_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_gmres_solver_options","");
+	set_string_parameter(infile,"petsc_3d1d_schur_stokes_fieldsplit_solver_options","");
+
+	set_string_parameter(infile,"petsc_3d1d_post_solve_fieldsplit_solver_options","");
+
+
+	set_string_parameter(infile,"petsc_solver_options","");
+	set_string_parameter(infile,"petsc_solver_options_ksp_view","");
+
+  //
+
+	set_unsigned_int_parameter(infile,"random_1d_generations",0);
+	set_string_parameter(infile,"num_generations_string","");
+
+	set_bool_parameter(infile,"multiple_column_solve",false);
+
+	set_bool_parameter(infile,"moghadam_coupling",false);
+
+	set_bool_parameter(infile,"assemble_pressure_mass_matrix",false);
+	set_bool_parameter(infile,"assemble_scaled_pressure_mass_matrix",false);
+	set_bool_parameter(infile,"assemble_pressure_convection_diffusion_matrix",false);
+	set_bool_parameter(infile,"assemble_pressure_laplacian_matrix",false);
+	set_bool_parameter(infile,"assemble_velocity_mass_matrix",false);
+
+	set_bool_parameter(infile,"schur_stokes_precompute",false);
+	set_bool_parameter(infile,"monolithic_navier_stokes_preonly",false);
+	set_double_parameter(infile,"monolithic_navier_stokes_preonly_switch",0.);
+	set_unsigned_int_parameter(infile,"preconditioner_type_schur_stokes",0);
+	set_unsigned_int_parameter(infile,"monolithic_navier_stokes_gmres_its",100);
+
+	set_double_parameter(infile,"length_diam_ratio_1",0.);
+	set_double_parameter(infile,"length_diam_ratio_2",0.);
+
+
+
+	set_bool_parameter(infile,"post_solve",false);
+	set_bool_parameter(infile,"direct_post_solve",false);
+	set_bool_parameter(infile,"0D",false);
+
+	set_bool_parameter(infile,"stokes_ic",false);
+	set_double_parameter(infile,"angle_of_inflow",0.); // angle (in rad) by which inflow is rotated from normal
+
+	set_double_parameter(infile,"length_diam_ratio_1",0.);
+	set_double_parameter(infile,"length_diam_ratio_2",0.);
+
+	set_bool_parameter(infile,"write_eigenvalues",false);
+
+	set_bool_parameter(infile,"negative_mono_schur_complement",false);
+	set_bool_parameter(infile,"negative_bfbt_schur_complement",false);
+
+	// scale monolithic preconditioner by resistance
+	// 0 - no scaling
+	// 1 - scale by resistance of first pipe, max over all boundaries, min 1.0
+	set_unsigned_int_parameter(infile,"scale_mono_preconditioner",0);
+	set_double_parameter(infile,"mono_preconditioner_resistance_scaling",1.0);
+
+	set_string_parameter(infile,"boundary_conditions_folder","");
+	set_bool_parameter(infile,"known_boundary_conditions",false);
+
+	set_bool_parameter(infile,"renumber_nodes_and_elements",true);
+
+
+  restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
 
 
 
@@ -1449,24 +1690,156 @@ void NavierStokesCoupled::read_parameters()
 	if(es->parameters.get<std::string> ("petsc_solver_options") == empty_string)
 	{
 		std::string petsc_solver_options = "";
+		std::string petsc_solver_options_ksp_view = "";
 		if(sim_3d)
 		{
-			petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_outer_solver_options");
-			if(es->parameters.get<bool> ("fieldsplit"))
+
+			// figure out if we are doing monolithic simulation or not
+			if(sim_type != 5)
 			{
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_inner_velocity_solver_options");
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_inner_pressure_solver_options");	
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_schur_mass_solver_options");		
-				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_schur_lap_solver_options");			
+				// we need to figure out what 3d preconditioner we are using
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 0)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_direct_solver_options");
+					es->parameters.set<bool> ("direct") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_gmres_solver_options");
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") > 1)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d_fieldsplit_solver_options");
+
+
+					// extra navier stokes settings
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_convection_diffusion_solver_options");
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_navier_stokes_schur_solver_options");	
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_mass_matrix_solver_options");		
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_laplacian_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+
+				
+
 			}
+			else
+			{
+				// we need to figure out what 3d1d monolithic preconditioner we are using
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 0)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_direct_solver_options");
+					es->parameters.set<bool> ("direct") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 1)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_gmres_solver_options");
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 6)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_diagonal_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+				else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") > 6)
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_solver_options");
+					es->parameters.set<bool> ("fieldsplit") = true;
+				}
+
+
+				// now we need to add the navier-stokes specific preconditioner details if doing a fieldsplit monolithic solve
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") >= 6)
+				{
+					if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 0)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_direct_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_gmres_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") > 1)
+					{
+						if(es->parameters.get<bool> ("monolithic_navier_stokes_preonly"))
+							petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options");
+						else
+							petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_navier_stokes_fieldsplit_solver_options");
+
+						// extra navier stokes settings
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_convection_diffusion_solver_options");
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_navier_stokes_schur_solver_options");	
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_mass_matrix_solver_options");		
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_laplacian_solver_options");
+						es->parameters.set<bool> ("fieldsplit") = true;
+					}
+				}
+
+				// we need to add the schur stokes solver options
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10)
+				{
+					if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 0)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_direct_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 1)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_gmres_solver_options");
+					else if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
+						petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_schur_stokes_fieldsplit_solver_options");
+					else
+					{
+						std::cout << "Schur Stokes solver type " << es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") << " not defined." << std::endl;
+						std::cout << "Exiting..." << std::endl;
+						std::exit(0);
+					}
+					
+					
+				}
+
+				if(es->parameters.get<bool> ("post_solve"))
+				{
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_post_solve_fieldsplit_solver_options");
+				}
+
+
+				
+			}
+
+
+
 		}
 
 		if(sim_1d)
 		{
-			petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_1d_solver_options");
+
+			// need to figure out if we have a monolithic method
+			if(sim_type != 5)
+			{
+				petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_1d_solver_options");
+
+			}
+
+			else
+			{
+				// need to figure out if we have a separate solver for the 1d part of the simulation
+				if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") >= 6)
+					petsc_solver_options += " " + es->parameters.get<std::string> ("petsc_3d1d_inner_1d_solver_options");
+					
+			}
 		}
 
+
+		petsc_solver_options_ksp_view = petsc_solver_options;
+		if(es->parameters.get<bool> ("ksp_view"))
+		{
+			if(sim_3d)
+			{
+				if(sim_type != 5)
+					petsc_solver_options_ksp_view += " -ns3d_ksp_view";
+				else
+					petsc_solver_options_ksp_view += " -ns3d1d_ksp_view";
+			}
+		
+			if(sim_1d)
+			{
+				if(sim_type != 5)
+					petsc_solver_options_ksp_view += " -ns1d_ksp_view";
+				
+			}
+		}
+			
+
 		es->parameters.set<std::string> ("petsc_solver_options") = petsc_solver_options;
+		es->parameters.set<std::string> ("petsc_solver_options_ksp_view") = petsc_solver_options_ksp_view;
 		std::cout << "Petsc command line options set to: " << es->parameters.get<std::string> ("petsc_solver_options") << std::endl;;
 	}
 
@@ -1489,12 +1862,221 @@ void NavierStokesCoupled::read_parameters()
 			es->parameters.set<bool> ("nonzero_initial_guess") = false;
 		}
 
-		if(es->parameters.get<unsigned int> ("preconditioner_type"))
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") || es->parameters.get<unsigned int> ("preconditioner_type_3d"))
 		{
 			std::cout << "Using direct solver so no preconditioner used. Setting to not use preconditioner." << std::endl;
-			std::cout << "\tpreconditioner_type = 0" << std::endl; 
-			es->parameters.set<unsigned int> ("preconditioner_type") = 0;
+			std::cout << "\tpreconditioner_type_3d = 0" << std::endl; 
+			std::cout << "\tpreconditioner_type_3d1d = 0" << std::endl; 
+			es->parameters.set<unsigned int> ("preconditioner_type_3d") = 0;
+			es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
 		}
+	}
+
+
+
+	// ***************** if we aren't doing schur stokes then we can't do schur stokes precompute *********** //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") != 10)
+	{
+		std::cout << "No point doing schur stokes precompute if we aren't doing schur stokes." << std::endl;
+		es->parameters.set<bool> ("schur_stokes_precompute") = false;
+		
+	}
+
+
+	// ***************** if we aren't doing a monolithic simulation then the 3d1d preconditioner is irrelevant ********** //
+	if(sim_type != 5)
+	{
+		es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
+	}	
+
+	// ***************** figure out what sub matrices we need to assemble ********************* //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3
+			|| es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
+		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
+	{
+		es->parameters.set<bool> ("assemble_pressure_mass_matrix") = true;
+		es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = true;
+		es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = true;
+	}
+	
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 8
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
+		es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
+		
+
+
+	// *************** allocate the monolithic monitor context ***************** //
+	PetscNew(&mono_ctx);
+
+	PetscNew(&initial_guess_ctx);
+
+
+
+
+
+	// **************** quadratic elements and schur stokes fieldsplit not supported ********************* //
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10 && es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2 && !es->parameters.get<bool> ("linear_shape_functions"))
+	{
+		std::cout << "Sorry, fieldsplit and schur stokes are not supported with quadratic elements." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+
+	// *************** newton 2,3 (newton (no rxn term) and semi-implicit) with optimised stabilised boundary conditions not implemented ********** //
+	if((es->parameters.get<unsigned int> ("newton") == 2 || es->parameters.get<unsigned int> ("newton") == 3) 
+			&& es->parameters.get<bool> ("optimisation_stabilised"))
+	{
+		std::cout << "Sorry, newton (no rxn) and semi-implicit are not supported with optimised stabilised boundary conditions." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+
+	// *************** can't use semi-implicit with steady **************************************** //
+
+	if(es->parameters.get<unsigned int> ("newton") == 3 && !unsteady)
+	{
+		std::cout << "Can't use a semi-implicit method with a steady simulation." << std::endl;
+		std::cout << "Current setting: newton - " << es->parameters.get<unsigned int> ("newton") << std::endl;
+		std::cout << "Changing to implicit Newton (with reaction terms)" << std::endl;
+
+		es->parameters.set<unsigned int> ("newton") = 2;
+
+		std::cout << "New setting: newton - " <<  es->parameters.get<unsigned int> ("newton") << std::endl;
+		
+	}
+
+
+	// *************** make sure nonlinear scheme is backwards compatable ******************************* //
+	
+	// to be able to handle when the newton parameter was true or false.
+	// i suppose if newton is true (i.e. intended to be implicit newton) it might be a large number
+	// currently we have 4 nonlinear options
+	// 0 - implicit picard
+	// 1 - implicit newton
+	// 2 - implicit newton (no rxn term)
+	// 3 - semi-implicit newton (no rxn term)
+
+	
+	if(es->parameters.get<unsigned int> ("newton") > 3)
+	{
+		es->parameters.set<unsigned int> ("newton") = 1;
+	}
+
+
+
+	// ************** conservative form of navier stokes only implemented for newton - 0,1 ************** //
+	if(!es->parameters.get<bool> ("convective_form") && es->parameters.get<unsigned int> ("newton") > 1) 
+	{
+		std::cout << "Sorry, conservative Navier-Stokes formulation only supported for implicit Picard and Newton (with reaction terms)." << std::endl;
+		std::cout << "Current setting: newton - " << es->parameters.get<unsigned int> ("newton") << std::endl;
+		std::cout << "Changing to implicit Newton (no reaction terms)" << std::endl;
+
+		es->parameters.set<unsigned int> ("newton") = 1;
+
+		std::cout << "New setting: newton - " <<  es->parameters.get<unsigned int> ("newton") << std::endl;
+    
+	}
+
+
+	// ***************************************** //
+	// ********* nonlinear scheme chosen ******* //
+
+	// ***************** if semi-implicit then we only need one nonlinear iteration ******************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3) 
+	{
+		es->parameters.set<unsigned int> ("max_newton_iterations") = 1;
+	}
+
+
+
+	// ***************** streamline diffusion not implemented for conservative form ******************* //
+	if(!es->parameters.get<bool> ("convective_form") && es->parameters.get<bool> ("streamline_diffusion")) 
+	{
+		std::cout << "Sorry, streamline diffusion not supported with conservative Navier-Stokes formulation." << std::endl;
+		std::cout << "Changing to no streamline diffusion." << std::endl;
+
+		es->parameters.set<bool> ("streamline_diffusion") = false;
+
+		std::cout << "New setting: streamline_diffusion - " <<  es->parameters.get<bool> ("streamline_diffusion") << std::endl;
+    
+	}
+
+
+
+
+	// ***************** if semi-implicit then have to do have a constant supg/pspg/lsic constant and have to have to use supg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && 
+			(es->parameters.get<bool> ("supg") || es->parameters.get<bool> ("pspg") || es->parameters.get<bool> ("lsic")) ) 
+	{
+
+		if(!es->parameters.set<bool> ("supg_constant_constant"))
+		{
+			std::cout << "Using semi-implicit method with supg/pspg/lsic. Must use have a constant supg constant." << std::endl;
+			std::cout << "Changing to supg_constant_constant - true." << std::endl;
+
+			es->parameters.set<bool> ("supg_constant_constant") = true;
+
+			std::cout << "New setting: supg_constant_constant - " <<  es->parameters.get<bool> ("supg_constant_constant") << std::endl;
+		}
+	}
+
+	// ***************** if semi-implicit then have to do supg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("supg")) 
+	{
+		if(!es->parameters.get<bool> ("supg_picard"))
+		{
+			std::cout << "Using semi-implicit method with supg. Must use have a the picard supg method (while using the velocity from the previous timestep)." << std::endl;
+			std::cout << "Changing to supg_picard - true." << std::endl;
+
+			es->parameters.set<bool> ("supg_picard") = true;
+			es->parameters.set<bool> ("supg_newton") = false;
+			es->parameters.set<bool> ("supg_full_newton") = false;
+			es->parameters.set<bool> ("supg_convection_newton") = false;
+			es->parameters.set<bool> ("supg_convection") = false;
+				
+
+			std::cout << "New setting: supg_picard - " <<  es->parameters.get<bool> ("supg_picard") << std::endl;
+		}
+
+    
+	}
+
+	// ***************** if semi-implicit then have to do pspg_picard with U_old ********************* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("pspg")) 
+	{
+		if(!es->parameters.get<bool> ("pspg_picard"))
+		{
+			std::cout << "Using semi-implicit method with pspg. Must use have a the picard pspg method (while using the velocity from the previous timestep)." << std::endl;
+			std::cout << "Changing to pspg_picard - true." << std::endl;
+
+			es->parameters.set<bool> ("pspg_picard") = true;
+			es->parameters.set<bool> ("pspg_newton") = false;
+				
+
+			std::cout << "New setting: pspg_picard - " <<  es->parameters.get<bool> ("pspg_picard") << std::endl;
+		}
+	}
+
+	// ********* if semi-implicit and using neumann boundary stabilisation then need to use "linear" form ********* //
+	if(es->parameters.get<unsigned int> ("newton") == 3 && es->parameters.get<bool> ("neumann_stabilised") && !es->parameters.get<bool> ("neumann_stabilised_linear")) 
+	{
+		std::cout << "Using semi-implicit method with neumann stabilisation. Must linear stabilisation." << std::endl;
+		std::cout << "Changing to neumann_stabilised_linear - true." << std::endl;
+
+		es->parameters.set<bool> ("neumann_stabilised_linear") = true;
+			
+
+		std::cout << "New setting: neumann_stabilised_linear - " <<  es->parameters.get<bool> ("neumann_stabilised_linear") << std::endl;
+
 	}
 
 
@@ -1504,7 +2086,7 @@ void NavierStokesCoupled::read_parameters()
 	{
 		std::cout << "Currently only picard iterations are supported for optimisation stabilised BCs. Setting to use picard iterations." << std::endl;
 		std::cout << "\tnewton = false" << std::endl;
-		es->parameters.set<bool> ("newton") = false;
+		es->parameters.set<unsigned int> ("newton") = 0;
 	}
 	else
 	{
@@ -1512,6 +2094,28 @@ void NavierStokesCoupled::read_parameters()
 	}
  
 
+
+
+
+	if(es->parameters.get<bool> ("negative_bfbt_schur_complement") && es->parameters.get<unsigned int> ("preconditioner_type_3d") != 9)
+	{
+		std::cout << "Negative BFBt schur complement currently only implemented for scaled stabilsated bfbt. Changning to positive BFBt schur complement." << std::endl;
+		es->parameters.set<bool> ("negative_bfbt_schur_complement") = false;
+		
+	}
+
+
+	// ***************** make sure that for sim_type 1 everything is correctly specified ********** //
+	if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_values"))
+	{
+		// check that folder has been specified
+		if(es->parameters.get<std::string> ("boundary_conditions_filename").empty())
+		{
+			std::cout << "Folder for getting boundary conditions for partitioned simulation not specified." << std::endl;
+			std::cout << "Exiting..." << std::endl;
+			std::exit(0);
+		}
+	}
 
 
 
@@ -1711,18 +2315,81 @@ void NavierStokesCoupled::read_parameters()
 		
 	}
 
+	// *************** CAN ONLY DO MOGHADAM COUPLING ********************	//
+	if(es->parameters.get<bool> ("moghadam_coupling") && es->parameters.get<unsigned int> ("sim_type") != 3)
+	{
+		std::cout << "Can only do moghadam coupling when sim_type is implicit. EXITING" << std::endl;
+		std::cout << "\tsim_type = " << es->parameters.get<unsigned int> ("sim_type") << std::endl;
+		std::exit(0);		
+	}
+
+	// *************** MOGHADAM COUPLING NOT CURRENTLY WORKING ********************	//
+	if(es->parameters.get<bool> ("moghadam_coupling"))
+	{
+		std::cout << "Moghadam coupling not currently working. EXITING" << std::endl;
+		std::exit(0);		
+	}
+
+	
+
 
 
 	
 	// ****************** WE DON'T DO 1D ELEMENTS AT THE MOMENT *********** //
-	if(es->parameters.set<bool>("0D") = false)
+	if(es->parameters.get<bool>("0D") == false)
 	{
 		std::cout << "Currently only 0D elements are supported. Setting to use 0D elements." << std::endl;
 		std::cout << "\t0D = true" << std::endl;
   	es->parameters.set<bool>("0D") = true;
 	}
 
+	if(es->parameters.set<unsigned int>("resistance_type_1d") > 0)
+	{
+		es->parameters.set<bool>("nonlinear_1d") = true;
+	}
 
+
+	// **************** Stokes IC and coupled not implemented ************** //
+	if(es->parameters.get<bool>("stokes_ic") && es->parameters.get<unsigned int>("sim_type") > 1)
+	{
+		std::cout << "Stokes IC with coupled simulation or 0D simulation not currently supported." << std::endl;
+		std::cout << "sim_type - " << es->parameters.get<unsigned int>("sim_type") << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	
+	}
+
+	// **************** if using stokes ic then we need to make sure it is done first ********* //
+	if(es->parameters.get<bool>("stokes_ic"))
+	{
+		ic_set = false;
+	}
+
+
+
+	// **************** can only change the angle of inflow for 2D problems ******************* //
+	if(es->parameters.get<bool>("threed") && fabs(es->parameters.get<double>("angle_of_inflow")) > 1e-10)
+	{
+		std::cout << "Changing the angle of inflow for 3D problems not currently implemented." << std::endl;
+		std::cout << "Current setting: angle_of_inflow - " << es->parameters.get<double>("angle_of_inflow") << std::endl;
+		std::cout << "Changing to not alter angle of inflow." << std::endl;
+		
+		es->parameters.set<double>("angle_of_inflow") = 0.;
+
+		std::cout << "New setting: angle_of_inflow - " << es->parameters.get<double>("angle_of_inflow") << std::endl;
+		
+	}
+
+
+
+	// ************** IF WRITING EIGENVALUES MUST BE CALCULATING THEM ***************** //
+	if(es->parameters.get<bool> ("write_eigenvalues") && !es->parameters.get<bool> ("compute_eigenvalues"))
+	{
+		std::cout << "If we are writing eigenvalues to file we must calculate them too." << std::endl;
+		std::cout << "Setting compute_eigenvalues to true." << std::endl;
+		es->parameters.set<bool> ("compute_eigenvalues") = true;
+
+	}
 
 
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
@@ -1755,14 +2422,47 @@ void NavierStokesCoupled::read_parameters()
 
 
 	// ************ SETUP STAGE NUMBERS FOR PETSC PROFILING *************** //
-	PetscErrorCode ierr;
+	PetscErrorCode ierr;	// unused
 	PetscLogStage stage_num;
-	if(es->parameters.get<unsigned int> ("preconditioner_type") == 3)
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 2)
+	{
+		ierr = PetscLogStageRegister("Petsc LSC (BFBt) Preconditioner",&stage_num); CHKERRQ(ierr);
+	}
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3)
 		ierr = PetscLogStageRegister("Pressure Preconditioner",&stage_num);
-	else if(es->parameters.get<unsigned int> ("preconditioner_type") == 4)
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4)
 		ierr = PetscLogStageRegister("PCD Preconditioner",&stage_num);
-	else if(es->parameters.get<unsigned int> ("preconditioner_type") == 5)
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
 		ierr = PetscLogStageRegister("PCD2 Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 6)
+		ierr = PetscLogStageRegister("LSC James Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7)
+		ierr = PetscLogStageRegister("LSC James Scaled Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
+		ierr = PetscLogStageRegister("LSC James Scaled Stabilised Preconditioner Setup",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 10)
+		ierr = PetscLogStageRegister("SIMPLE Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 11)
+		ierr = PetscLogStageRegister("SIMPLER Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 12)
+		ierr = PetscLogStageRegister("SIMPLERC Preconditioner",&stage_num);
+
+	
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 6)
+		ierr = PetscLogStageRegister("Mono Diagonal Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 7)
+		ierr = PetscLogStageRegister("Mono Full Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 8)
+		ierr = PetscLogStageRegister("Mono Schur Navier Stokes Velocity Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9)
+		ierr = PetscLogStageRegister("Mono Schur Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10)
+		ierr = PetscLogStageRegister("Mono Schur Stokes Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11)
+		ierr = PetscLogStageRegister("Mono Schur Stokes Velocity Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 12)
+		ierr = PetscLogStageRegister("Mono Schur 0D Preconditioner",&stage_num);
 
 
 
@@ -1802,6 +2502,9 @@ void NavierStokesCoupled::read_parameters()
 		std::ofstream  mesh_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "mesh_file.msh").c_str(),   std::ios::binary);
 		mesh_file_dst << mesh_file_src.rdbuf();
 	}
+
+
+	return 0;
 
 }
 
@@ -1946,6 +2649,93 @@ void NavierStokesCoupled::read_timesteps()
 }
 
 
+// read the input boundary conditions for an uncoupled simulation
+int NavierStokesCoupled::read_input_boundary_conditions()
+{
+	std::cout << "Reading input boundary conditions file." << std::endl;
+
+	// read the file 
+	std::ifstream input_boundary_conditions_file(es->parameters.get<std::string>("input_boundary_conditions_filename"));
+	if(!input_boundary_conditions_file.good())
+	{
+		std::cout << "Error reading input boundary conditions file." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+	// put data from file into vector of vectors all_input_pressure_values_3d and all_input_flux_values_0d
+	// 1 - read first line and make sure it has the right number of elements
+	std::string first_line;
+	std::getline(input_boundary_conditions_file,first_line);
+	std::istringstream iss(first_line);
+	std::string temp_string;
+	unsigned int count = 0;
+	while (iss.good()) // while the stream is not empty
+  {
+  	iss >> temp_string; //get data from the stream up to next whitespace
+		count++;
+  }
+	std::cout << "count = " << count << std::endl;
+	unsigned int num_input_boundary_ids = (count - 4)/4;
+	std::cout << "number of input boundary ids = " << num_input_boundary_ids << std::endl;
+	std::cout << "number of boundary ids in current simulation = " << boundary_ids.size() << std::endl;
+	if(num_input_boundary_ids != boundary_ids.size())
+	{
+		std::cout << "Error. Number of input boundary ids not equal to number of boundary ids in current simulation." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+	// 2 - read all the lines and put the data where it's supposed to go
+	// * discard the first 2 + num_input_boundary_ids
+	// * put the next num_input_boundary_ids into all_input_pressure_values_3d
+	// * put the next num_input_boundary_ids into all_input_flux_values_0d
+	// * next line
+	std::string current_line;
+	double disc = 0.;
+	while(std::getline(input_boundary_conditions_file,current_line))
+	{		
+		std::istringstream ciss(current_line);
+
+		// discard 2
+		ciss >> disc >> disc;
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> disc;
+
+		// put the next num_input_boundary_ids into a vector for pressure 3d
+		std::vector<double> temp_input_pressure_values_3d(num_input_boundary_ids);
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> temp_input_pressure_values_3d[i];
+
+		// put the next num_input_boundary_ids into a vector for flux 0d
+		std::vector<double> temp_input_flux_values_0d(num_input_boundary_ids);
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> temp_input_flux_values_0d[i];
+
+		// put the vectors into global vectors for all timesteps
+		all_input_pressure_values_3d.push_back(temp_input_pressure_values_3d);
+		all_input_flux_values_0d.push_back(temp_input_flux_values_0d);
+		
+	}
+	
+	// check that the number of timesteps in the same
+	unsigned int total_num_timesteps = (unsigned int)(es->parameters.get<double>("end_time")/es->parameters.get<double>("dt"));
+	unsigned int input_num_timesteps = all_input_pressure_values_3d.size();
+
+	std::cout << "total expected number of timesteps = " << total_num_timesteps << std::endl;
+	std::cout << "input number of timesteps = " << input_num_timesteps << std::endl;
+
+	if(total_num_timesteps != input_num_timesteps)
+	{
+		std::cout << "Error, number of input timesteps not equal to number of expected timesteps." << std::endl;
+		std::cout << "Exiting..." << std::endl;
+		std::exit(0);
+	}
+
+	// set input boundary conditions for first timestep
+	input_pressure_values_3d = all_input_pressure_values_3d[t_step];
+	input_flux_values_1d = all_input_flux_values_0d[t_step];
+}
+
 
 void NavierStokesCoupled::print_flux_and_pressure()
 {
@@ -1960,6 +2750,7 @@ void NavierStokesCoupled::print_flux_and_pressure()
 													pow(es->parameters.get<double>("velocity_scale"),2.0);
 	}
 
+	std::cout << "pressure_scaling = " << pressure_scaling << std::endl;
 
 	if(sim_3d)
 	{
@@ -1968,14 +2759,28 @@ void NavierStokesCoupled::print_flux_and_pressure()
 			total_daughter_flux_3d += flux_values_3d[i];
 
 		std::cout << "3D flux values:    " << std::endl;
-		for(unsigned int i=0; i < flux_values_3d.size(); i++)
-			std::cout << " " << flux_values_3d[i] << " (" << 
-								flux_values_3d[i] * flux_scaling << " m^3/s)" << std::endl;
+		if(boundary_id_to_tree_id.size()==0)
+		{
+			for(unsigned int i=0; i < flux_values_3d.size(); i++)
+				std::cout << " " << flux_values_3d[i] << " (" << 
+									flux_values_3d[i] * flux_scaling << " m^3/s)" << std::endl;
 
-		std::cout << "3D pressure values:    " << std::endl;
-		for(unsigned int i=0; i < pressure_values_3d.size(); i++)
-			std::cout << " " << pressure_values_3d[i] << " (" <<
-								pressure_values_3d[i] * pressure_scaling << " Pa)" << std::endl;
+			std::cout << "3D pressure values:    " << std::endl;
+			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+				std::cout << " " << pressure_values_3d[i] << " (" <<
+									pressure_values_3d[i] * pressure_scaling << " Pa)" << std::endl;
+		}
+		else
+		{
+			for(unsigned int i=0; i < flux_values_3d.size(); i++)
+				std::cout << " " << flux_values_3d[tree_id_to_boundary_id[i]] << " (" << 
+									flux_values_3d[tree_id_to_boundary_id[i]] * flux_scaling << " m^3/s)" << std::endl;
+
+			std::cout << "3D pressure values:    " << std::endl;
+			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+				std::cout << " " << pressure_values_3d[tree_id_to_boundary_id[i]] << " (" <<
+									pressure_values_3d[tree_id_to_boundary_id[i]] * pressure_scaling << " Pa)" << std::endl;
+		}
 		std::cout << "total daughter flux 3D = " << total_daughter_flux_3d * flux_scaling << " m^3/s)" << std::endl;
 	}
 
@@ -1986,15 +2791,14 @@ void NavierStokesCoupled::print_flux_and_pressure()
 			total_daughter_flux_1d += flux_values_1d[i];
 
 		std::cout << "1D flux values:    " << std::endl;
-		for(unsigned int i=1; i < flux_values_1d.size(); i++)
+		for(unsigned int i=0; i < flux_values_1d.size(); i++)
 			std::cout << " " << flux_values_1d[i] << " (" << 
 								flux_values_1d[i] * flux_scaling << " m^3/s)" << std::endl;
 
 		std::cout << "1D pressure values:    " << std::endl;
-		for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+		for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 			std::cout << " " << pressure_values_1d[i] << " (" <<
-								pressure_values_1d[i] * pressure_scaling << " kPa)" << std::endl;
-		std::cout << "total daughter flux 1D = " << total_daughter_flux_1d * flux_scaling << " m^3/s)" << std::endl;
+								pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;
 	}
 }
 
@@ -2316,9 +3120,10 @@ void NavierStokesCoupled::output_sim_data(bool header)
 		}
 		if(sim_1d)
 		{
-			for(unsigned int i=1; i < flux_values_1d.size(); i++)
+			for(unsigned int i=0; i < flux_values_1d.size(); i++)
 				output_file <<	"\t1d_flux_value_" << i;
-			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+
+			for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 				output_file <<	"\t1d_press_value_" << i;
 		}
 
@@ -2329,26 +3134,46 @@ void NavierStokesCoupled::output_sim_data(bool header)
 	}
 	else
 	{
+
+		std::cout << "k" << std::endl;
+
 		output_file << t_step << "\t" << time;
 
 		if(sim_3d)
 		{
+		std::cout << "k" << std::endl;
 			calculate_3d_boundary_values();
-			for(unsigned int i=0; i < flux_values_3d.size(); i++)
-				output_file << "\t" << flux_values_3d[i] * flux_scaling;
+		std::cout << "k" << std::endl;
+			if(boundary_id_to_tree_id.size() == 0)
+			{
+				for(unsigned int i=0; i < flux_values_3d.size(); i++)
+					output_file << "\t" << flux_values_3d[i] * flux_scaling;
 
-			for(unsigned int i=0; i < pressure_values_3d.size(); i++)
-				output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
+				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
+			}
+			else
+			{
+				// output should be in order
+				for(unsigned int i=0; i < flux_values_3d.size(); i++)
+					output_file << "\t" << flux_values_3d[i] * flux_scaling;
+
+				for(unsigned int i=0; i < pressure_values_3d.size(); i++)
+					output_file << "\t" << pressure_values_3d[i] * pressure_scaling;
+			}
+		std::cout << "k" << std::endl;
 		}
 		
 		if(sim_1d)
 		{
 			calculate_1d_boundary_values();
-			for(unsigned int i=1; i < flux_values_1d.size(); i++)
+			// always in order of tree id
+			for(unsigned int i=0; i < flux_values_1d.size(); i++)
 				output_file << "\t" << flux_values_1d[i] * flux_scaling;
 
-			for(unsigned int i=1; i < pressure_values_1d.size(); i++)
+			for(unsigned int i=0; i < pressure_values_1d.size(); i++)
 				output_file << "\t" << pressure_values_1d[i] * pressure_scaling;
+
 		}
 
 		if(sim_3d)
@@ -2356,16 +3181,43 @@ void NavierStokesCoupled::output_sim_data(bool header)
 
 		output_file << std::endl;
 
+		std::cout << "k" << std::endl;
 		print_flux_and_pressure();
 
 			std::cout << "flux, pressure etc output for timestep " << t_step
 							<< " written." << std::endl;
 
-		if(sim_1d)
+		std::cout << "hi" << std::endl;
+		
+		if(sim_1d && es->parameters.get<bool> ("output_resistance"))
+		{
 			output_poiseuille_resistance_per_generation();
+		}
+		
 
+		std::cout << "bye" << std::endl;
 	}
 }
+
+
+void NavierStokesCoupled::output_coupling_points()
+{
+
+	// output the parameters used to file and the header of the out.dat file
+	std::ostringstream coupling_points_file_name;
+
+	coupling_points_file_name << output_folder.str() << "coupling_points.csv";
+	std::ofstream coupling_points_file;
+	coupling_points_file.open(coupling_points_file_name.str().c_str());
+
+	coupling_points_file << "x_coord y_coord z_coord coupling_point_id" << std::endl;
+	for(unsigned int i=1; i < coupling_points.size(); i++)
+		coupling_points_file << coupling_points[i](0) << " " << coupling_points[i](1) << " " << coupling_points[i](2) <<  " "  << i << std::endl;
+
+	coupling_points_file.close();
+
+}
+
 
 
 void NavierStokesCoupled::output_linear_iteration_count(bool header)
@@ -2379,7 +3231,7 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 		// write geometry variables later when reading meta data file
 		// write boundary conditions later with Picard class
 		linear_iterations_output_file << "# Results" << std::endl;
-		linear_iterations_output_file << "# timestep\tnonlinear_iteration\tlocal_linear_iterations\tmax_linear_iterations\ttotal_nonlinear_iterations\ttotal_linear_iterations";
+		linear_iterations_output_file << "# timestep\tnonlinear_iteration\tlocal_linear_iterations\tmax_linear_iterations\ttotal_nonlinear_iterations\ttotal_linear_iterations\tnonlinear_residual";
 		linear_iterations_output_file << std::endl;
 	}
 	else
@@ -2388,7 +3240,8 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 																							"\t" << local_linear_iterations << 
 																							"\t" << total_max_iterations << 
 																							"\t" << total_nonlinear_iterations <<
-																							"\t" << total_linear_iterations << std::endl;
+																							"\t" << total_linear_iterations << 
+																							"\t" << es->parameters.get<double> ("last_nonlinear_iterate") << std::endl;
 	}
 }
 
@@ -2460,16 +3313,16 @@ void NavierStokesCoupled::output_deposition_data(bool header)
 		std::vector<double> efficiency_per_generation(num_generations[0],0.);
 		std::vector<double> efficiency_per_order(num_generations[0],0.);
 		double complete_efficiency = 0.;
-		for(unsigned int i=0; i<element_data.size(); i++)
+		for(unsigned int i=0; i<airway_data.size(); i++)
 		{
 			//gen
-			unsigned int generation = element_data[i][7];
+			unsigned int generation = airway_data[i].get_generation();
 			if(generation+1 > efficiency_per_generation.size())
 				efficiency_per_generation.resize(generation+1,0.);
 			efficiency_per_generation[generation] += total_efficiency[i];
 
 			//order
-			unsigned int order = element_data[i][8];
+			unsigned int order = airway_data[i].get_order();
 			if(order > efficiency_per_order.size())
 				efficiency_per_order.resize(order+1,0.);
 
@@ -2544,7 +3397,8 @@ void NavierStokesCoupled::init_dof_variable_vectors()
 
 void NavierStokesCoupled::init_dof_variable_vector(TransientLinearImplicitSystem * system, std::vector<int>& _dof_variable_type)
 {
-	
+
+	std::cout << "initing dof variable vector" << std::endl;	
 
 	// DofMap things
   std::vector<dof_id_type> dof_indices_var;
@@ -3009,157 +3863,103 @@ void NavierStokesCoupled::write_particles()
 
 // here we setup the variable scalings that we want to use. 
 // the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
-void NavierStokesCoupled::setup_variable_scalings()
+void NavierStokesCoupled::setup_variable_scalings_3D()
 {
 
-	std::cout << "Setting up variable scalings." << std::endl;
-
-	TransientLinearImplicitSystem * system_3d;
-	TransientLinearImplicitSystem * system_1d;
-	TransientLinearImplicitSystem * system_neumann;
-	ExplicitSystem * system_radius;
-
-	std::vector<unsigned int> vars_per_system;
-	
-	if(sim_type == 5)
-	{
-		system_3d =
-		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
-
-		system_1d =
-		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
-		vars_per_system.push_back(system_3d->n_vars());
-
-	  system_neumann = 
-			&es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		vars_per_system.push_back(system_neumann->n_vars());
-
-		system_radius =
-		  &es->get_system<ExplicitSystem> ("Radius");
-		vars_per_system.push_back(system_radius->n_vars());
-	}
-	else
-	{
-
-		if(sim_3d)
-		{
-			system_3d =
-			  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
-			vars_per_system.push_back(system_3d->n_vars());
-
-
-			system_neumann = 
-				&es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-			vars_per_system.push_back(system_neumann->n_vars());
-		}
-
-		if(sim_1d)
-		{
-			system_1d =
-			  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
-
-			vars_per_system.push_back(system_1d->n_vars());
-			system_radius =
-			  &es->get_system<ExplicitSystem> ("Radius");
-
-			vars_per_system.push_back(system_radius->n_vars());
-		}
-
-
-	}
+	std::cout << "Setting up 3D variable scalings." << std::endl;
 
 	double velocity_scale = es->parameters.get<double>("velocity_scale");
 	double pressure_scale = es->parameters.get<double>("density") *	pow(es->parameters.get<double>("velocity_scale"),2.0);
+
+	if(es->parameters.get<bool>("output_nondim"))
+	{
+		velocity_scale = 1.0;
+		pressure_scale = 1.0;
+		std::cout << "using nondim output" << std::endl;
+	}
+
+	if(es->parameters.get<bool>("reynolds_number_calculation"))
+	{
+		velocity_scale = 1.0;
+		pressure_scale = 1.0;
+
+	}
+
+
+	// these indices are based on the order in which they are given to exodus
+	if(!threed)
+	{
+		var_scalings_3D.resize(3);
+		var_scalings_3D[0] = velocity_scale;	// u
+		var_scalings_3D[1] = velocity_scale;	// v
+		var_scalings_3D[2] = pressure_scale;	// p
+	}
+	else
+	{
+		var_scalings_3D.resize(4);
+		var_scalings_3D[0] = velocity_scale;	// u
+		var_scalings_3D[1] = velocity_scale;	// v
+		var_scalings_3D[2] = velocity_scale;	// w
+		var_scalings_3D[3] = pressure_scale;	// p
+	}
+
+
+	if(es->parameters.get<bool>("optimisation_stabilised"))
+	{
+		if(!threed)
+		{
+			var_scalings_3D.resize(6);
+			var_scalings_3D[3] = velocity_scale;	// u_adj
+			var_scalings_3D[4] = velocity_scale;	// v_adj
+			var_scalings_3D[5] = pressure_scale;	// p_adj
+		}
+		else
+		{		
+			var_scalings_3D.resize(8);
+			var_scalings_3D[4] = velocity_scale;	// u_adj
+			var_scalings_3D[5] = velocity_scale;	// v_adj
+			var_scalings_3D[6] = velocity_scale;	// w_adj
+			var_scalings_3D[7] = pressure_scale;	// p_adj
+		}
+	}
+
+
+}
+
+
+// here we setup the variable scalings that we want to use. 
+// the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
+void NavierStokesCoupled::setup_variable_scalings_1D()
+{
+
+	std::cout << "Setting up 1D variable scalings." << std::endl;
+
 	double flow_scale = es->parameters.get<double>("velocity_scale") * 
 										pow(es->parameters.get<double>("length_scale"),2.0);
 	double mean_pressure_scale = es->parameters.get<double>("density") *
 													pow(es->parameters.get<double>("velocity_scale"),2.0);
 
+	if(es->parameters.get<bool>("output_nondim"))
+	{
+		flow_scale = 1.0;
+		mean_pressure_scale = 1.0;
+		std::cout << "using nondim output" << std::endl;
+	}
+
 	if(es->parameters.get<bool>("reynolds_number_calculation"))
 	{
-		double velocity_scale = 1.0;
-		double pressure_scale = 1.0;
-		double flow_scale = 1.0;
-		double mean_pressure_scale = 1.0;
+		flow_scale = 1.0;
+		mean_pressure_scale = 1.0;
 
 	}
 
-	if(sim_3d)
-	{
-			
-		
-		// in 3D system we have u,v,w,p,u_adj,v_adj,w_adj,p_adj
-		add_to_variable_scalings(system_3d->variable_number ("u"),velocity_scale);
-		add_to_variable_scalings(system_3d->variable_number ("v"),velocity_scale);
-		if(threed)
-			add_to_variable_scalings(system_3d->variable_number ("w"),velocity_scale);
-
-		add_to_variable_scalings(system_3d->variable_number ("p"),pressure_scale);
-
-
-		if(es->parameters.get<bool>("optimisation_stabilised"))
-		{
-			add_to_variable_scalings(system_3d->variable_number ("u_adj"),velocity_scale);
-			add_to_variable_scalings(system_3d->variable_number ("v_adj"),velocity_scale);
-			if(threed)
-				add_to_variable_scalings(system_3d->variable_number ("w_adj"),velocity_scale);
-
-			add_to_variable_scalings(system_3d->variable_number ("p_adj"),pressure_scale);
-
-		}
-		
-
-	}
-
-	if(sim_1d)
-	{
-
-		unsigned int var_offset;
-		if(system_1d->number() == 0)
-			var_offset = 0;
-		else if(system_1d->number() == 1)
-			var_offset = vars_per_system[0];
-
-		//std::cout << "system_1d->number() = " << system_1d->number() << std::endl;
-
-		add_to_variable_scalings(system_1d->variable_number ("P") + var_offset,mean_pressure_scale);
-		add_to_variable_scalings(system_1d->variable_number ("Q") + var_offset,flow_scale);
-
-		if(system_radius->number() == 0)
-			var_offset = 0;
-		else if(system_radius->number() == 1)
-			var_offset = vars_per_system[0];
-		else if(system_radius->number() == 2)
-			var_offset = vars_per_system[0] + vars_per_system[1];
-
-		//std::cout << "radius system no = " << system_radius->number() << std::endl;
-		//std::cout << "radius var no = " << system_radius->variable_number ("radius") << std::endl;
-
-		add_to_variable_scalings(system_radius->variable_number ("radius") + var_offset,1.0);
-	}
-
-
+	var_scalings_1D.resize(4);
+	var_scalings_1D[0] = mean_pressure_scale;	// P
+	var_scalings_1D[1] = flow_scale;	// Q
+	var_scalings_1D[2] = 1.0;	// radius
+	var_scalings_1D[3] = 1.0;	// poiseuille
 
 
 }
-
-// here we setup the variable scalings that we want to use. 
-// the simulation is done in nondimensional variables and output in SI units. (not the particle deposition)
-void NavierStokesCoupled::add_to_variable_scalings(unsigned int var, double scaling)
-{
-
-	if(var_scalings.size() < var + 1)
-		var_scalings.resize(var+1,1.0);
-
-	var_scalings[var] = scaling;
-
-
-	//for(unsigned int i=0; i<var_scalings.size(); i++)
-	//	std::cout << "var_scalings[i] = " << var_scalings[i] << std::endl;
-
-}
-
-
-
 
 

@@ -44,6 +44,7 @@
 #include "surface_boundary.h"
 
 #include "forcing_function.h"
+#include "airway.h"
 
 #include "exact_solution_velocity.h"
 #include "exact_solution_pressure.h"
@@ -58,8 +59,8 @@ using namespace libMesh;
 class NSAssembler3D : public System::Assembly
 {
 	public:
-		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries) :
-			es (&es_in),pressure_coupled(false),estimating_error(false),threed(true)
+		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> _subdomains_3d, unsigned int _n_initial_3d_elem) :
+			es (&es_in),subdomains_3d(_subdomains_3d), n_initial_3d_elem(_n_initial_3d_elem),pressure_coupled(false),estimating_error(false),threed(true)
 		
 		{
 			//rather insist on calling this yourself before each assembly so that you 
@@ -74,6 +75,7 @@ class NSAssembler3D : public System::Assembly
 		// initialise bc information
 		virtual void init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values,
+											std::vector<double> flow_values,
 											std::vector<double> previous_flux_values,
 											std::vector<double> previous_previous_flux_values);
 
@@ -81,7 +83,7 @@ class NSAssembler3D : public System::Assembly
 		{
 			ErrorVector error;
 			this->assemble(error);
-			if(es->parameters.get<unsigned int>("preconditioner_type"))
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 			{
 				this->assemble_preconditioner();
 			}
@@ -96,6 +98,8 @@ class NSAssembler3D : public System::Assembly
 		virtual void set_pressure_coupled (bool _pressure_coupled) { pressure_coupled = _pressure_coupled;};
 		virtual void find_1d_boundary_nodes();	//here we set the primary_pressure_boundary_nodes_1d etc
 		virtual void estimate_error(ErrorVector& _error_vector);	//here we set the primary_pressure_boundary_nodes_1d etc
+		virtual void set_subdomains_1d (std::vector<unsigned int> _subdomains_1d) { subdomains_1d = _subdomains_1d;};
+		virtual void set_airway_data (std::vector<Airway>& _airway_data) { airway_data = _airway_data;};
 	
 	protected:
 		EquationSystems* es;
@@ -105,14 +109,20 @@ class NSAssembler3D : public System::Assembly
 		std::map<const int,double> 			interp_flow_bc_value;
 		std::map<const int,std::vector<Real> > boundary_centre;
 		std::map<const int,Real> 							boundary_radius;
-		bool pressure_coupled;
 		std::vector<dof_id_type> primary_pressure_boundary_nodes_1d;
 		std::vector<dof_id_type> secondary_pressure_boundary_nodes_1d;
 		std::vector<dof_id_type> primary_flux_boundary_nodes_1d;
 		std::vector<dof_id_type> secondary_flux_boundary_nodes_1d;
+		std::vector<SurfaceBoundary* >* surface_boundaries;
+		std::vector<unsigned int> subdomains_3d;
+		std::vector<unsigned int> subdomains_1d;
+
+		std::vector<Airway> airway_data;
+
+		int n_initial_3d_elem;
+		bool pressure_coupled;
 		bool estimating_error;
 		bool threed;
-		std::vector<SurfaceBoundary* >* surface_boundaries;
 
 };
 

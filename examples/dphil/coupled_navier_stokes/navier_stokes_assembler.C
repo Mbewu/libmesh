@@ -34,7 +34,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	 // unused
 
  
 	TransientLinearImplicitSystem * system;
@@ -64,14 +64,15 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   const double zeta_1 = es->parameters.get<double>("zeta_1");
   const double zeta_2 = es->parameters.get<double>("zeta_2");
   const double zeta_3 = es->parameters.get<double>("zeta_2");
-  const double period = es->parameters.get<double>("period");
+  //const double period = es->parameters.get<double>("period");	// unused
   const double E = es->parameters.get<double>("E");
   const unsigned int unsteady = es->parameters.get<unsigned int>("unsteady");
   const Real dt    = es->parameters.get<Real>("dt");
-	const double time = system->time;
+	//const double time = system->time;	// unused
 	const bool compliance_1d = es->parameters.get<bool>("compliance_1d");
 	const bool inertance_1d = es->parameters.get<bool>("inertance_1d");
   const unsigned int resistance_type_1d = es->parameters.get<unsigned int>("resistance_type_1d");
+	const unsigned int scale_mono_preconditioner = es->parameters.get<unsigned int>("scale_mono_preconditioner");
 
 	// if we are doing a reynolds_number_calculation we need to get the viscosity from reynolds_number
 	// length scale and velocity scale being 1
@@ -105,7 +106,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   std::vector<dof_id_type> dof_indices_parent_p;
   std::vector<dof_id_type> dof_indices_parent_q;
   std::vector<dof_id_type> dof_indices_daughter_1_p;
-  std::vector<dof_id_type> dof_indices_sibling_q;
+  std::vector<std::vector<dof_id_type> > dof_indices_siblings_q;
+  std::vector<std::vector<dof_id_type> > dof_indices_siblings_p;
+
+	// resistance scaling value
+	double mono_preconditioner_resistance_scaling = 0.;
 
   // Now we will loop over all the elements in the mesh that
   // live on the local processor. We will compute the element
@@ -120,39 +125,63 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   {
 		const Elem* elem = *el;
 		unsigned int subdomain_id = elem->subdomain_id();
-		if(subdomain_id > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), subdomain_id) != subdomains_1d.end())
 		{
 			//element data object starts numbering from 0
 			//and the values referenced in it also do so need to take this into account
 
 			const int current_el_idx = elem->id();
 			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
-			int parent_el_idx = (int)element_data[current_1d_el_idx][0] + n_initial_3d_elem;
-			int daughter_1_el_idx = (int)element_data[current_1d_el_idx][1] + n_initial_3d_elem;
-			int daughter_2_el_idx = (int)element_data[current_1d_el_idx][2] + n_initial_3d_elem;
-			int sibling_el_idx = (int)element_data[current_1d_el_idx][3] + n_initial_3d_elem;
-			int is_daughter_1 = (int)element_data[current_1d_el_idx][4];	//this is a bool duh!
-			const double l = element_data[current_1d_el_idx][5];	//nondimensionalised length
-			const double r = element_data[current_1d_el_idx][6]; //nondimensionalised radius
-			int generation = element_data[current_1d_el_idx][7];
+			bool has_parent = airway_data[current_1d_el_idx].has_parent();
+			int parent_el_idx = 0;
+			if(has_parent)
+				parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+			std::vector<unsigned int> daughter_el_ids = airway_data[current_1d_el_idx].get_daughters();
+			int daughter_1_el_idx = -1;
+			if(daughter_el_ids.size() > 0)
+				daughter_1_el_idx = daughter_el_ids[0] + n_initial_3d_elem;
+			
+			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+			std::vector<unsigned int> sibling_el_ids = airway_data[current_1d_el_idx].get_siblings();
+			for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+			{
+				sibling_el_ids[i] += n_initial_3d_elem;
+				//std::cout << "sibling_el_ids = " << sibling_el_ids[i] << std::endl;
+			}
+
+			int primary_sibling_el_idx = -1;
+			if(!is_daughter_1)
+				primary_sibling_el_idx = airway_data[current_1d_el_idx].get_primary_sibling() + n_initial_3d_elem;
+			
+			const double l = airway_data[current_1d_el_idx].get_length();	//nondimensionalised length
+			const double r = airway_data[current_1d_el_idx].get_radius(); //nondimensionalised radius
+			int generation = airway_data[current_1d_el_idx].get_generation();
+
+			bool has_sibling = false;
+			if(sibling_el_ids.size() > 0)
+				has_sibling = true;
 
 			//very dirty hack
-			if(parent_el_idx < n_initial_3d_elem)
+			if(!has_parent)
 				parent_el_idx = current_el_idx;
 
+			if(primary_sibling_el_idx  < n_initial_3d_elem)
+				primary_sibling_el_idx  = current_el_idx;
+
+			// don't need cause we check with size of sibling_el_ids
 			if(daughter_1_el_idx  < n_initial_3d_elem)
 				daughter_1_el_idx  = current_el_idx;
 
-			if(daughter_2_el_idx  < n_initial_3d_elem)
-				daughter_2_el_idx  = current_el_idx;
-
-			if(sibling_el_idx  < n_initial_3d_elem)
-				sibling_el_idx  = current_el_idx;
 			
 			const Elem* parent_elem = mesh.elem(parent_el_idx);
 			const Elem* daughter_1_elem = mesh.elem(daughter_1_el_idx);
-			const Elem* daughter_2_elem = mesh.elem(daughter_2_el_idx);
-			const Elem* sibling_elem = mesh.elem(sibling_el_idx);
+
+			std::vector<const Elem*> sibling_elems;
+			for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+				sibling_elems.push_back(mesh.elem(sibling_el_ids[i]));
+
+			//const Elem* primary_sibling_elem = mesh.elem(primary_sibling_el_idx); // unused
+			//const Elem* sibling_elem = mesh.elem(sibling_el_idx);
 
 			/*
 			if(parent_el_idx >= 0)
@@ -175,10 +204,18 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
       dof_map.dof_indices (parent_elem, dof_indices_parent_p, p_var);
       dof_map.dof_indices (parent_elem, dof_indices_parent_q, q_var);
       dof_map.dof_indices (daughter_1_elem, dof_indices_daughter_1_p, p_var);
-      dof_map.dof_indices (sibling_elem, dof_indices_sibling_q, q_var);
 
-      const unsigned int n_dofs   = 4;
-      const unsigned int n_p_dofs = 2;
+			dof_indices_siblings_q.resize(sibling_el_ids.size());
+			dof_indices_siblings_p.resize(sibling_el_ids.size());
+
+			for(unsigned int i=0; i< sibling_el_ids.size(); i++)
+			{
+		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_q[i], q_var);
+		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_p[i], p_var);
+			}
+
+      //const unsigned int n_dofs   = 4;	// unused
+      //const unsigned int n_p_dofs = 2;	// unused
 
 			// some parameters
 			// these are the conventional parameters divided by density because of the pressure scaling
@@ -198,6 +235,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			C = density*pow(velocity_scale,2)*C/length_scale;
 			I = I*length_scale/density;
 
+		//std::cout << "R = " << R << std::endl;
+		//std::cout << "viscosity = " << viscosity << std::endl;
+		//std::cout << "l = " << l << std::endl;
+		//std::cout << "r = " << r << std::endl;
+		//std::cout << "r^4 = " << pow(r,4.0) << std::endl;
+
 
 			// use given reynolds number is reynolds number calc
 			if(es->parameters.get<bool> ("reynolds_number_calculation"))
@@ -209,6 +252,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			{
 				//poiseuille resistance
 				R=R;
+				airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
 			else if(resistance_type_1d == 1)
 			{
@@ -222,14 +266,20 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				}
 
 				//pedley resistance
-				if(es->parameters.get<unsigned int> ("t_step") != 1 && 0.327 * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
+				// we also want to set here whether we used a pedley model
+				if((es->parameters.get<unsigned int> ("t_step") != 1 || es->parameters.get<unsigned int> ("nonlinear_iteration_1d") != 1) && 0.327 * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
 				{
 					
 					R = 0.327 * sqrt(reynolds_number_0d*2.*r/l) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+					std::cout << "gen = " << generation << ", using pedley" << std::endl;
 
 				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else if(resistance_type_1d == 2)
 			{
@@ -243,9 +293,15 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 				// van ertbruggen resistance
 				if(es->parameters.get<unsigned int> ("t_step") != 1 && gamma * sqrt(reynolds_number_0d*2.*r/l) > 1.0)
+				{
 					R = gamma * sqrt(reynolds_number_0d*2.*r/l) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else if(resistance_type_1d == 3)
 			{
@@ -258,19 +314,45 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 				// van ertbruggen resistance
 				if(es->parameters.get<unsigned int> ("t_step") != 1)
+				{
 					R = (constant + 2.1e-3 * reynolds_number_0d) * R;
+					airway_data[current_1d_el_idx].set_poiseuille(false);
+				}
 				else
+				{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
+				}
 			}
 			else
 			{
 					R=R;
+					airway_data[current_1d_el_idx].set_poiseuille(true);
 			}
 
-			if(generation <= 2)
-			{	
-				//std::cout << "resistance = " << R << std::endl;
+
+			// set the resistance to be used by the monolithic preconditioner
+			if(generation == 0)
+			{
+				if(R > mono_preconditioner_resistance_scaling)
+				{
+					mono_preconditioner_resistance_scaling = R;
+					std::cout << "l = " << l << std::endl;
+					std::cout << "viscosity = " << viscosity << std::endl;
+					std::cout << "r = " << r << std::endl;
+					std::cout << "M_PI = " << M_PI << std::endl;
+
+				}
 			}
+
+
+
+			// unused
+			//double flow_scale = es->parameters.get<double>("velocity_scale") * 
+			//									pow(es->parameters.get<double>("length_scale"),2.0);
+			//double mean_pressure_scale = es->parameters.get<double>("density") *
+			//												pow(es->parameters.get<double>("velocity_scale"),2.0);
+
 
 			//change for correctness, to change
 			//R = 8*R;
@@ -278,6 +360,8 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
 			const double in_pressure = es->parameters.get<double> ("in_pressure");
 			const double out_pressure = 0.0;
+
+			//std::cout << "resistance 1d = " << R << std::endl;
 
 			/*
 			std::cout << "I = " << I << std::endl;
@@ -293,12 +377,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				I = 0;
 
 			double old_p0 = system->old_solution(dof_indices_p[0]);
-			double old_p1 = system->old_solution(dof_indices_p[1]);
-			double old_q0 = system->old_solution(dof_indices_q[0]);
+			//double old_p1 = system->old_solution(dof_indices_p[1]);	// unused
+			//double old_q0 = system->old_solution(dof_indices_q[0]);	// unused
 			double old_q1 = system->old_solution(dof_indices_q[1]);
 		
 		
-			bool compute_using_monomials = false;
+			//bool compute_using_monomials = false;	// unused
 			{
 				// first we decide which equations go where based on the boundary conditions that exist
 
@@ -336,8 +420,10 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					//flow prescribed at inflow
 					if(es->parameters.get<unsigned int> ("bc_type_1d") == 0)
 					{
-						eqn_3_dof = dof_indices_q[0];		//put influx condition in eqn_3, no change
+						// these actually remain the same
+						// eqn_3_dof = dof_indices_q[0];		//put influx condition in eqn_3, no change
 						// if we also have the pressure prescribed at the outflow then eqn_4 is also unchanged, still p_out
+
 				
 					}
 					//pressure prescribed at inflow
@@ -355,46 +441,91 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				// ********** PUTTING THE EQUATIONS IN THE MATRIX AND RHS ********* //
 
 				// **** equation 1 - compliance
-	    	system->matrix->add (eqn_1_dof,dof_indices_q[1],1.0);
-	    	system->matrix->add (eqn_1_dof,dof_indices_q[0],-1.0);
+	    	add_to_matrices (system,eqn_1_dof,dof_indices_q[1],1.0);
+	    	add_to_matrices (system,eqn_1_dof,dof_indices_q[0],-1.0);
 
 				if(unsteady)
 				{
-	    		system->matrix->add (eqn_1_dof,dof_indices_p[0],C/dt);
+	    		add_to_matrices (system,eqn_1_dof,dof_indices_p[0],C/dt);
 	    		system->rhs->add (eqn_1_dof,C*old_p0/dt);
 				}
 
 				// **** equation 2 - resistance
-	    	system->matrix->add (eqn_2_dof,dof_indices_q[1],R);
-	    	system->matrix->add (eqn_2_dof,dof_indices_p[1],1.0);
-	    	system->matrix->add (eqn_2_dof,dof_indices_p[0],-1.0);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_q[1],R);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_p[1],1.0);
+	    	add_to_matrices (system,eqn_2_dof,dof_indices_p[0],-1.0);
 
 				if(unsteady)
 				{
-	    		system->matrix->add (eqn_2_dof,dof_indices_q[1],I/dt);
+	    		add_to_matrices (system,eqn_2_dof,dof_indices_q[1],I/dt);
 	    		system->rhs->add (eqn_2_dof,I*old_q1/dt);
 				}
 
 				// **** equation 3 - BC on inflow
 				if(parent_el_idx == current_el_idx)
 				{
+					//std::cout << "parent_el_idx = " << parent_el_idx << std::endl;
+					//std::cout << "current_el_idx = " << current_el_idx << std::endl;
 					// flow
 					if(es->parameters.get<unsigned int> ("bc_type_1d") == 0)
 					{
 						// now there is no zero on the 3rd equation
 						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn - not anymore it isn't
-				  	system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0*dt);
-						//std::cout << "dt = " << dt << std::endl;
-						std::cout << "flux_values[" << subdomain_id <<"] = " << flux_values[subdomain_id] << std::endl;
-						if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
+	
+						if(is_daughter_1)
 						{
-					  	system->rhs->add (eqn_3_dof,-flux_values[subdomain_id]);
+							
+							add_to_matrices (system,eqn_3_dof,dof_indices_q[0],-1.0);
+
+							std::cout << "flux dof in 0d = " << eqn_3_dof << std::endl;
+							if(has_sibling)
+							{
+								//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+								//std::cout << "sibling id daughter1 = " << sibling_el_ids[0] << std::endl;
+								//std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+								for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+									add_to_matrices (system,eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
+							}
+			
+							// boundary condition should be on side 0
+							std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
+							if(boundary_ids.size() == 0)
+								std::cout << "error, boundary does not have boundary id as expected, el idx = " << current_el_idx << std::endl;
+
+							//std::cout << "flux_values[" << boundary_ids[0] <<"] = " << flux_values[boundary_ids[0]] << std::endl;
+
+							if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
+							{
+								// if there is a bifurcation at the inflow then daughter_1 can add it
+								if(is_daughter_1)
+								{
+									std::cout << "double oopsie" << std::endl;
+									system->rhs->add (eqn_3_dof,-flux_values[boundary_ids[0]]);
+								}
+							}
+						}
+						else	// if we are a daughter 2 then we have a sibling and need to apply the pressure continuity condition
+						{
+							add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
+							//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
+							//std::cout << "sibling id daughter2 = " << sibling_el_ids[0] << std::endl;
+//							std::cout << "actual val = " << (int)airway_data[current_1d_el_idx][3] + n_initial_3d_elem << std::endl;
+							//std::cout << "n_initial_3d_elem = " << n_initial_3d_elem << std::endl;
+							//std::cout << "is_daughter_1 = " << is_daughter_1 << std::endl;
+							//std::cout << "current_1d_el_idx  = " << current_1d_el_idx  << std::endl;
+							//if(!(bool)is_daughter_1)
+							//	std::cout << "cool" << std::endl;
+							//else
+							//	std::cout << "couldn't get in" << std::endl;
+
+							for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+								add_to_matrices (system,eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
 						}
 					}
 					// pressure
 					else if(es->parameters.get<unsigned int> ("bc_type_1d") == 1)
 					{
-		    		system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
+		    		add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
 		    		system->rhs->add (eqn_3_dof,in_pressure);
 					}
 
@@ -404,15 +535,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					if(is_daughter_1)
 					{
 						// conservation of flux
-						system->matrix->add (eqn_3_dof,dof_indices_parent_q[1],1.0);
-						system->matrix->add (eqn_3_dof,dof_indices_q[0],-1.0);
-						system->matrix->add (eqn_3_dof,dof_indices_sibling_q[0],-1.0);
+						add_to_matrices (system,eqn_3_dof,dof_indices_parent_q[1],1.0);
+						add_to_matrices (system,eqn_3_dof,dof_indices_q[0],-1.0);
+						for(unsigned int i=0; i<sibling_el_ids.size(); i++)
+							add_to_matrices (system,eqn_3_dof,dof_indices_siblings_q[i][0],-1.0);
 					}
 					else
 					{
 						// parent pressure cont
-				  	system->matrix->add (eqn_3_dof,dof_indices_p[0],1.0);
-				  	system->matrix->add (eqn_3_dof,dof_indices_parent_p[1],-1.0);
+				  	add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
+				  	add_to_matrices (system,eqn_3_dof,dof_indices_parent_p[1],-1.0);
 					}
 
 				}
@@ -422,16 +554,16 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				if(daughter_1_el_idx  == current_el_idx)
 				{
 					//can only be pressure
-	    		system->matrix->add (eqn_4_dof,dof_indices_p[1],1.0);
+	    		add_to_matrices (system,eqn_4_dof,dof_indices_p[1],1.0);
 	    		system->rhs->add (eqn_4_dof,out_pressure);
 
 				}
 				else
 				{
 					//pressure continuity to daughter_1
-	    		system->matrix->add (eqn_4_dof,dof_indices_p[1],1.0);
-	    		system->matrix->add 
-							(eqn_4_dof,dof_indices_daughter_1_p[0],-1.0);
+	    		add_to_matrices (system,eqn_4_dof,dof_indices_p[1],1.0);
+	    		add_to_matrices
+							(system,eqn_4_dof,dof_indices_daughter_1_p[0],-1.0);
 				}
 			
 			}
@@ -439,13 +571,38 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
     }// end of subdomain conditional
 	}// end of element loop
 
+
+	es->parameters.set<double> ("mono_preconditioner_resistance_scaling") = mono_preconditioner_resistance_scaling;
+	std::cout << "mono_preconditioner_resistance_scaling set to be = " << es->parameters.get<double> ("mono_preconditioner_resistance_scaling") << std::endl;
+	if(scale_mono_preconditioner == 0)
+		std::cout << "scaling not used" << std::endl;
+
+	std::cout << "length_scale = " << length_scale << std::endl;
+	std::cout << "velocity_scale = " << velocity_scale << std::endl;
+
+
   // That's it.
 	//system->matrix->close();
 	//system->matrix->print();
 	//system->rhs->print();
 
+	//system->matrix->close();
+	//system->matrix->print();
+	//std::cout << "true rhs" << std::endl;
+	//system->rhs->print();
+
 	std::cout << "End 0D assembly" << std::endl;
   return;
+}
+
+// This adds values to the system matrix and/or preconditioner
+void NavierStokesAssembler::add_to_matrices (TransientLinearImplicitSystem * system, unsigned int row_number, unsigned int col_number, double value)
+{
+	
+	system->matrix->add (row_number,col_number,value);
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+		system->request_matrix("Preconditioner")->add (row_number,col_number,value);
+	
 }
 
 
@@ -571,7 +728,7 @@ void NavierStokesAssembler::assemble_stokes_1D ()
   for ( ; el != end_el; ++el)
   {				
     const Elem* elem = *el;
-		if(elem->subdomain_id() == 1)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
       // Get the degree of freedom indices for the
       // current element.  These define where in the global
@@ -747,16 +904,17 @@ void NavierStokesAssembler::assemble_stokes_1D ()
 }
 
 
-// total flux through boundary_id boundaries
-double NavierStokesAssembler::calculate_flux (const int boundary_id)
+// total flux through boundary_id boundaries, or at the second node of an element mid mesh
+double NavierStokesAssembler::calculate_flux (const int boundary_id, const int mid_mesh_element)
 {
 	double flux = 0.0;
+
 
   // Get a constant reference to the mesh object.
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	// unused
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -795,45 +953,65 @@ double NavierStokesAssembler::calculate_flux (const int boundary_id)
   {
 		const Elem* elem = *el;
 		//only concerned with 1d elements
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
-      for (unsigned int s=0; s<elem->n_sides(); s++)
+			if(mid_mesh_element < 0)
 			{
+		    for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
 
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-				if(boundary_ids.size() > 0) 
-				{ 
-					// dirichlet boundary conditions
-					if(boundary_ids[0] == boundary_id)
-					{	     
+					if(boundary_ids.size() > 0) 
+					{ 
+						// dirichlet boundary conditions
+						if(boundary_ids[0] == boundary_id)
+						{	     
 					
-						// Get the degree of freedom indices for the
-						// current element.  These define where in the global
-						// matrix and right-hand-side this element will
-						// contribute to.
-						dof_map.dof_indices (elem, dof_indices);
-						dof_map.dof_indices (elem, dof_indices_q, q_var);
+							// Get the degree of freedom indices for the
+							// current element.  These define where in the global
+							// matrix and right-hand-side this element will
+							// contribute to.
+							dof_map.dof_indices (elem, dof_indices);
+							dof_map.dof_indices (elem, dof_indices_q, q_var);
 
-						if(s == 0)
-							flux += (*system->solution) (dof_indices_q[0]);
-						else
-							flux += (*system->solution) (dof_indices_q[1]);
+							if(s == 0)
+								flux += (*system->solution) (dof_indices_q[0]);
+							else
+								flux += (*system->solution) (dof_indices_q[1]);
 
+						}
 					}
+				}
+			}
+			else
+			{
+				
+				const int current_el_idx = elem->id();
+				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+				if(current_1d_el_idx == (unsigned int)mid_mesh_element)
+				{
+					dof_map.dof_indices (elem, dof_indices);
+					dof_map.dof_indices (elem, dof_indices_q, q_var);
+
+					flux += (*system->solution) (dof_indices_q[1]);
+					
 				}
 			}
 		}
 	}
 
+	//std::cout << "flux calculated is " << flux << std::endl;
+
 	es->comm().sum(flux);
+	//std::cout << "flux calculated is " << flux << std::endl;
 			
 	return flux;
 }
 
 // average pressure over boundary_id boundaries
-double NavierStokesAssembler::calculate_pressure (const int boundary_id)
+double NavierStokesAssembler::calculate_pressure (const int boundary_id, const int mid_mesh_element)
 {
 	double pressure = 0.0;
 
@@ -841,7 +1019,7 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
   const MeshBase& mesh = es->get_mesh();
 
   // The dimension that we are running
-  const unsigned int dim = mesh.mesh_dimension();
+  //const unsigned int dim = mesh.mesh_dimension();	// unused
 
 	
 	TransientLinearImplicitSystem * system;
@@ -882,31 +1060,49 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
   {
 		const Elem* elem = *el;
 		//only concerned with 1d elements
-		if(elem->subdomain_id() > 0)
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
-      for (unsigned int s=0; s<elem->n_sides(); s++)
+			if(mid_mesh_element < 0)
 			{
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+		    for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-				if(boundary_ids.size() > 0) 
-				{ 
-					// dirichlet boundary conditions
-					if(boundary_ids[0] == boundary_id)
-					{	     
-						total_nodes++;
-						// Get the degree of freedom indices for the
-						// current element.  These define where in the global
-						// matrix and right-hand-side this element will
-						// contribute to.
-						dof_map.dof_indices (elem, dof_indices);
-						dof_map.dof_indices (elem, dof_indices_p, p_var);
+					if(boundary_ids.size() > 0) 
+					{ 
+						// dirichlet boundary conditions
+						if(boundary_ids[0] == boundary_id)
+						{	     
+							total_nodes++;
+							// Get the degree of freedom indices for the
+							// current element.  These define where in the global
+							// matrix and right-hand-side this element will
+							// contribute to.
+							dof_map.dof_indices (elem, dof_indices);
+							dof_map.dof_indices (elem, dof_indices_p, p_var);
 
-						if(s == 0)
-							pressure += (*system->solution) (dof_indices_p[0]);
-						else
-							pressure += (*system->solution) (dof_indices_p[1]);
+							if(s == 0)
+								pressure += (*system->solution) (dof_indices_p[0]);
+							else
+								pressure += (*system->solution) (dof_indices_p[1]);
+						}
 					}
+				}
+			}
+			else
+			{
+
+				const int current_el_idx = elem->id();
+				unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+				if(current_1d_el_idx == (unsigned int)mid_mesh_element)
+				{
+					total_nodes++;
+					dof_map.dof_indices (elem, dof_indices);
+					dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+					pressure += (*system->solution) (dof_indices_p[1]);
+					
 				}
 			}
 		}
@@ -915,8 +1111,12 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id)
 	es->comm().sum(pressure);
 	es->comm().sum(total_nodes);
 
-	// get the average pressure of course ;)
+	// get the average pressure of course ;) total_nodes should be 1
 	pressure = pressure/total_nodes;
+
+	//std::cout << "total_nodes = " << total_nodes << std::endl;
+	//std::cout << "pressure_calculated = " << pressure << std::endl;
+
 			
 	return pressure;
 }

@@ -84,13 +84,13 @@ void ExodusII_IO_Extended::write_discontinuous_exodusII(const std::string& name,
 
 	//std::cout<< "buildin names" << std::endl;
   es.build_variable_names  (solution_names, NULL, system_names);
-	//std::cout<< "buildin disc soln vec" << std::endl;
+	std::cout<< "buildin disc soln vec" << std::endl;
   es.build_discontinuous_solution_vector (v, system_names);
 
 	//for(unsigned int i=0; i< v.size(); i++)
 	//	std::cout << "v[" << i << "] = " << v[i] << std::endl; 
 
-	//std::cout<< "writin nodal data disc" << std::endl;
+	std::cout<< "writin nodal data disc" << std::endl;
   this->write_nodal_data_discontinuous(name, v, solution_names);
 
 }
@@ -99,9 +99,16 @@ void ExodusII_IO_Extended::write_discontinuous_exodusII(const std::string& name,
 void ExodusII_IO_Extended::write_time(const int timestep,
 														  const Real time)
 {
+#ifdef LIBMESH_HAVE_EXODUS_API
 	exio_helper->write_timestep(timestep,time);
+#endif
 }
 
+// NOTE: needs to be in here
+void ExodusII_IO_Extended::set_var_scalings(std::vector<double> scalings)
+{
+	var_scalings = scalings;
+}
 
 
 
@@ -717,11 +724,21 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
     }
 
 	//JAMES: make sure var_scalings has been initialised
-	if(var_scalings.size() < num_vars)
-		var_scalings.resize(num_vars,1.0);
+	if(var_scalings.size() < output_names.size())
+		var_scalings.resize(output_names.size(),1.0);
+
+	std::cout << "WRITING NODAL DATA" << std::endl;
+	for(unsigned int i=0; i<output_names.size(); i++)
+		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
+
+	std::cout << "num output vars = " << output_names.size() << std::endl; 
 
   // This will count the number of variables actually output
-  for (int c=0; c<num_vars; c++)
+
+	// on the root process we loop over all variables and put the values from each
+	// need to 
+
+    for (int c=0; c<num_vars; c++)
     {
       std::stringstream name_to_find;
 
@@ -752,7 +769,7 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
 
       // Copy out this variable's solution
       for(dof_id_type i=0; i<num_nodes; i++)
-        cur_soln[i] = soln[i*num_vars + c] * var_scalings[c];		//JAMES: we scale the 
+        cur_soln[i] = soln[i*num_vars + c] * var_scalings[variable_name_position];		//JAMES: we scale the 
 
 			// JAMES EDIT - may alsoo need a counter...
       exio_helper->write_nodal_values(variable_name_position+1,cur_soln,_timestep);
@@ -891,7 +908,7 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 {
   START_LOG("write_nodal_data_discontinuous()", "ExodusII_IO_Extended");
 
-	//std::cout << "herr" << std::endl;
+	std::cout << "herr" << std::endl;
   const MeshBase & mesh = MeshOutput<MeshBase>::mesh();
 
   int num_vars = cast_int<int>(names.size());
@@ -928,8 +945,14 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
   this->write_nodal_data_common(fname, output_names, /*continuous=*/false);
 #endif
 
-	if(var_scalings.size() < num_vars)
-		var_scalings.resize(num_vars,1.0);
+	if(var_scalings.size() < output_names.size())
+		var_scalings.resize(output_names.size(),1.0);
+
+	std::cout << "WRITING NODAL DATA DISCONTINUOUS" << std::endl;
+	for(unsigned int i=0; i<output_names.size(); i++)
+		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
+
+	std::cout << "num output vars = " << output_names.size() << std::endl; 
 
   if (mesh.processor_id())
     {
@@ -949,8 +972,12 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 	    if (pos == output_names.end())
 	      continue;
 
+
 	    unsigned int variable_name_position =
 				libmesh_cast_int<unsigned int>(pos - output_names.begin());
+
+			std::cout << "names[" << c << "] = " << names[c] << std::endl;
+			std::cout << "variable_name_position = " << variable_name_position << std::endl;
 
 #ifdef LIBMESH_USE_COMPLEX_NUMBERS
       std::vector<Real> real_parts(num_nodes);
@@ -972,8 +999,10 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 
       for(int i=0; i<num_nodes; i++)
 			{
-        cur_soln[i] = soln[i*num_vars + c] * var_scalings[c];
+        cur_soln[i] = soln[i*num_vars + c] * var_scalings[variable_name_position];
+				//std::cout << "cur_soln[" << i << "] = " << cur_soln[i] << std::endl;
 			}
+
 
 
       exio_helper->write_nodal_values(variable_name_position+1,cur_soln,_timestep);
@@ -1065,11 +1094,6 @@ const std::vector<std::string> & ExodusII_IO_Extended::get_elem_var_names()
 }
 
 
-// NOTE: needs to be in here
-void ExodusII_IO_Extended::set_var_scalings(std::vector<double> scalings)
-{
-	var_scalings = scalings;
-}
 
 
 // LIBMESH_HAVE_EXODUS_API is not defined, declare error() versions of functions...

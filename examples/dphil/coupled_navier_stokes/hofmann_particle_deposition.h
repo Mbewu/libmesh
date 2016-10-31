@@ -44,6 +44,7 @@
 
 #include "libmesh/point_locator_base.h"
 
+#include "airway.h"
 
 // Bring in everything from the libMesh namespace
 using namespace libMesh;
@@ -55,7 +56,7 @@ using namespace libMesh;
 class HofmannParticleDeposition
 {
 	public:
-		HofmannParticleDeposition (EquationSystems& es_in, std::vector<std::vector<double> >& element_data_in, unsigned int _num_generations);
+		HofmannParticleDeposition (EquationSystems& es_in, std::vector<Airway>& _airway_data, unsigned int _num_generations, std::vector<unsigned int> _subdomains_1d);
 
 		// efficiency of deposition of particle being deposited at this time
 		void calculate_deposition_efficiency(unsigned int t_step_in);
@@ -122,7 +123,7 @@ class HofmannParticleDeposition
 
 
 		EquationSystems* es;
-		std::vector<std::vector<double> > element_data;	
+		std::vector<Airway> airway_data;	
 		std::vector<std::vector<double> > efficiency_function; // [timestep][element_no], efficiency of deposition of particle being deposited
 		std::vector<double > total_efficiency_function; // [timestep][element_no], efficiency of deposition of particle being deposited
 		std::vector<std::vector<double> > alveolar_efficiency_per_generation;	// [timestep][generation] alveolar efficiency of deposition summed over all branches in this generation
@@ -147,6 +148,7 @@ class HofmannParticleDeposition
 		double dt;
 
 		std::vector<std::vector<double> > temporary_alveolar_tree;	
+		std::vector<unsigned int> subdomains_1d;
 
 };
 #endif //__hofmann_particle_deposition_h__

@@ -65,6 +65,9 @@ void ParmetisPartitioner::_do_partition (MeshBase& mesh,
 void ParmetisPartitioner::_do_repartition (MeshBase& mesh,
                                            const unsigned int n_sbdmns)
 {
+
+	std::cout << "in parmetis partitioner" << std::endl;
+
   libmesh_assert_greater (n_sbdmns, 0);
 
   // Check for an easy return

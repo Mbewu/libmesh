@@ -46,10 +46,9 @@ public:
 	{
 
 
-		
 
 		libmesh_geometry = _libmesh_geometry;		
-		std::cout << "libmesh_geometry = " << libmesh_geometry << std::endl;
+		//std::cout << "libmesh_geometry = " << libmesh_geometry << std::endl;
 
 		//libmesh_geometry = 0;
 		if(mesh.mesh_dimension() == 3)
@@ -85,35 +84,45 @@ public:
 
 			std::cout << "1" << std::endl;
 
+			int count = 0;
+			// note we may be reading in a 3d1d mesh so we need to exclude the 1d elements
 			for ( ; el != end_el; ++el)
 			{
 
+				count++;
+				//if(count%100 == 0)
+				//	std::cout << "count = " << count << std::endl;
+
 			  const Elem* elem = *el;
-
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-			      // Loop over the nodes on the side.
-			      for (unsigned int ns=0; ns<side->n_nodes(); ns++)
-			      {
-							std::vector<boundary_id_type> side_boundary_ids = mesh.boundary_info->boundary_ids(side->get_node(ns));
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
+						
+							// now we know we are on a boundary, are we on the edge of a boundary
+					    AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
 
-							// if node has multiple boundary ids then it is on the edge and we add it to the list.
-							if(side_boundary_ids.size() > 1)
-								boundary_points.push_back(*side->get_node(ns));
+					    // Loop over the nodes on the side.
+					    for (unsigned int ns=0; ns<side->n_nodes(); ns++)
+					    {
+								std::vector<boundary_id_type> side_boundary_ids = mesh.boundary_info->boundary_ids(side->get_node(ns));
+
+								// if node has multiple boundary ids then it is on the edge and we add it to the list.
+								if(side_boundary_ids.size() > 1)
+									boundary_points.push_back(*side->get_node(ns));
+							}
+
+
+							std::vector<Point> random_point(1,side->centroid());
+							normal += side->volume() * face_normals[0];
 						}
-
-
-						std::vector<Point> random_point(1,side->centroid());
-						normal += side->volume() * face_normals[0];
 					}
 				}
 			}
@@ -121,20 +130,25 @@ public:
 			// rescale normal
 			normal = normal.unit();
 
-			std::cout << "2" << std::endl;
+			std::cout << "2 yellow" << std::endl;
+
 /*
 			for(unsigned int i=0; i< boundary_points.size(); i++)
 			{
 				std::cout << "boundary_point[" << i << "] = " << boundary_points[i] << std::endl;
 			}
-	*/		
-			std::cout << "normal = " << normal << std::endl;
+*/			
+			//std::cout << "normal = " << normal << std::endl;
+
+
+			std::cout << "boundary_points.size() = " << boundary_points.size() << std::endl;
 
 			// sort the boundary points vector and remove duplicate boundary points
 			double tol = 1e-10;
 			std::vector<Point> sorted_boundary_points;
 			sorted_boundary_points.push_back(boundary_points[0]);
 			boundary_points.erase(boundary_points.begin() + 0);
+
 
 			for(unsigned int j=0; j < sorted_boundary_points.size(); j++)
 			{
@@ -186,15 +200,32 @@ public:
 
 			if(threed)
 			{
+
 				// calculate the centroid using the wikipedia formula
 				// we need to map to a 2d surface so choose an origin
+				// it is possible that if we have refined then boundary points 0,1,2 
+				// lie in a line which is bad, so we iterate to get a good third point
 				Point origin = boundary_points[5];
-				//basis in surface
-				Point basis_1 = boundary_points[0] - boundary_points[1];
-				Point basis_2 = boundary_points[0] - boundary_points[2];
-				//find vector orthogonal to vector_in_plane_1 that is component
-				basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
-	
+				unsigned int point_2 = 2;
+				Point basis_1;
+				Point basis_2;
+				do
+				{
+					//basis in surface
+					basis_1 = boundary_points[0] - boundary_points[1];
+					basis_2 = boundary_points[0] - boundary_points[point_2];
+					//find vector orthogonal to vector_in_plane_1 that is component
+					basis_2 = basis_2 - basis_2*basis_1	/(basis_1*basis_1) * basis_1;
+					point_2++;
+				}while(basis_2.size() < 1e-10 && point_2 < boundary_points.size());
+				
+				if(basis_2.size() < 1e-10)
+				{
+					std::cout << "error in surface_boundary.h, basis for surface cannot be found" << std::endl;
+					std::exit(0);
+				}	
+
+
 				basis_1 = basis_1.unit();
 				basis_2 = basis_2.unit();
 
@@ -224,7 +255,7 @@ public:
 
 				area /= 2.;
 
-				std::cout << "area = " << area << std::endl;
+				//std::cout << "area = " << area << std::endl;
 
 
 				centroid = 0.;
@@ -344,7 +375,7 @@ public:
 				area = (boundary_points[1] - boundary_points[0]).size();
 			}
 
-			std::cout << "centroid = " << centroid << std::endl;
+			//std::cout << "centroid = " << centroid << std::endl;
 
 		}
 		else
@@ -380,19 +411,25 @@ public:
 
 			  const Elem* elem = *el;
 
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-						normal += side->volume() * face_normals[0];
-					}
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary, are we on the edge of a boundary
+
+						  AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
+
+							normal += side->volume() * face_normals[0];
+						}
+
+					}	
 				}
 			}
 
@@ -416,26 +453,35 @@ public:
 
 			  const Elem* elem = *el;
 
-				for (unsigned int s=0; s<elem->n_sides(); s++)
+				// 0,1,2 are edge elements -- 27 is a nodeelem
+				if(elem->type() > 2 && elem->type() != 27)
 				{
-					//for some reason it is natural to have more than one boundary id per side or even node
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-					if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+					for (unsigned int s=0; s<elem->n_sides(); s++)
 					{
-						// now we know we are on a boundary, are we on the edge of a boundary
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						//for some reason it is natural to have more than one boundary id per side or even node
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
-						Point elem_centroid = side->centroid();
-						centroid += side->volume() * elem_centroid;
-						total_area += side->volume();
+
+						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary, are we on the edge of a boundary
+					    AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
+
+							Point elem_centroid = side->centroid();
+							centroid += side->volume() * elem_centroid;
+							total_area += side->volume();
+						}
 					}
 				}
 			}
 
+
 			// rescale normal
 			centroid /= total_area;
+
+			std::cout << "total_area = " << total_area << std::endl;
+			std::cout << "centroid = " << centroid << std::endl;
 
 			//calculate
 
@@ -467,43 +513,87 @@ public:
 		const std::vector<Point>&  q_point = fe_face->get_xyz();
 	  const std::vector<Real>&   JxW_face = fe_face->get_JxW();
 
-		parabolic_integral = 0.;
 		area = 0.;
 
-			std::cout << "7" << std::endl;
+			std::cout << "6" << std::endl;
 
 		for ( ; el != end_el; ++el)
 		{
 
 			const Elem* elem = *el;
 
-			for (unsigned int s=0; s<elem->n_sides(); s++)
+			// 0,1,2 are edge elements -- 27 is a nodeelem
+			if(elem->type() > 2 && elem->type() != 27)
 			{
-				//for some reason it is natural to have more than one boundary id per side or even node
-				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
-
-				//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
-
-				if(boundary_ids.size() > 0) 
+				for (unsigned int s=0; s<elem->n_sides(); s++)
 				{
-					if(boundary_ids[0] == surface_boundary_id) 
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+					//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
+
+					if(boundary_ids.size() > 0) 
 					{
-						// now we know we are on a boundary integrate over the dofs
-			      AutoPtr<Elem> side (elem->build_side(s));
-						fe_face->reinit(elem, s);
+						if(boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary integrate over the dofs
+
+					    AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
 	
 						
-						for (unsigned int qp=0; qp<qrule.n_points(); qp++)
-						{
-							double r = get_normalised_distance_from_centroid (q_point[qp]);
-							double radius = 1.0;
-							double parabola_value = (pow(radius,2)-pow(r,2));
-							parabolic_integral += parabola_value * JxW_face[qp];
-							area += JxW_face[qp];
+							for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+							{
+								area += JxW_face[qp];
+							}
 						}
 					}
 				}
 			}
+		}
+
+			std::cout << "6a" << std::endl;
+
+		el     = mesh.active_elements_begin();
+
+		parabolic_integral = 0.;
+		for ( ; el != end_el; ++el)
+		{
+
+			const Elem* elem = *el;
+
+
+			// 0,1,2 are edge elements -- 27 is a nodeelem
+			if(elem->type() > 2 && elem->type() != 27)
+			{
+				for (unsigned int s=0; s<elem->n_sides(); s++)
+				{
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+					//std::cout << "boundary_ids[0] = " << boundary_ids[0] << std::endl;
+
+					if(boundary_ids.size() > 0) 
+					{
+						if(boundary_ids[0] == surface_boundary_id) 
+						{
+							// now we know we are on a boundary integrate over the dofs
+
+					    AutoPtr<Elem> side (elem->build_side(s));
+							fe_face->reinit(elem, s);
+	
+						
+							for (unsigned int qp=0; qp<qrule.n_points(); qp++)
+							{
+								double r = get_normalised_distance_from_centroid (q_point[qp]);
+								double radius = 1.0;
+								double parabola_value = (pow(radius,2)-pow(r,2));
+								parabolic_integral += parabola_value * JxW_face[qp];
+							}
+						}
+					}
+				}
+			}					
 
 			//if axisym then need to double the parabolic integral calculated
 			// but not in use currently
@@ -511,7 +601,7 @@ public:
 				parabolic_integral *= 2.0;
 		}
 
-			std::cout << "8" << std::endl;
+			std::cout << "7" << std::endl;
 		//std::cout << "parabola integral = " << parabolic_integral << std::endl;
 		//std::cout << "area = " << area << std::endl;
 
@@ -544,8 +634,13 @@ public:
 				// first find the angle between the point-centroid and the ref_point-centroid
 				double angle = acos(ref_line * line / (line.size() * ref_line.size()));//dot product formula.
 
+				//std::cout << "should be cool num = " << ref_line * line / (line.size() * ref_line.size()) << std::endl;
+				//std::cout << "diff = " << fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) << std::endl;
 				if(fabs(ref_line * line / (line.size() * ref_line.size()) - 1.0) < tol)	// for 0 degrees
+				{
+					//std::cout << "hi" << std::endl;
 					angle = 0.;
+				}
 				else if(fabs(ref_line * line / (line.size() * ref_line.size()) + 1.0) < tol) // for 180 degrees
 					angle = pi;
 
@@ -553,7 +648,8 @@ public:
 				Point orthogonal_component = line - ref_line*line/(ref_line*ref_line) * ref_line;
 
 				// if opposite direction then for the angle we need 360 - angle
-				if(orthogonal_component * increasing_angle_direction < 0)
+				// and not on zero..
+				if(orthogonal_component * increasing_angle_direction < 0 && angle > tol)
 					angle = 2*pi - angle;
 
 				// next find between which points it is, could do a nice search but whatever
@@ -593,11 +689,17 @@ public:
 				std::cout << "other_small_angle = " << pi - small_angle - opposite_angle << std::endl;
 				*/
 
+				//std::cout << "in radius calc, radius = " << a << std::endl;
+				//std::cout << "angle = " << angle << std::endl;
+				//std::cout << "small_angle = " << small_angle << std::endl;
+
 				return line.size() / correct_radius;
 			}
 			else
 			{
-
+				//std::cout << "in norm distance." << std::endl;
+				//std::cout << "centroid = "<< centroid<< std::endl;
+				//std::cout << "max_radius = "<< get_max_radius()<< std::endl;
 				double distance = (p - centroid).size();
 
 				return distance/get_max_radius();		//radius is always 0.5 dudeman
@@ -722,17 +824,23 @@ public:
 
 			if(libmesh_geometry)
 			{
-				std::cout << "no support for function SurfaceBoundary::get_max_radius() for 3D libmesh geometries... exiting" << std::endl;
-				std::exit(0);
+				//std::cout << "no support for function SurfaceBoundary::get_max_radius() for 3D libmesh geometries... exiting" << std::endl;
+				//std::exit(0);
+				std::cout << "assuming square boundary for libmesh 3D geometry" << std::endl;
+				max_radius = sqrt(area/2.0);
+		
 			}
+			else
+			{
 
-			for(unsigned int i=0; i<boundary_point_radii.size(); i++)
-				if(boundary_point_radii[i] > max_radius)
-					max_radius = boundary_point_radii[i];
+				for(unsigned int i=0; i<boundary_point_radii.size(); i++)
+					if(boundary_point_radii[i] > max_radius)
+						max_radius = boundary_point_radii[i];
+			}
 		}
 		else
 		{
-			
+			//mesh has already been scaled
 			if(es->parameters.get<unsigned int> ("geometry_type") == 5)
 			{
 				std::cout << "no support for function SurfaceBoundary::get_max_radius() for expanding pipe geometries... exiting" << std::endl;
@@ -740,9 +848,15 @@ public:
 			}
 			
 			if(libmesh_geometry)
-				max_radius = es->parameters.get<double>("cube_width")/2.0;
-			else
+			{
+				//max_radius = es->parameters.get<double>("cube_width")/2.0;
 				max_radius = area/2.0;
+			}
+			else
+			{
+				max_radius = area/2.0;
+				//std::cout << "hey max_radius = " << max_radius << std::endl;
+			}
 		}
 
 		

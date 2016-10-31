@@ -69,6 +69,24 @@ public:
 		// hmmm we want like  the p(2) to equal 0 for the initial condition, 
 		// assuming centroid is at p(2) = 0.		
 		Point p_xy(x,y,z);
+
+		bool along_line = false;
+		if(fabs(x/y - 1) < 1e-10)
+		{
+			along_line = true;
+			//std::cout << std::endl;
+			//std::cout << "x = " << x << std::endl;
+		}
+		//std::cout << "X/Y = " << x/y << std::endl;
+
+		
+		//double r_before_normed = r/0.5;	// unused
+
+		if(along_line)
+		{
+			//std::cout << "r_before = " << r << std::endl;
+			//std::cout << "r_before_normed = " << r_before_normed << std::endl;
+		}
 		// using new definition
 		if(surface_boundary_object != NULL)
 		{
@@ -77,6 +95,14 @@ public:
 			area = surface_boundary_object->get_area();
 			radius = 1.0;//surface_boundary_object->get_max_radius();
 
+			//std::cout << "r = " << r << std::endl;
+			//std::cout << "radius = " << radius << std::endl;
+
+			if(along_line)
+			{
+				//std::cout << "r_after = " << r << std::endl;
+				//std::cout << "diff: r_before_normed - r_after = " << r_before_normed - r  << std::endl;
+			}
 			//std::cout << "centroid = " << surface_boundary_object->get_centroid() << std::endl;
 
 		}
@@ -92,8 +118,13 @@ public:
 			{
 				radius = es->parameters.get<double> ("radius");
 				r = fabs(y - radius)/radius;
+				//r = fabs(y-radius);
+				//std::cout << "radius = " << radius << std::endl;
+				//std::cout << "r = " << r << std::endl;
 			}
 		}
+
+
 
 		//make nondimensional
 		double velocity_magnitude = 0.;
@@ -111,6 +142,8 @@ public:
 			
 		}
 			
+
+		
 
 
 		double direction = 1.0;
@@ -140,6 +173,12 @@ public:
 			{
 				// not right but who fuckin cares..
 				// better to have max v == 1
+				//std::cout << "hi - " << direction / normalisation_constant * (pow(radius,2)-pow(r,2)) * es->parameters.get<double>("time_scaling") * flow_mag << std::endl;
+				//std::cout << direction << std::endl;
+				//std::cout << es->parameters.get<double>("time_scaling") << std::endl;
+				//std::cout << flow_mag  << std::endl;
+				//std::cout << normalisation_constant  << std::endl;
+				//std::cout << (pow(radius,2)-pow(r,2))  << std::endl;
 				return direction / normalisation_constant * (pow(radius,2)-pow(r,2)) * es->parameters.get<double>("time_scaling") * flow_mag;//*(pow(radius,2)-r*r);
 			}
 			else
@@ -205,9 +244,9 @@ public:
 		   const Real time,
 		   DenseVector<Number>& output)
 	{
-
 		//we want the thing to go in the negative normal direction
 		double inflow_magnitude = (*this)(p,time);
+		double angle_of_inflow = es->parameters.get<double> ("angle_of_inflow");
 
 
 		// use the object if defined otherwise defaults
@@ -221,6 +260,17 @@ public:
 		}
 		else 
 			normal = surface_boundary_object->get_normal();
+
+
+		// potentially rotate the flow direction
+		if(fabs(angle_of_inflow) > 1e-10)
+		{
+			Point old_normal;
+			old_normal = normal;
+			normal(0) = old_normal(0)*cos(angle_of_inflow) - old_normal(1)*sin(angle_of_inflow);
+			normal(1) = old_normal(0)*sin(angle_of_inflow) + old_normal(1)*cos(angle_of_inflow);
+		}
+
 
 		// need a special case for womersley where we want to impose over whole volume initially
 		if(!es->parameters.get<bool> ("prescribed_womersley"))
