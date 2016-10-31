@@ -345,7 +345,7 @@ petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d
 petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
-#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
+petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
 
 # Euclid (hypre)
 #petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres  -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type hypre -convection_diffusion_pc_hypre_type euclid -convection_diffusion_ksp_monitor'
@@ -487,7 +487,7 @@ petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type 
 petsc_3d1d_navier_stokes_gmres_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # General fieldsplit
-petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-6 -ns3d1d_fieldsplit_0_ksp_atol 1e-8  -ns3d1d_fieldsplit_0_ksp_max_it 5 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_navier_stokes_fieldsplit_solver_options = '-ns3d1d_fieldsplit_0_ksp_type gmres -ns3d1d_fieldsplit_0_ksp_rtol 1.0e-2 -ns3d1d_fieldsplit_0_ksp_atol 1e-8  -ns3d1d_fieldsplit_0_ksp_max_it 5 -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 # General fieldsplit (preonly)
 petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_ksp_pc_side right -ns3d1d_fieldsplit_0_pc_type fieldsplit -ns3d1d_fieldsplit_0_pc_fieldsplit_type schur -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_factorization_type upper -ns3d1d_fieldsplit_0_pc_fieldsplit_schur_precondition a11 -ns3d1d_fieldsplit_0_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
@@ -540,7 +540,7 @@ petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
 preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 6
+preconditioner_type_3d1d = 12
 # 0 - direct, 1 - gmres (ilu etc) 2 - pressure mass matrix
 preconditioner_type_schur_stokes = 0
 monolithic_navier_stokes_preonly = 1
@@ -572,6 +572,7 @@ leaky_lid_driven_cavity = true
 threed = true
 pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
+mesh_input_scaling_1d = 0.067 #1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
 gravemeier_element_length = false
 no_refinement = 0
 output_no_refinement = 0 #okay this only works for going to coarser mesh
@@ -643,31 +644,33 @@ mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.m
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_centreline_based.xda
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_1x1_bdy_6.xda
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_1_bifurc_short_2_ref1_bdy_2.xda
-mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_ref1.5_bdy_1.xda
+mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_ref1.xda
+mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_outlets_9_refoutlet_2.xda
 #mesh_file = meshes/meshes_for_ns_study/test.xda
 #mesh_file = meshes/meshes_for_ns_study/structured_tube_bdy_1.msh
-inflow_bdy_id = 21	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
+#mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
+inflow_bdy_id = 11	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
 unsteady = 1
 stokes_ic = false
 angle_of_inflow = 0.	#pi/4
 ramp_duration = .0
-end_time = 50.0
-period = 200.0
-dt =10.0
+end_time = 500.0
+period = 1000.0
+dt =5.0
 newton = 0
 viscosity_controlled = false
 max_newton_iterations = 30
 multiply_system_by_dt = false
-restart_time = 40.
-restart_time_step = 4
+restart_time = 0.
+restart_time_step = 0
 write_interval = 0.5
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
 element_length_scaling = 1.25
 output_nondim = true
-sim_type = 0
+sim_type = 5
 reynolds_number_calculation = true
 no_output = false
 max_initial_picard = 5
@@ -683,19 +686,21 @@ num_generations_2 = 1
 num_generations_3 = 1
 num_generations_4 = 1
 random_1d_generations = 0	# the number is the maximum number of 1d generations
-num_generations_string = 11 #1458769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
-length_diam_ratio = 3.36e-2
+num_generations_string = 22222222222222222222 #1458769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
+length_diam_ratio = 3.36e0
 length_diam_ratio_1 = 2.822
 length_diam_ratio_2 = 8.9252
 twod_oned_tree = false	# set to false if you want to be able to predict the resistance easily
 output_resistance = false
-input_1d_file = meshes/APLE0027688_truncated/centrelines_remeshed/output_airways_full_james
-match_1d_mesh_to_3d_mesh = false
+_read_1d_mesh = true
+input_1d_file = meshes/meshes_for_3d0d_coupling_test/APLE0027688_truncated_0d/outlets_9/output_airways_full_james
+match_1d_mesh_to_3d_mesh = true
+matching_3d1d_tolerance = 0.2
 num_1d_trees = 1
 assume_symmetric_tree = false
 calculate_1d_info_at_coupling_nodes = false
-radius_on_edge = false
+radius_on_edge = true
 renumber_nodes_and_elements = false
 resistance_type_1d = 0
-output_folder = results/ns_study/full_mesh/re500/unsteady/ref1.5_bdy1/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+output_folder = results/ns_3d0d_testing/outlets_9/test/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
 restart_folder = results/ns_study/full_mesh/re500/unsteady/ref1.5_bdy1/

@@ -1644,6 +1644,7 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"known_boundary_conditions",false);
 
 	set_bool_parameter(infile,"renumber_nodes_and_elements",true);
+	set_double_parameter(infile,"matching_3d1d_tolerance",0.);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());

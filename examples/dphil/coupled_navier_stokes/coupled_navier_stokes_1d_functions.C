@@ -660,7 +660,7 @@ void NavierStokesCoupled::read_1d_mesh ()
 
 					//std::cout << "distance = " << distance << std::endl;
 					//std::cout << "max_radius = " << max_radius << std::endl;
-					if(distance < max_radius)
+					if(distance < max_radius + es->parameters.get<double> ("matching_3d1d_tolerance"))
 					{
 						std::cout << "coupling surface found = " << i << std::endl;
 						boundary_id_to_tree_id[i] = m;
