@@ -756,14 +756,19 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,NULL,&A11);
 
 	// copy the schur_complement_approx containing the stokes approximation to the S_approx
-	ierr = MatDuplicate(schur_complement_approx,MAT_COPY_VALUES,&shell->S_approx);
+	if(schur_complement_approx == NULL)
+		ierr = MatDuplicate(A11,MAT_COPY_VALUES,&shell->S_approx);
+	else
+	{
+		ierr = MatDuplicate(schur_complement_approx,MAT_COPY_VALUES,&shell->S_approx);
 	
-	// S_approx = A11 - S_approx or S_approx = A11
-	if(schur_0d)
-		ierr = MatScale(shell->S_approx,0.0);
+		// S_approx = A11 - S_approx or S_approx = A11
+		if(schur_0d)
+			ierr = MatScale(shell->S_approx,0.0);
 
-	ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
-	ierr = MatScale(shell->S_approx,-1.0);
+		ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
+		ierr = MatScale(shell->S_approx,-1.0);
+	}
 
 
 

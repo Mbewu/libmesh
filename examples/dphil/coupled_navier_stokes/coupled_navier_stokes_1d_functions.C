@@ -1199,8 +1199,12 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 	*/
 
+
+	std::cout << "before partition?" << std::endl;
   // Done building the mesh.  Now prepare it for use.
   mesh.prepare_for_use (/*skip_renumber =*/ false);
+
+	std::cout << "after partition?" << std::endl;
 
 
 

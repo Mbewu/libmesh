@@ -11,7 +11,7 @@
 // set_unsigned_int_parameter
 // set_int_parameter
 // set_bool_parameter
-// set_string_parameter
+// set_string_parameterrea
 // output_flux_and_pressure
 // update_times
 // update_time_scaling
@@ -223,13 +223,27 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
 
-	// ************** SET UP 3D STUFF **************** //
+	// ************** SET UP 3D MESH **************** //
 	if(sim_3d)
 	{
 		setup_3d_mesh(&*es,mesh);
+	// in case not set already
+	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
-		es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
+	}
 
+
+	// ******************** SETUP 1D MESH ********************* //
+	if(sim_1d)
+	{
+
+		setup_1d_mesh();
+
+	}
+
+	// ************* SET UP 3D SYSTEM **************** //
+	if(sim_3d)
+	{
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
 			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 		else
@@ -250,14 +264,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	}
 
-	// in case not set already
-	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
-	// ******************** SETUP 1D STUFFS ********************* //
+
+
+	// ******************* SETUP 1D SYSTEM ******************** //
 	if(sim_1d)
 	{
-
-		setup_1d_mesh();
 		ns_assembler = AutoPtr<NavierStokesAssembler>
 								(new NavierStokesAssembler(*es,airway_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -2655,7 +2667,10 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 	std::cout << "Reading input boundary conditions file." << std::endl;
 
 	// read the file 
-	std::ifstream input_boundary_conditions_file(es->parameters.get<std::string>("input_boundary_conditions_filename"));
+
+		//std::ifstream  input_file_src(input_file.c_str(), std::ios::binary);
+
+	std::ifstream input_boundary_conditions_file((es->parameters.get<std::string>("input_boundary_conditions_filename")).c_str(), std::ios::binary);
 	if(!input_boundary_conditions_file.good())
 	{
 		std::cout << "Error reading input boundary conditions file." << std::endl;
