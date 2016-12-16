@@ -49,7 +49,7 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 	tree_elem_elem_map.resize(0);		//for all the things, parent, daughters and sibling
 	boundary_nodes_1d.resize(mesh.boundary_info->n_boundary_ids() - 2, std::vector<unsigned int>(4));
 
-
+	std::cout << "before loop" << std::endl;
   for ( ; el != end_el; ++el)
   {
     const Elem* elem = *el;
@@ -76,9 +76,11 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
     if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
-
+			//std::cout << "hello" << std::endl;
 			//***** first calculate the ids on the boundary
 			const int current_el_idx = elem->id();
+			//std::cout << "elem id = " << elem->id() << std::endl;
+			//std::cout << "n_initial_3d_elem = " << n_initial_3d_elem << std::endl;
 
       // Get the degree of freedom indices for the
       // current element.  These define where in the global
@@ -88,23 +90,30 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
       dof_map.dof_indices (elem, dof_indices_p, p_var);
       dof_map.dof_indices (elem, dof_indices_q, q_var);
 
+			//std::cout << "hello" << std::endl;
 
 
 			//****** next calculate the coupling between 1d elements
 			int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
 			bool has_parent = airway_data[current_1d_el_idx].has_parent();
 			int parent_el_idx = 0;
+			//std::cout << "hello" << std::endl;
 			if(has_parent)
 				parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+			//std::cout << "hello" << std::endl;
 			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+			//std::cout << "hello, current_1d_el_idx = " << current_1d_el_idx << std::endl;
 			std::vector<unsigned int> daughters_el_idx = airway_data[current_1d_el_idx].get_daughters();
+			//std::cout << "hello" << std::endl;
 			for(unsigned int i=0; i<daughters_el_idx.size(); i++)
 				daughters_el_idx[i] += n_initial_3d_elem;
 
+			//std::cout << "hello" << std::endl;
 			std::vector<unsigned int> siblings_el_idx = airway_data[current_1d_el_idx].get_siblings();
 			for(unsigned int i=0; i<siblings_el_idx.size(); i++)
 				siblings_el_idx[i] += n_initial_3d_elem;
 			
+			//std::cout << "hello" << std::endl;
 			if(coupled)
 			{
 				std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,0);
@@ -120,18 +129,21 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 				}
 			}
 
+			//std::cout << "hello" << std::endl;
 			if(has_parent)
 			{
 				std::map<dof_id_type,dof_id_type> temp_map;
 				temp_map[elem->id()] = parent_el_idx;
 				tree_elem_elem_map.push_back(temp_map);
 			}
+			//std::cout << "hello" << std::endl;
 			for(unsigned int i=0; i<daughters_el_idx.size(); i++)
 			{
 				std::map<dof_id_type,dof_id_type> temp_map;
 				temp_map[elem->id()] = daughters_el_idx[i];
 				tree_elem_elem_map.push_back(temp_map);
 			}
+			//std::cout << "hello" << std::endl;
 
 			for(unsigned int i=0; i<siblings_el_idx.size(); i++)
 			{
@@ -139,10 +151,13 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 				temp_map[elem->id()] = siblings_el_idx[i];
 				tree_elem_elem_map.push_back(temp_map);
 			}
+			//std::cout << "goodbye" << std::endl;
 			
     }
 
 	}
+
+	std::cout << "after loop" << std::endl;
 
   {
 		TransientLinearImplicitSystem * system;

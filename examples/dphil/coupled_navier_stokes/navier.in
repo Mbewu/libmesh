@@ -1,4 +1,4 @@
-# File for inputting data so don't need command line!
+# File for inputting data so don't need command line!he
 
 ###############################################################################
 ####################### INPUT 3D MESH STUFF #########################################
@@ -437,6 +437,7 @@ petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-
 ##### 1D solver options #####
 petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
+petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
 
 
@@ -465,6 +466,9 @@ petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e
 # direct
 petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right'
 
+# direct
+petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package superlu_dist -ns3d1d_ksp_pc_side right'
+
 # ilu iterative
 petsc_3d1d_gmres_solver_options = '-ns3d1d_ksp_type gmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_pc_type hypre -ns3d1d_pc_hypre_type euclid -ns3d1d_ksp_pc_side right -ns3d1d_ksp_monitor'
 
@@ -480,7 +484,7 @@ petsc_3d1d_gmres_solver_options = '-ns3d1d_ksp_type gmres -ns3d1d_ksp_rtol 1.0e-
 petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # Superlu_dist
-#petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_0_ksp_monitor'
+petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # iterative
 petsc_3d1d_navier_stokes_gmres_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type hypre -ns3d1d_fieldsplit_0_pc_hypre_type euclid  -ns3d1d_fieldsplit_0_ksp_monitor'
@@ -500,6 +504,9 @@ petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options = '-ns3d1d_fieldsplit
 
 # direct
 petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_1_ksp_monitor'
+
+# direct
+petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_1_ksp_monitor'
 
 # iterative pre
 #petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type hypre -ns3d1d_fieldsplit_1_pc_hypre_type euclid -ns3d1d_fieldsplit_1_ksp_monitor'
@@ -558,17 +565,17 @@ reynolds_number = 1.0
 streamline_diffusion = true
 stokes = false
 cube_length = 1.0
-cube_length_N = 10 #100
+cube_length_N = 4 #100
 cube_width = 1.0
-cube_width_N = 10 #40
+cube_width_N = 4 #40
 cube_height = 1.
-cube_height_N = 10	#40
+cube_height_N = 2	#40
 linear_shape_functions = true
 quads = false #else tris
 stab = true
 alpha = 0.005
 leaky_lid_driven_cavity = true
-threed = true
+threed = false
 pin_pressure = false
 mesh_input_scaling_3d = 1.0 #5.0e-3 #1e-0		#this is the scaling that the 3d mesh comes at, relative to SI units
 mesh_input_scaling_1d = 0.067 #1e-3		#this is the scaling that the 1d mesh comes at, relative to SI units
@@ -638,7 +645,6 @@ mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2_coarse.msh
 #mesh_file = meshes/multi_bifurcation_symmetric_unstructured_2x2_coarse.msh
 #mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_ref1_2.msh
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
-
 #mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_edge_length_based.xda
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_centreline_based.xda
 mesh_file = meshes/meshes_for_ns_study/volume_mesh_1x1_bdy_6.xda
@@ -665,7 +671,7 @@ max_newton_iterations = 30
 multiply_system_by_dt = false
 restart_time = 0.
 restart_time_step = 0
-write_interval = 0.5
+write_interval = 0.125
 adaptive_time_stepping = false
 numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
@@ -679,9 +685,10 @@ picard_to_newton_threshold = 0.005
 shift_pressure_bc = false
 compute_eigenvalues = false
 write_eigenvalues = false
-negative_mono_schur_complement = true
+negative_mono_schur_complement = false
 negative_bfbt_schur_complement = true
 scale_mono_preconditioner = 0
+custom_partitioning = false
 num_generations_1 = 1
 num_generations_2 = 1
 num_generations_3 = 1
@@ -691,7 +698,7 @@ num_generations_string = 22222222222222222222 #145876986786658795976869587695987
 length_diam_ratio = 3.36e0
 length_diam_ratio_1 = 2.822
 length_diam_ratio_2 = 8.9252
-twod_oned_tree = false	# set to false if you want to be able to predict the resistance easily
+twod_oned_tree = false
 output_resistance = false
 _read_1d_mesh = true
 input_1d_file = meshes/meshes_for_3d0d_coupling_test/APLE0027688_truncated_0d/outlets_9/output_airways_full_james
