@@ -3010,7 +3010,15 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				// think about this
 				//ierr = KSPSetReusePreconditioner(velocity_subksp[0],PETSC_FALSE); CHKERRQ(ierr);
 				// set to not reuse the preconditioner
-				ierr = KSPSetReusePreconditioner(velocity_subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+				if(es->parameters.get<bool>("reuse_convection_diffusion_pc"))
+				{
+					ierr = KSPSetReusePreconditioner(velocity_subksp[0],PETSC_TRUE); CHKERRQ(ierr);
+				}
+				else
+				{
+					ierr = KSPSetReusePreconditioner(velocity_subksp[0],PETSC_FALSE); CHKERRQ(ierr);
+				}
+				
 
 				ierr = KSPSetFromOptions (velocity_subksp[0]); CHKERRQ(ierr);
 			}
