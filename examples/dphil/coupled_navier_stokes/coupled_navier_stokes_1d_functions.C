@@ -1675,7 +1675,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		previous_pressure_values_3d = pressure_values_3d;
 
 		// if we are running a 3d-1d then the flux values are the first elements
-		if(sim_type == 5 || sim_type == 3)
+		if(sim_type == 5 || sim_type == 3 || sim_type == 2)
 		{
 			std::cout << "flux_values_1d.size() = " << flux_values_1d.size()<< std::endl;
 
@@ -1710,12 +1710,6 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 			}
 		}
 
-		
-		// set input pressure boundary conditions
-		if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_conditions"))
-		{
-			input_flux_values_1d = all_input_flux_values_0d[t_step];
-		}
 
 	}
 	else

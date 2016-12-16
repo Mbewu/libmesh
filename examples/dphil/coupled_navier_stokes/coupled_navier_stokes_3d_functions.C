@@ -1373,11 +1373,6 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 			}
 		}
 
-		// set input pressure boundary conditions
-		if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_conditions"))
-		{
-			input_pressure_values_3d = all_input_pressure_values_3d[t_step];
-		}
 	}
 	else
 	{

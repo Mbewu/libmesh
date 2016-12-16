@@ -28,7 +28,6 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 {
 
 	std::cout << "Begin 0D assembly... ";
-	
 
   // Get a constant reference to the mesh object.
   const MeshBase& mesh = es->get_mesh();
@@ -492,7 +491,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 							if(boundary_ids.size() == 0)
 								std::cout << "error, boundary does not have boundary id as expected, el idx = " << current_el_idx << std::endl;
 
-							//std::cout << "flux_values[" << boundary_ids[0] <<"] = " << flux_values[boundary_ids[0]] << std::endl;
+							std::cout << "flux_values[" << boundary_ids[0] <<"] = " << flux_values[boundary_ids[0]] << std::endl;
 
 							if(!coupled)		//if coupled then the rest is put in the matrix by the 3D assembler
 							{
@@ -1124,12 +1123,13 @@ double NavierStokesAssembler::calculate_pressure (const int boundary_id, const i
 
 void NavierStokesAssembler::init_bc(std::vector<double> _flux_values,std::vector<double> _pressure_values)
 {
+	std::cout << "inside init bc 1d" << std::endl;
 	pressure_values = _pressure_values;
 	flux_values = _flux_values;
 
 	
 
 	// cause backwards from 3D
-	//for(unsigned int i=0; i<flux_values.size(); i++)
-	//	flux_values[i] *= -1.0;
+	for(unsigned int i=0; i<flux_values.size(); i++)
+		std::cout << "flux val[" << i << "] = " << flux_values[i] << std::endl;
 }

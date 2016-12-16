@@ -346,11 +346,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		
 	}
 
+	std::cout << "HEY BAE" << std::endl;
+
 	// ************* READ IN BOUNDARY CONDITIONS FOR PROBLEM ****** //
 	if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))
 	{
+		std::cout << "you suck" << std::endl;
 		// read the input boundary conditions for an uncoupled simulation
-		int read_input_boundary_conditions();
+		read_input_boundary_conditions();
 
 	}
 
@@ -635,6 +638,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 										 "s) ***" << std::endl;
 
 				perf_log.push("output");
+
+
+
+
+				// **************** DO PARTICLE DEPOSITION ******************** //
 				if(particle_deposition)
 				{
 					move_particles();
@@ -652,6 +660,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				}
 				else
 				{
+
+
+
 					// ************** SOLVE 3D SYSTEM ********************* //
 					if(sim_3d && sim_type != 5)
 					{
@@ -669,13 +680,23 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							nonlinear_iteration++;
 							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 
-							// sim type 3 is when we tightly couple the 
-							// 1d sim to the 3d sim
+							// sim type 3 is when we tightly couple the 1d sim to the 3d sim
 							if(sim_type == 0 || sim_type == 2)
 							{
 					
-								// they're all zero so should be okay...
-								//in the loosely coupled case sim_type 4 use 1d pressure vals
+								// calculate the flux input boundary conditions for uncoupled simulation
+								// note: don't actually need to do this every nonlinear iteration but okay
+								if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))	// get input flux from file.
+								{
+									std::cout << "t_step = " << t_step << std::endl;
+									for(unsigned int i=0; i<input_pressure_values_3d.size(); i++)
+									{
+										input_pressure_values_3d[i] = all_input_pressure_values_3d[t_step - 1][i];	// t_step-1 because first timestep not output
+									}
+								}
+
+
+								// set bcs and solve 
 								std::vector<double> empty_vec;
 								picard->init_bc(boundary_ids,input_pressure_values_3d,empty_vec,previous_flux_values_3d,previous_previous_flux_values_3d); 
 								if(solve_3d_system_iteration(system_3d))
@@ -720,7 +741,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							}
 							else if(sim_type == 4)
 							{
-								//in the loosely coupled case sim_type 4 use 1d pressure vals
+								//in the explicitly coupled case sim_type 4 use 1d pressure vals
 								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
 								if(solve_3d_system_iteration(system_3d))
 									break;
@@ -735,30 +756,57 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						total_nonlinear_iterations += nonlinear_iteration;
 					}
 
+
+
+
 					// ************** SOLVE 1D SYSTEM ********************* //
+	
+					// remember 1 is just 0D and 2 is uncoupled 0D and 3D
 					if(sim_type == 1 || sim_type == 2)
 					{
 						std::cout << "bye" << std::endl;
-						//som sort of time varying flux
-						std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
-						double inflow = es->parameters.get<double>("time_scaling");
-			
-						if(es->parameters.get<unsigned int>("unsteady"))
-							inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
-											(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
-						else	//put flow_mag into the nondimensional units
-							inflow = es->parameters.get<double>("flow_mag_1d") / 
-											(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
 
-						//input_flux_values[0] = 0.0;
-						std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
-						std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
-						std::cout << "inflow = " << inflow  << std::endl;
-						for(unsigned int i=0; i<input_flux_values.size(); i++)
+						//initialise vector to store flux input
+						std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
+
+						std::cout << "input_flux_values.size() = " << input_flux_values.size() << std::endl;
+						std::cout << "all_input_flux_values_0d[t_step - 1].size() = " << all_input_flux_values_0d[t_step - 1].size() << std::endl;
+
+						// calculate the flux input boundary conditions
+						if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))	// get input flux from file.
 						{
-							input_flux_values[i] = inflow;
-							std::cout << "inflow = " << inflow << std::endl;
+							for(unsigned int i=0; i<input_flux_values.size(); i++)
+							{
+								input_flux_values[i] = all_input_flux_values_0d[t_step - 1][i];	//t_step-1 because first timestep not output
+							}
+
 						}
+						else	// just use the same input flux everywhere
+						{
+
+							
+							double inflow = es->parameters.get<double>("time_scaling");
+			
+							if(es->parameters.get<unsigned int>("unsteady"))
+								inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
+												(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
+							else	//put flow_mag into the nondimensional units
+								inflow = es->parameters.get<double>("flow_mag_1d") / 
+												(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
+
+							//input_flux_values[0] = 0.0;
+							std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
+							std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
+							std::cout << "inflow = " << inflow  << std::endl;
+							for(unsigned int i=0; i<input_flux_values.size(); i++)
+							{
+								input_flux_values[i] = inflow;
+								std::cout << "inflow = " << inflow << std::endl;
+							}
+						}
+
+
+						// solve the nonlinear 0D system
 
 						double old_pressure = 0.;
 						double new_pressure = 0.;
@@ -776,6 +824,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							solve_1d_system();
 							std::cout << "bye" << std::endl;
 							calculate_1d_boundary_values();
+							
 
 							// stop when pressure has converged
 							new_pressure = pressure_values_1d[1];
@@ -801,6 +850,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						ns_assembler->init_bc(flux_values_3d);
 						solve_1d_system();
 					}
+
+
+
+
+
+
+
+
 
 
 					// *********** MONOLITHIC SOLVING **************** //
@@ -840,16 +897,17 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						break;
 
 
+
+					// ************ WRITE OUTPUT *************** //		
 			
 					perf_log.push("output");
 
-					std::cout << "yeah" << std::endl;
-					// ************ WRITE OUTPUT *************** //								
+					std::cout << "yeah" << std::endl;						
 					if((!reduce_dt || !unsteady) && !refine_mesh)
 					{
-					std::cout << "yeah" << std::endl;
+						std::cout << "yeah" << std::endl;
 						output_sim_data(false);
-					std::cout << "yeah" << std::endl;
+						std::cout << "yeah" << std::endl;
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
@@ -2118,11 +2176,11 @@ int NavierStokesCoupled::read_parameters()
 	}
 
 
-	// ***************** make sure that for sim_type 1 everything is correctly specified ********** //
-	if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_values"))
+	// ***************** make sure that for sim_type 2 everything is correctly specified ********** //
+	if(sim_type == 2 && es->parameters.get<bool> ("known_boundary_conditions"))
 	{
 		// check that folder has been specified
-		if(es->parameters.get<std::string> ("boundary_conditions_filename").empty())
+		if(es->parameters.get<std::string> ("boundary_conditions_folder").empty())
 		{
 			std::cout << "Folder for getting boundary conditions for partitioned simulation not specified." << std::endl;
 			std::cout << "Exiting..." << std::endl;
@@ -2404,6 +2462,9 @@ int NavierStokesCoupled::read_parameters()
 
 	}
 
+	// *************** SET DEFAULT n_initial_3d_elem ******************** //
+	es->parameters.set<unsigned int>("n_initial_3d_elem") = 0;
+
 
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
 
@@ -2668,10 +2729,11 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 	std::cout << "Reading input boundary conditions file." << std::endl;
 
 	// read the file 
+	std::string boundary_conditions_filename = es->parameters.get<std::string>("boundary_conditions_folder") + "out.dat";
 
-		//std::ifstream  input_file_src(input_file.c_str(), std::ios::binary);
+	std::cout << " file = " << boundary_conditions_filename << std::endl;
 
-	std::ifstream input_boundary_conditions_file((es->parameters.get<std::string>("input_boundary_conditions_filename")).c_str(), std::ios::binary);
+	std::ifstream input_boundary_conditions_file(boundary_conditions_filename.c_str(), std::ios::binary);
 	if(!input_boundary_conditions_file.good())
 	{
 		std::cout << "Error reading input boundary conditions file." << std::endl;
@@ -2680,7 +2742,10 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 	}
 
 	// put data from file into vector of vectors all_input_pressure_values_3d and all_input_flux_values_0d
-	// 1 - read first line and make sure it has the right number of elements
+	// note that we actually use the 0d pressure values as boundary conditions on the 3d (boundary condition is not applied exactly).
+
+	// 1 - read first line and figure out if there are the correct number of boundary values in the input file
+
 	std::string first_line;
 	std::getline(input_boundary_conditions_file,first_line);
 	std::istringstream iss(first_line);
@@ -2692,7 +2757,10 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 		count++;
   }
 	std::cout << "count = " << count << std::endl;
-	unsigned int num_input_boundary_ids = (count - 4)/4;
+
+	// we need to ignore 4 strings, #, timestep, current_time and num_newton_steps
+	// then divide by 4 for the 3d and 0d fluxes and pressures.
+	unsigned int num_input_boundary_ids = (count - 4)/4;	
 	std::cout << "number of input boundary ids = " << num_input_boundary_ids << std::endl;
 	std::cout << "number of boundary ids in current simulation = " << boundary_ids.size() << std::endl;
 	if(num_input_boundary_ids != boundary_ids.size())
@@ -2701,39 +2769,48 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 		std::cout << "Exiting..." << std::endl;
 		std::exit(0);
 	}
+
+
 	// 2 - read all the lines and put the data where it's supposed to go
-	// * discard the first 2 + num_input_boundary_ids
-	// * put the next num_input_boundary_ids into all_input_pressure_values_3d
+
+	// * discard the first 2 + 2*num_input_boundary_ids (time stuff and 3d fluxes)
 	// * put the next num_input_boundary_ids into all_input_flux_values_0d
+	// * put the next num_input_boundary_ids into all_input_pressure_values_3d
 	// * next line
+
 	std::string current_line;
-	double disc = 0.;
+	double disc = 0.;	// temp variable for discarding unused values in input file
 	while(std::getline(input_boundary_conditions_file,current_line))
 	{		
 		std::istringstream ciss(current_line);
 
-		// discard 2
+		// discard timestep and current time
 		ciss >> disc >> disc;
-		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+
+		// discard the 3d fluxes and pressures for use as boundary conditions
+		for(unsigned int i=0; i<2*num_input_boundary_ids; i++)
 			ciss >> disc;
 
-		// put the next num_input_boundary_ids into a vector for pressure 3d
-		std::vector<double> temp_input_pressure_values_3d(num_input_boundary_ids);
-		for(unsigned int i=0; i<num_input_boundary_ids; i++)
-			ciss >> temp_input_pressure_values_3d[i];
 
 		// put the next num_input_boundary_ids into a vector for flux 0d
 		std::vector<double> temp_input_flux_values_0d(num_input_boundary_ids);
 		for(unsigned int i=0; i<num_input_boundary_ids; i++)
 			ciss >> temp_input_flux_values_0d[i];
 
-		// put the vectors into global vectors for all timesteps
+		// put the next num_input_boundary_ids into a vector for pressure 3d
+		std::vector<double> temp_input_pressure_values_3d(num_input_boundary_ids);
+		for(unsigned int i=0; i<num_input_boundary_ids; i++)
+			ciss >> temp_input_pressure_values_3d[i];
+
+		// put the vectors into global vectors for the timestep
 		all_input_pressure_values_3d.push_back(temp_input_pressure_values_3d);
 		all_input_flux_values_0d.push_back(temp_input_flux_values_0d);
 		
 	}
+
 	
-	// check that the number of timesteps in the same
+	// 3 - check that the number of timesteps is the same
+
 	unsigned int total_num_timesteps = (unsigned int)(es->parameters.get<double>("end_time")/es->parameters.get<double>("dt"));
 	unsigned int input_num_timesteps = all_input_pressure_values_3d.size();
 
@@ -2747,9 +2824,13 @@ int NavierStokesCoupled::read_input_boundary_conditions()
 		std::exit(0);
 	}
 
-	// set input boundary conditions for first timestep
+	// 4 - set input boundary conditions for first timestep
+
+	std::cout << "t_step = " << t_step << std::endl;
 	input_pressure_values_3d = all_input_pressure_values_3d[t_step];
 	input_flux_values_1d = all_input_flux_values_0d[t_step];
+
+
 }
 
 
@@ -3157,9 +3238,9 @@ void NavierStokesCoupled::output_sim_data(bool header)
 
 		if(sim_3d)
 		{
-		std::cout << "k" << std::endl;
+			std::cout << "k" << std::endl;
 			calculate_3d_boundary_values();
-		std::cout << "k" << std::endl;
+			std::cout << "k" << std::endl;
 			if(boundary_id_to_tree_id.size() == 0)
 			{
 				for(unsigned int i=0; i < flux_values_3d.size(); i++)

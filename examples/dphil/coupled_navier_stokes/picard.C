@@ -2231,12 +2231,14 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									mean_pressure = 0;
 
 								// if coupled then we want the inflow to possibly be timeflow controlled, but future work
-								if (es->parameters.get <unsigned int >("sim_type") == 0	|| es->parameters.get <unsigned int >("sim_type") == 2)
+								if (es->parameters.get <unsigned int >("sim_type") == 0	
+										|| (es->parameters.get <unsigned int >("sim_type") == 2 && !es->parameters.get <bool>("known_boundary_conditions")) )
 								  mean_pressure *= es->parameters.get < double >("time_scaling");
 
 								//at the moment we just to a vector in normal direction for stress
 								double stress_mag = bc_value[boundary_id];
-								if (es->parameters.get <unsigned int >("sim_type") == 0	|| es->parameters.get <unsigned int >("sim_type") == 2)
+								if (es->parameters.get <unsigned int >("sim_type") == 0	
+										|| (es->parameters.get <unsigned int >("sim_type") == 2 && !es->parameters.get <bool>("known_boundary_conditions")) )
 								  stress_mag *= es->parameters.get < double >("time_scaling");
 
 								DenseMatrix < Number > stress;

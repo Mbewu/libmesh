@@ -51,7 +51,10 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 				}
 			}
 			else
+			{
 				bc_value[boundary_ids[i]] = pressure_values[i];	//these should ideally be zero...
+				std::cout << "pressure[" << i << "] = " << pressure_values[i] << std::endl;
+			}
 		}
 
 		//here we calculate the interpolated flow value
