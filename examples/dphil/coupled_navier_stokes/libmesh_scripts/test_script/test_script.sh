@@ -6,12 +6,12 @@
 ########################## SETUP SOME VARIABLES AND PARAMETERS ########################
 
 # variables for user
-BASE_DIR="/home/james/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes"
+BASE_DIR="/users/jmbewu/coupled_navier_stokes"
 OUTPUT_DIR="$BASE_DIR/results/reproducibility_testing/test_1"
 NUM_PROCS="1"
 
 # batch specific variables
-COMPUTER_TYPE="normal"
+COMPUTER_TYPE="normal"		#"normal" is normal and "batch" is batch lol
 QUEUE_TYPE="develq"		#"develq" is test and "" is just normal
 JOB_NAME="arc_job"
 WALLTIME="00:10:00"
