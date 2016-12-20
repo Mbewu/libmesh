@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# in this file we will run asymmetric simulations 2 outlets, dt=0.1,0.01,0.001, 8 outlets dt=0.1,0.01,0.001
+
+
+########################## SETUP SOME VARIABLES AND PARAMETERS ########################
+
+# variables for user
+BASE_DIR="/home/james/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes"
+OUTPUT_DIR="$BASE_DIR/results/reproducibility_testing/test_1"
+NUM_PROCS="1"
+
+# batch specific variables
+COMPUTER_TYPE="normal"
+QUEUE_TYPE="develq"		#"develq" is test and "" is just normal
+JOB_NAME="arc_job"
+WALLTIME="00:10:00"
+NUM_NODES=2
+NUM_PROCS_PER_NODE=16
+
+
+
+# variables for script
+THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+THIS_FILE="$0"
+
+
+# simulation parameters
+CONSTANT_VARIABLES="--use-petsc --solver_variable_names --solver_group_ns3d_u 0 --solver_group_ns3d_v 0 --solver_group_ns3d_w 0 --solver_group_ns3d_p 1  --solver_group_ns3d1d_u 0 --solver_group_ns3d1d_v 0 --solver_group_ns3d1d_p 0 --solver_group_ns3d1d_w 0 --solver_group_ns3d1d_Q 1 --solver_group_ns3d1d_P 1 --solver_group_ns3d1d_0_u 0 --solver_group_ns3d1d_0_v 0 --solver_group_ns3d1d_0_w 0 --solver_group_ns3d1d_0_p 1 --solver_system_names -log_summary -newton 0 -streamline_diffusion true -stokes true -fieldsplit true -no_refinement 0 -output_no_refinement 0 -linear_shape_functions true -stab true -preconditioner_type_3d1d 12 -preconditioner_type_3d 9 -reuse_preconditioner false"
+
+SEMI_CONSTANT_VARIABLES="-reynolds_number 500 -period 1000.0 -end_time 500.0 -mesh_file $BASE_DIR/meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh -num_generations_string 99 -unsteady 0"
+
+LIBMESH_OPTIONS="-input_file $THIS_DIR/navier.in -output_folder $OUTPUT_DIR/ -sim_type 5 -dt 5.0  $CONSTANT_VARIABLES $SEMI_CONSTANT_VARIABLES"
+
+###########################################################################
+
+
+
+
+####################### RUN PROGRAM ON NORMAL PC ##########################
+
+if [ "$COMPUTER_TYPE" = "normal" ]; then
+	$BASE_DIR/run_program.sh "$BASE_DIR" "$LIBMESH_OPTIONS" "$OUTPUT_DIR" "$NUM_PROCS"
+	#$BASE_DIR/example-opt $LIBMESH_OPTIONS 2>&1 | tee $OUTPUT_DIR/output.log
+fi
+
+###########################################################################
+
+
+
+
+######################## RUN PROGRAM ON BATCH PC ##########################
+
+# - create the batch file (need to pass it some variables)
+# - submit the batch file and return the job name/number
+
+if [ "$COMPUTER_TYPE" = "batch" ]; then
+	# generate file and make executable
+	$BASE_DIR/generate_pbs_file.sh "$JOB_NAME" "$WALLTIME" "$NUM_NODES" "$NUM_PROCS_PER_NODE" "$LIBMESH_OPTIONS" "$THIS_DIR"
+	chmod +x $THIS_DIR/job_script.sh
+
+	# submit job and record the job name/number
+	# develq
+	if [ "$QUEUE_TYPE" = "devel" ]; then
+		JOB_ID=$(qsub -q develq $THIS_DIR/job_script.sh)
+	else
+		JOB_ID=$(qsub $THIS_DIR/job_script.sh)
+	fi
+	
+ 
+
+	# copy the batch file to the output directory
+	cp $THIS_DIR/job_script.sh $OUTPUT_DIR/
+	# copy the job id to the output directory
+	echo "$JOB_ID" > $OUTPUT_DIR/job_id.dat
+fi
+
+#####################################################################
+
+
+
+
+
+################# OUTPUT SOME HOUSEKEEPING DATA #####################
+
+# copy this script to the output folder
+cp $THIS_DIR/$THIS_FILE $OUTPUT_DIR/
+
+# output the git version in a file
+GIT_VERSION=$(git describe)
+echo "$GIT_VERSION" > $OUTPUT_DIR/git_version.dat
+
+# output the name of the computer and the directory it was run from in a file
+COMPUTER_NAME=$(hostname)
+echo "$COMPUTER_NAME" > $OUTPUT_DIR/computer_name.dat
+echo "$THIS_DIR" > $OUTPUT_DIR/run_directory.dat
+
+##############################################################
+
