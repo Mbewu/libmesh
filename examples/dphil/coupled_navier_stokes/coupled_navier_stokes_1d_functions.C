@@ -1671,9 +1671,6 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 	if(sim_1d)
 	{
 
-		previous_flux_values_3d = flux_values_3d;
-		previous_pressure_values_3d = pressure_values_3d;
-
 		// if we are running a 3d-1d then the flux values are the first elements
 		if(sim_type == 5 || sim_type == 3 || sim_type == 2)
 		{
@@ -1722,6 +1719,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 
 	std::cout << "Done calculating 1D boundary values." << std::endl;
 }
+
 
 
 
@@ -2957,6 +2955,62 @@ void NavierStokesCoupled::set_efficiency()
 	particle_deposition_system_1d->solution->close();
 }
 
+
+// calculate the linear resistance of each 1d tree
+void NavierStokesCoupled::calculate_1d_linear_resistance_values()
+{
+
+	// solve the 1d equation system for any input flow or don't and just use the values from the restart
+	if(!restart)
+	{
+		std::cout << "Calcuating linear resistance." << std::endl;
+
+		// ************** SOLVE 1D SYSTEM ********************* //
+
+		//initialise vector to store flux input
+		std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
+
+		double inflow = es->parameters.get<double>("time_scaling");
+
+		if(es->parameters.get<unsigned int>("unsteady"))
+			inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
+							(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
+		else	//put flow_mag into the nondimensional units
+			inflow = es->parameters.get<double>("flow_mag_1d") / 
+							(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
+
+		for(unsigned int i=0; i<input_flux_values.size(); i++)
+		{
+			input_flux_values[i] = inflow;
+			std::cout << "inflow = " << inflow << std::endl;
+		}
+
+
+		// solve the nonlinear 0D system
+		ns_assembler->init_bc(input_flux_values);
+		std::cout << "bye" << std::endl;
+		solve_1d_system();			// note that we only call this at the beginning of a simulation so should be linear regardless
+		std::cout << "bye" << std::endl;
+		calculate_1d_boundary_values();
+
+
+
+		// calculate the linear resistance values
+		linear_resistance_values_1d.resize(flux_values_1d.size());
+		for(unsigned int i=1; i< flux_values_1d.size(); i++)
+		{
+			linear_resistance_values_1d[i] = pressure_values_1d[i] / flux_values_1d[i];
+			std::cout << "flux_values_1d[" << i << "] = " << flux_values_1d[i] << std::endl;
+			std::cout << "pressure_values_1d[" << i << "] = " << pressure_values_1d[i] << std::endl;	
+			std::cout << "linear_resistance_values_1d[" << i << "] = " << linear_resistance_values_1d[i] << std::endl;	
+		}
+
+		// zero them cause at beginning of simulation
+		std::fill(flux_values_1d.begin(), flux_values_1d.end(), 0.);
+		std::fill(pressure_values_1d.begin(), pressure_values_1d.end(), 0.);
+	}
+
+}
 
 
 

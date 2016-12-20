@@ -11,6 +11,7 @@ using namespace libMesh;
 void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values = std::vector<double>(),
 											std::vector<double> flow_values = std::vector<double>(),
+											std::vector<double> linear_resistance_values = std::vector<double>(),
 											std::vector<double> previous_flow_values = std::vector<double>(),
 											std::vector<double> previous_previous_flow_values = std::vector<double>()) 
 {
@@ -20,6 +21,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 	//resize so that doesn't break ;)
 	pressure_values.resize(boundary_ids.size());
 	flow_values.resize(boundary_ids.size());
+	linear_resistance_values.resize(boundary_ids.size());
 	const int problem_type    = es->parameters.get<unsigned int>("problem_type");
 	
 	// dirichlet input
@@ -43,6 +45,11 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 					std::cout << "pressure[" << i << "] = " << pressure_values[i] << std::endl;
 					std::cout << "flow_values[" << i << "] = " << flow_values[i] << std::endl;
 					std::cout << "bc_value[" << i << "] = " << bc_value[boundary_ids[i]] << std::endl;
+				}
+				else if(fabs(linear_resistance_values[i]) > 1e-10)
+				{
+					bc_value[boundary_ids[i]] = linear_resistance_values[i];	//these should ideally be zero...					
+					std::cout << "using linear resistance" << std::endl;
 				}
 				else
 				{

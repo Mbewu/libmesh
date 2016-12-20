@@ -40,6 +40,9 @@
 
 #include "libmesh/error_vector.h"
 
+// for moghadam
+#include "libmesh/petsc_matrix.h"
+
 #include "ns_assembler_3d.h"
 
 // include for preconditioner getting pressure dofs on side

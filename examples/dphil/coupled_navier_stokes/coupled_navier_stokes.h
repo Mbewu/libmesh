@@ -289,7 +289,15 @@ public:
 	// read in parameters from file and give them to the parameters object.
 	int read_parameters();
 
+	void output_parameters();
+
+	void output_command_line_options();
+
+	void set_auto_fieldsplit_parameters();
+
 	void read_particle_parameters();
+
+	void output_particle_parameters();
 
 	void read_timesteps();
 
@@ -375,6 +383,7 @@ public:
 	int set_int_parameter(GetPot _infile, std::string name, int default_value);
 	bool set_bool_parameter(GetPot _infile, std::string name, bool default_value);
 	std::string set_string_parameter(GetPot _infile, std::string name, std::string default_value);
+	std::string set_string_command_line_parameter(std::string name, std::string default_value);
 
 	double scaled_time();
 
@@ -422,6 +431,8 @@ public:
 
 	// read the input boundary conditions for an uncoupled simulation
 	int read_input_boundary_conditions();
+
+	void calculate_1d_linear_resistance_values();
 
 
 private:
@@ -485,6 +496,7 @@ private:
 	std::vector<double> previous_flux_values_1d;
 	std::vector<double> input_pressure_values_3d;
 	std::vector<double> input_flux_values_1d;
+	std::vector<double> linear_resistance_values_1d;
 	AutoPtr<AugmentSparsityOnInterface> augment_sparsity;
 	//std::string _input_file;
 	std::string input_file;

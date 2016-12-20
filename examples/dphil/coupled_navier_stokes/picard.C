@@ -193,6 +193,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
   DenseVector < Number > Fe;
   DenseVector < Number > Fe_coupled_p;
   DenseVector < Number > Fe_coupled_u;
+  DenseVector < Number > Fe_moghadam;
 
   DenseMatrix < Number > Ke_pre_mass;
   DenseMatrix < Number > Ke_pre_laplacian;
@@ -235,6 +236,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
   DenseSubVector < Number > Fu_coupled_u (Fe_coupled_u), Fv_coupled_u (Fe_coupled_u), Fw_coupled_u (Fe_coupled_u), Fp_coupled_u (Fe_coupled_u);	//unnecessary
 
+  DenseSubVector < Number > Fu_moghadam (Fe_moghadam), Fv_moghadam (Fe_moghadam), Fw_moghadam (Fe_moghadam);
+
 
 
 
@@ -265,6 +268,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
   // need to add dirichlet boundary conditions on pressure nodes on the inflow dirichlet boundary
   std::vector < unsigned int >pressure_dofs_on_inflow_boundary;
   std::vector < unsigned int >all_global_pressure_dofs_on_inflow_boundary;
+  std::vector <std::vector<unsigned int> > global_velocity_dofs_on_outflow_boundary;
+	global_velocity_dofs_on_outflow_boundary.resize(es->parameters.set<unsigned int> ("num_1d_trees") + 1);	// +1 cause labelled from 1
   double sum_fp_diag = 0.;
 
 
@@ -282,6 +287,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
   NumberVectorValue total_residual_2 (0, 0);
   NumberVectorValue total_residual_3 (0, 0);
   NumberVectorValue total_residual_4 (0, 0);
+
 
   double tau_sum = 0.;
   double alpha_factor_sum = 0;
@@ -343,6 +349,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 			Fe.resize (n_dofs);
 			Fe_coupled_p.resize (n_dofs);
 			Fe_coupled_u.resize (n_dofs);
+			Fe_moghadam.resize (n_dofs);
 
 			// Reposition the submatrices
 			Kuu.reposition (u_var * n_u_dofs, u_var * n_u_dofs, n_u_dofs,	n_u_dofs);
@@ -431,6 +438,11 @@ Picard::assemble (ErrorVector &)	// error_vector)
 			Fp_coupled_u.reposition (p_var * n_u_dofs, n_p_dofs);
 			if (threed)
 			  Fw_coupled_u.reposition (w_var * n_u_dofs, n_w_dofs);
+
+			Fu_moghadam.reposition (u_var * n_u_dofs, n_u_dofs);
+			Fv_moghadam.reposition (v_var * n_u_dofs, n_v_dofs);
+			if (threed)
+			  Fw_moghadam.reposition (w_var * n_u_dofs, n_w_dofs);
 
 			std::vector < Real > JxW = JxW_elem;
 			//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
@@ -2222,7 +2234,12 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 								// mean pressure or moghadam resistance
 								double mean_pressure = bc_value[boundary_id];
+								double resistance = bc_value[boundary_id];
 								//mean_pressure = 2.;
+
+								if(es->parameters.get <bool>("moghadam_coupling"))
+									std::cout << "resistance = " << resistance << std::endl;
+
 
 								// TEST
 								//std::cout << "resistance = " << mean_pressure << std::endl;
@@ -2279,6 +2296,25 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									}
 							  }
 
+								if(es->parameters.get < bool > ("moghadam_coupling"))
+								{
+									std::vector <unsigned int >velocity_dofs_on_side;
+									FEInterface::dofs_on_side (elem, dim,fe_vel_type, s,velocity_dofs_on_side);
+									// presumably this returns their place in dof_indices_p
+									// will get some overlap for cts elements but this doesn't matter for later on
+
+
+									for (unsigned int i = 0; i < velocity_dofs_on_side.size (); i++)
+									{
+										global_velocity_dofs_on_outflow_boundary[boundary_id].push_back (dof_indices_u[velocity_dofs_on_side[i]]);
+										global_velocity_dofs_on_outflow_boundary[boundary_id].push_back (dof_indices_v[velocity_dofs_on_side[i]]);
+										if(threed)
+											global_velocity_dofs_on_outflow_boundary[boundary_id].push_back (dof_indices_w[velocity_dofs_on_side[i]]);
+
+								
+									}
+								}
+
 								std::vector < double >temp_vector (n_u_dofs);
 								std::vector < std::vector <double > >temp_matrix_1 (n_u_dofs,std::vector <double >(n_u_dofs));
 								std::vector < std::vector <double > >temp_matrix_2 (n_u_dofs,std::vector <double >(n_u_dofs));
@@ -2333,11 +2369,26 @@ Picard::assemble (ErrorVector &)	// error_vector)
 												Fw (i) += -JxW_face[qp] * (((normal_stress (2)) * phi_face[i][qp]));
 											}
 										}
+
 									}
 									else
 									{
-										// for moghadam we need a sub loop over quad points to do a 
+										// construct the moghadam vector from which we'll construct the additional term for the tangent matrix
 
+										for (unsigned int i = 0; i < n_u_dofs; i++)
+										{
+
+											Fu_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (0) * phi_face[i][qp];
+											Fv_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (1) * phi_face[i][qp];
+											if (threed)
+											{
+												Fw_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (2) * phi_face[i][qp];
+											}
+										}
+
+										// for moghadam we need a sub loop over quad points to do a 
+										
+										/*
 										for (unsigned int i = 0; i < n_u_dofs; i++)
 									  {
 											temp_vector[i] += JxW_face[qp] * (qface_normals[qp] (0) * phi_face[i][qp]);
@@ -2351,7 +2402,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 													temp_matrix_1[i][j] += JxW_face[qp] * JxW_face[qp2] * mean_pressure * (qface_normals[qp] (0) *  phi_face[i][qp] *  qface_normals[qp2] (0) *  phi_face[j][qp2]);
 													actual_terms += JxW_face[qp] * JxW_face[qp2] * mean_pressure * (qface_normals[qp] (0) *  phi_face[i][qp] *  qface_normals[qp2] (0) *  phi_face[j][qp2]);
 
-													/*
+													
 														 Kuu(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
 														 Kuv(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
 														 if(threed) { Kuw(i,j) += JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](2)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]); }
@@ -2366,7 +2417,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 														 }
 														 extra_terms +=JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]) + JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]) + JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](1)*phi_face[i][qp] * qface_normals[qp2](1)*phi_face[j][qp2]);
 														 actual_terms += mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]);
-													 */
+													 
 													//std::cout << "extra terms = " <<  << std::endl;
 													//std::cout << "actual term = " << JxW_face[qp]*JxW_face[qp2]*mean_pressure*(qface_normals[qp](0)*phi_face[i][qp] * qface_normals[qp2](0)*phi_face[j][qp2]) << std::endl;
 													//std::cout << "mean_pressure = " << mean_pressure << std::endl;
@@ -2375,6 +2426,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 											}
 
 									  }
+										*/
 									}
 
 
@@ -2785,16 +2837,14 @@ Picard::assemble (ErrorVector &)	// error_vector)
 								 for (unsigned int j=0; j<n_u_dofs; j++)
 								 {
 
-								 Kuu(i,j) += mean_pressure*temp_vector[i] * temp_vector[j];
+								 //Kuu(i,j) += mean_pressure*temp_vector[i] * temp_vector[j];
+								 Kuu(i,j) += temp_matrix_1[i][j];
 								 temp_matrix_2[i][j] += mean_pressure*temp_vector[i] * temp_vector[j];
-								 actual_terms_2 += mean_pressure*temp_vector[i] * temp_vector[j];
+								 //actual_terms_2 += mean_pressure*temp_vector[i] * temp_vector[j];
 
 								 }
 								 }
 
-								 std::cout << "extra_terms = " << extra_terms << std::endl;
-								 std::cout << "actual_terms = " << actual_terms << std::endl;
-								 std::cout << "actual_terms_2 = " << actual_terms_2 << std::endl;
 
 								 std::cout << "temp_matrix_1:" << std::endl;
 								 for(unsigned int i=0; i<n_u_dofs; i++)
@@ -2814,7 +2864,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 								 std::cout << " " << temp_matrix_2[i][j];
 								 std::cout << std::endl;
 								 }
-							 */
+								*/
+							 
 
 
 							}	//end if(bc_type[boundary_id].compare("pressure") == 0)
@@ -3119,6 +3170,16 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 				}
 
+
+				// assemble moghadam vector
+				if(es->parameters.get <bool>("moghadam_coupling"))
+				{
+					system->get_vector ("Moghadam Vector").add_vector (Fe_moghadam, dof_indices);
+					dof_map.constrain_element_vector (Fe_moghadam,  dof_indices,  true);
+					system->get_vector ("Moghadam Vector BC").add_vector (Fe_moghadam, dof_indices);
+				}
+
+
 				// ***************************************************************** //
 
 
@@ -3294,6 +3355,45 @@ Picard::assemble (ErrorVector &)	// error_vector)
 		for (unsigned int i = 0; i < p_var_idx.size (); i++)
 			system->request_matrix ("Velocity Matrix")->set (p_var_idx[i],p_var_idx[i], 1.0);
   }
+
+
+
+
+
+	// construct the moghadam addition to the tangent matrix
+	if(es->parameters.get < bool >("moghadam_coupling"))
+	{
+
+		// temporarily set to not cause a malloc cause sparsity pattern not augmented yet
+		PetscMatrix<Number>* petsc_matrix = dynamic_cast<PetscMatrix<Number>* >	(system->matrix);
+		MatSetOption(petsc_matrix->mat(),MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);
+
+		for(unsigned int k=0; k<global_velocity_dofs_on_outflow_boundary.size(); k++)
+		{
+			std::sort (global_velocity_dofs_on_outflow_boundary[k].begin (),global_velocity_dofs_on_outflow_boundary[k].end ());
+			// remove duplicate dofs
+			std::vector < unsigned int >::iterator it;
+			it = std::unique (global_velocity_dofs_on_outflow_boundary[k].begin (),global_velocity_dofs_on_outflow_boundary[k].end ());
+			global_velocity_dofs_on_outflow_boundary[k].resize (std::distance (global_velocity_dofs_on_outflow_boundary[k].begin (), it));
+
+
+			std::cout << "num velocity dofs on outlet = " << global_velocity_dofs_on_outflow_boundary[k].size () << std::endl;
+
+			for (unsigned int i = 0; i < global_velocity_dofs_on_outflow_boundary[k].size (); i++)
+			{
+				unsigned int global_i = global_velocity_dofs_on_outflow_boundary[k][i];
+				for (unsigned int j = 0; j < global_velocity_dofs_on_outflow_boundary[k].size (); j++)
+				{
+
+					unsigned int global_j = global_velocity_dofs_on_outflow_boundary[k][j];
+					double value = (*system->request_vector ("Moghadam Vector BC"))(global_i) * (*system->request_vector ("Moghadam Vector"))(global_j);
+					// don't want to try to put values where different outlets couple
+					if(fabs(value) > 1e-10)
+						system->matrix->add (global_i,global_j,value);
+				}
+			}
+		}
+	}
 
 
 

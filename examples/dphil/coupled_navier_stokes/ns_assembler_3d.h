@@ -76,6 +76,7 @@ class NSAssembler3D : public System::Assembly
 		virtual void init_bc (std::vector<unsigned int> boundary_ids,
 											std::vector<double> pressure_values,
 											std::vector<double> flow_values,
+											std::vector<double> linear_resistance_values,
 											std::vector<double> previous_flux_values,
 											std::vector<double> previous_previous_flux_values);
 

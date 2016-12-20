@@ -39,9 +39,15 @@ int main (int argc, char** argv)
 	// ******* READ IN COMMAND LINE AND CHECK IN CORRECT FORMAT **** //
 	GetPot command_line (argc, argv);
 	if(command_line.search("-input_file"))
+	{
 		input_file << command_line.next("navier.in");
+		std::cout << "Using user specified input file: " << input_file.str() << std::endl;
+	}
 	else
+	{
+		std::cout << "Using default input file: " << input_file.str() << std::endl;
 		input_file << "navier.in";
+	}
 
 
 	if(command_line.search("-particle_deposition"))	
@@ -49,7 +55,6 @@ int main (int argc, char** argv)
 	else
 		input_file_particle << "particle_deposition.in";	
 
-	std::cout << "using input file " << input_file.str() << std::endl;
   //GetPot infile(input_file.str());
 	NavierStokesCoupled navier_stokes_coupled(init,input_file.str(),input_file_particle.str(),command_line);
 	
@@ -126,8 +131,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		sim_1d(false),
 		input_file(_input_file),
 		input_file_particle(_input_file_particle),
-		infile(_input_file),
-		infileparticle(_input_file_particle),
 		comm_line(command_line),
 		exit_program(false),
 		threed(true),
@@ -144,8 +147,24 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	perf_log.push("total");
 	perf_log.push("setup");
-	//************* GET PARAMETERS *************//
+
+	std::cout << "Starting simulation." << std::endl;
+
+	//************* READ AND OUTPUT GENERAL PARAMETERS *************//
+	infile = GetPot(_input_file);
 	read_parameters();
+	output_parameters();
+	output_command_line_options();
+
+	//************* READ AND OUTPUT PARTICLE DEPOSITION PARAMETERS **********//
+	if(es->parameters.set<unsigned int>("particle_deposition"))
+	{
+		infileparticle = GetPot(_input_file_particle);
+		read_particle_parameters();
+		output_particle_parameters();
+	}
+
+
 	// if 3D particle deposition then read in the velocity timesteps
 	if(particle_deposition == 1)
 		read_timesteps();
@@ -404,6 +423,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	}
 
 
+	// ************** CALCULATE THE RESISTANCE OF THE 1D TREES ************** //
+	if(es->parameters.get<bool>("moghadam_coupling") && sim_type == 2)
+		calculate_1d_linear_resistance_values();
+
+
 	// ************* OUTPUT INFO TO SCREEN AND TO FILE ********** //
 	mesh.print_info();
 	mesh.boundary_info->print_summary();
@@ -536,6 +560,18 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						system_coupled->old_local_solution->zero();
 						system_coupled->update();
 					}
+				}
+
+				// must zero on first time step - might have been changed when calculating 1d resistances
+				if(sim_1d)
+				{
+					if(sim_type != 5 && !restart)
+					{
+						system_1d->solution->zero();
+						system_1d->old_local_solution->zero();
+						system_1d->update();
+					}
+
 				}
 			}
 
@@ -680,6 +716,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							nonlinear_iteration++;
 							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 
+							if(sim_1d)
+								calculate_1d_boundary_values();
+
 							// sim type 3 is when we tightly couple the 1d sim to the 3d sim
 							if(sim_type == 0 || sim_type == 2)
 							{
@@ -698,7 +737,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 								// set bcs and solve 
 								std::vector<double> empty_vec;
-								picard->init_bc(boundary_ids,input_pressure_values_3d,empty_vec,previous_flux_values_3d,previous_previous_flux_values_3d); 
+								if(es->parameters.get<bool>("moghadam_coupling"))
+									picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+								else
+									picard->init_bc(boundary_ids,input_pressure_values_3d,empty_vec,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
+
 								if(solve_3d_system_iteration(system_3d))
 									break;
 							}
@@ -706,7 +749,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							{
 								nonlinear_iteration_1d++;
 								es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration_1d;
-								calculate_1d_boundary_values();
 
 
 								// if we want to shift the boundary conditions, use the last element as the zero
@@ -722,7 +764,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 									}
 								}
 
-								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
 
 								if(solve_3d_system_iteration(system_3d))
 									break;
@@ -742,7 +784,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							else if(sim_type == 4)
 							{
 								//in the explicitly coupled case sim_type 4 use 1d pressure vals
-								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
+								picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d); 
 								if(solve_3d_system_iteration(system_3d))
 									break;
 							}
@@ -770,8 +812,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
 
 						std::cout << "input_flux_values.size() = " << input_flux_values.size() << std::endl;
-						std::cout << "all_input_flux_values_0d[t_step - 1].size() = " << all_input_flux_values_0d[t_step - 1].size() << std::endl;
-
 						// calculate the flux input boundary conditions
 						if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))	// get input flux from file.
 						{
@@ -781,7 +821,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							}
 
 						}
-						else	// just use the same input flux everywhere
+						else if(es->parameters.get<bool>("moghadam_coupling"))	// just use the same input flux everywhere
+						{
+							calculate_3d_boundary_values();
+							input_flux_values = flux_values_3d;
+						}
+						else
 						{
 
 							
@@ -842,7 +887,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							}
 					
 						}
-						print_flux_and_pressure();
 					}
 					else if(sim_type == 4)
 					{
@@ -875,7 +919,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration;
 
 							calculate_1d_boundary_values();
-							picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
+							picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
 							std::cout << "about to calculate 3d boundary values" << std::endl;
 							calculate_3d_boundary_values();
 							std::cout << "done about to calculating 3d boundary values" << std::endl;
@@ -1718,6 +1762,8 @@ int NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"reuse_convection_diffusion_pc",true);
 
+	set_bool_parameter(infile,"use_command_line_auto_fieldsplit_options",true);
+
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
 
@@ -2188,8 +2234,24 @@ int NavierStokesCoupled::read_parameters()
 			std::cout << "Exiting..." << std::endl;
 			std::exit(0);
 		}
+
+		// cannot have moghadam coupling and known boundary conditions
+		if(es->parameters.get<bool> ("moghadam_coupling"))
+		{
+			std::cout << "Cannot have known_boundary_conditions and moghadam_coupling both specified." << std::endl;
+			std::cout << "Exiting..." << std::endl;
+			std::exit(0);
+		}
 	}
 
+	// ****************** can only have moghadam coupling with sim_type 2 ************************** //
+	if(sim_type != 2 && es->parameters.get<bool> ("moghadam_coupling"))
+	{
+		std::cout << "Ca ony have moghadam_coupling with sim_type 2." << std::endl;
+		std::cout << "Changing to not use moghadam coupling." << std::endl;
+		es->parameters.set<bool> ("moghadam_coupling") = false;
+		
+	}
 
 
 
@@ -2388,20 +2450,6 @@ int NavierStokesCoupled::read_parameters()
 		
 	}
 
-	// *************** CAN ONLY DO MOGHADAM COUPLING ********************	//
-	if(es->parameters.get<bool> ("moghadam_coupling") && es->parameters.get<unsigned int> ("sim_type") != 3)
-	{
-		std::cout << "Can only do moghadam coupling when sim_type is implicit. EXITING" << std::endl;
-		std::cout << "\tsim_type = " << es->parameters.get<unsigned int> ("sim_type") << std::endl;
-		std::exit(0);		
-	}
-
-	// *************** MOGHADAM COUPLING NOT CURRENTLY WORKING ********************	//
-	if(es->parameters.get<bool> ("moghadam_coupling"))
-	{
-		std::cout << "Moghadam coupling not currently working. EXITING" << std::endl;
-		std::exit(0);		
-	}
 
 	
 
@@ -2466,6 +2514,13 @@ int NavierStokesCoupled::read_parameters()
 
 	// *************** SET DEFAULT n_initial_3d_elem ******************** //
 	es->parameters.set<unsigned int>("n_initial_3d_elem") = 0;
+
+
+
+	// *************** SET AUTO FIELDSPLIT OPTIONS ********************** //
+	// doesn't work.
+	//set_auto_fieldsplit_parameters();
+
 
 
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
@@ -2542,42 +2597,10 @@ int NavierStokesCoupled::read_parameters()
 
 
 
-
-
-
-	// ****************  SET PARTICLE DEPOSITION PARAMETERS ****************** //
 	particle_deposition = set_unsigned_int_parameter(infile,"particle_deposition",0);
 
-	if(particle_deposition)
-	{
-		if(particle_deposition == 1)
-			restart = true;		// 3D particle deposition is basically a restart
-		read_particle_parameters();
-	}
 
 
-
-	// ***************** PRINT OUT THE PARAMETERS AS THEY CURRENTLY ARE ******** //
-	es->parameters.print(std::cout);
-
-	// **************** COPY THE INPUT FILE TO TH OUTPUT FOLDER **************** //
-	if(!es->parameters.get<bool>("compare_results"))
-	{
-		std::ifstream  input_file_src(input_file.c_str(), std::ios::binary);
-		std::ofstream  input_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "navier.in").c_str(),   std::ios::binary);
-		input_file_dst << input_file_src.rdbuf();
-
-		if(particle_deposition)
-		{
-			std::ifstream  input_file_particle_src(input_file_particle.c_str(), std::ios::binary);
-			std::ofstream  input_file_particle_dst(std::string(es->parameters.get<std::string>("output_folder") + "particle.in").c_str(),   std::ios::binary);
-			input_file_particle_dst << input_file_particle_src.rdbuf();
-		}
-
-		std::ifstream  mesh_file_src(es->parameters.get<std::string>("mesh_file").c_str(), std::ios::binary);
-		std::ofstream  mesh_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "mesh_file.msh").c_str(),   std::ios::binary);
-		mesh_file_dst << mesh_file_src.rdbuf();
-	}
 
 
 	return 0;
@@ -2585,10 +2608,101 @@ int NavierStokesCoupled::read_parameters()
 }
 
 
+
+
+// output parameters to screen and to file.
+void NavierStokesCoupled::output_parameters()
+{
+
+	// ***************** PRINT OUT THE PARAMETERS AS THEY CURRENTLY ARE ******** //
+	es->parameters.print(std::cout);
+
+	// **************** COPY THE INPUT FILE TO THE OUTPUT FOLDER **************** //
+	if(!es->parameters.get<bool>("compare_results"))
+	{
+		std::ifstream  input_file_src(input_file.c_str(), std::ios::binary);
+		std::ofstream  input_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "navier.in").c_str(),   std::ios::binary);
+		input_file_dst << input_file_src.rdbuf();
+
+		std::ifstream  mesh_file_src(es->parameters.get<std::string>("mesh_file").c_str(), std::ios::binary);
+		std::ofstream  mesh_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "mesh_file.msh").c_str(),   std::ios::binary);
+		mesh_file_dst << mesh_file_src.rdbuf();
+	}
+
+}
+
+
+
+// output command line options to file.
+void NavierStokesCoupled::output_command_line_options()
+{
+
+	// **************** OUTPUT COMMAND LINE OPTIONS TO FILE IN OUTPUT FOLDER **************** //
+	if(!es->parameters.get<bool>("compare_results"))
+	{
+		std::ofstream  command_line_options_file_dst(std::string(es->parameters.get<std::string>("output_folder") + "command_line_options.dat").c_str(),   std::ios::binary);
+		comm_line.print(command_line_options_file_dst);
+	}
+
+}
+
+
+
+// set autofieldsplit options
+// NOTE: doesn't work...
+void NavierStokesCoupled::set_auto_fieldsplit_parameters()
+{
+	// set to use solver_variable_names and solver_system_names 
+	// (doesn't really matter if this is duplicated..)
+	comm_line.set(std::string("--solver_variable_names").c_str(),"");
+	comm_line.set(std::string("--solver_system_names").c_str(),"");
+
+	// set variable numberings
+	// monolithic stuff
+	set_string_command_line_parameter("--solver_group_ns3d1d_u","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_v","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_w","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_p","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_Q","1");
+	std::string var = set_string_command_line_parameter("--solver_group_ns3d1d_P","1");
+	set_string_command_line_parameter("--solver_group_ns3d1d_0_u","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_0_v","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_0_w","0");
+	set_string_command_line_parameter("--solver_group_ns3d1d_0_p","1");
+
+	// non-monolithic stuff
+	set_string_command_line_parameter("--solver_group_ns3d_u","0");
+	set_string_command_line_parameter("--solver_group_ns3d_v","0");
+	set_string_command_line_parameter("--solver_group_ns3d_w","0");
+	set_string_command_line_parameter("--solver_group_ns3d_p","1");
+
+
+  if (libMesh::on_command_line("--solver_system_names"))
+	{
+		std::cout << "solver system names working" << std::endl;
+	}
+
+  if (libMesh::on_command_line("--solver_variable_names"))
+	{
+		std::cout << "solver variable names working" << std::endl;
+	}
+
+	const std::string empty_string;
+
+	std::string group_command = "--solver_group_ns3d1d_0_p";
+  std::string group_name = libMesh::command_line_next
+    (group_command, empty_string);
+
+	std::cout << "group name of --solver_group_ns3d1d_0_p = " << group_name << std::endl;
+}
+
 // read in parameters from file and give them to the parameters object.
 void NavierStokesCoupled::read_particle_parameters()
 {
 	std::cout << "Reading particle parameters." << std::endl;
+	if(particle_deposition == 1)
+		restart = true;		// 3D particle deposition is basically a restart
+
 	set_double_parameter(infileparticle,"particle_deposition_start_time",0.0);
 	t_step = set_unsigned_int_parameter(infileparticle,"particle_deposition_start_time_step",0);
 	es->parameters.set<unsigned int> ("t_step")   = t_step;
@@ -2631,6 +2745,23 @@ void NavierStokesCoupled::read_particle_parameters()
 
 }
 
+
+
+// output parameters to screen and to file.
+void NavierStokesCoupled::output_particle_parameters()
+{
+
+	// **************** COPY THE INPUT FILE TO TH OUTPUT FOLDER **************** //
+	if(!es->parameters.get<bool>("compare_results"))
+	{
+		std::ifstream  input_file_particle_src(input_file_particle.c_str(), std::ios::binary);
+		std::ofstream  input_file_particle_dst(std::string(es->parameters.get<std::string>("output_folder") + "particle.in").c_str(),   std::ios::binary);
+		input_file_particle_dst << input_file_particle_src.rdbuf();
+	}
+
+}
+
+
 // want functions to set values in parameters by reading from input file or overwritten by command line
 // returns the value used
 double NavierStokesCoupled::set_double_parameter(GetPot _infile, std::string name, double default_value)
@@ -2671,6 +2802,26 @@ std::string NavierStokesCoupled::set_string_parameter(GetPot _infile, std::strin
 	if(comm_line.search("-" + name))
 		es->parameters.set<std::string>(name) = comm_line.next(default_value);
 	return es->parameters.get<std::string>(name);
+}
+
+// want functions to set values in command line or overwritten by command line
+// returns the value used
+std::string NavierStokesCoupled::set_string_command_line_parameter(std::string name, std::string default_value)
+{
+	// if it isn't on the command line set to default
+	if(!comm_line.search(name))
+	{
+		comm_line.set(name.c_str(),default_value);
+		std::cout << "didn't find " << name << std::endl;
+	}
+	else
+	{
+		std::cout << "found " << name << std::endl;
+
+	}
+	
+	// return the value
+	return comm_line(name.c_str(),"no value found.");
 }
 
 

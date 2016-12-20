@@ -740,6 +740,14 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 		system->add_matrix("Velocity Matrix");	// a full matrix with only the velocity block
 	}
 
+
+	if(es->parameters.get<bool>("moghadam_coupling"))
+	{
+		// need false flag to zero the vector
+		system->add_vector("Moghadam Vector",false);
+		system->add_vector("Moghadam Vector BC",false);
+	}
+
 	//******* NOW WE NEED TO TAKE CARE OF THE BOUNDARY CONDITION STUFF *****//
 
 	std::cout << "Setting up boundary conditions." << std::endl;
@@ -1670,6 +1678,17 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		system->request_matrix("Preconditioner")->zero();
 	}
 
+
+	// need to zero the moghadam vectors in between each iteration
+	if(es->parameters.get<bool>("moghadam_coupling"))
+	{
+		system->request_vector("Moghadam Vector")->close();
+		system->request_vector("Moghadam Vector")->zero();
+		system->request_vector("Moghadam Vector BC")->close();
+		system->request_vector("Moghadam Vector BC")->zero();
+
+	}
+
 	// need to recollect the ksp because perhaps some shit changed in restrict_solve_to
 	system_linear_solver = libmesh_cast_ptr<PetscLinearSolver<Number>* > (system->linear_solver.get());
 	KSP system_ksp = system_linear_solver->ksp();
@@ -1782,7 +1801,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	//if stokes we only need a single iteration unless iterating with 1d model
 	// i.e. need iterations
 	
-	if(es->parameters.get<bool>("stokes") && sim_type != 3)
+	if(es->parameters.get<bool>("stokes") && sim_type != 3 )
 	{
 		std::cout << "Stokes so only one iteration required" << std::endl;
 		return true;
