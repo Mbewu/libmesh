@@ -320,7 +320,7 @@ ksp_view = false
 petsc_3d_fieldsplit_solver_options = '-ns3d_ksp_type fgmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_ksp_max_it 500 -ns3d_ksp_pc_side right -ns3d_pc_type fieldsplit -ns3d_pc_fieldsplit_type schur -ns3d_pc_fieldsplit_schur_factorization_type upper -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_fieldsplit_1_pc_type lsc -ns3d_pc_fieldsplit_schur_precondition a11 -ns3d_ksp_monitor'
 
 # Umfpack
-petsc_3d_direct_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor'
+petsc_3d_direct_solver_options_sequential = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package umfpack -ns3d_ksp_monitor'
 
 # Superlu_dist
 petsc_3d_direct_solver_options = '-ns3d_ksp_type preonly  -ns3d_pc_type lu -ns3d_pc_factor_mat_solver_package superlu_dist -ns3d_ksp_monitor'
@@ -332,7 +332,7 @@ petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d
 #petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_pc_type ml -ns3d_pc_mg_cycle_type w -ns3d_pc_mg_smoothup 1 -ns3d_pc_mg_smoothdown 2 -ns3d_pc_ml_maxNlevels 5 -ns3d_ksp_monitor'
 
 # ILU (petsc) 
-#petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_pc_type ilu -ns3d_ksp_pc_side right -ns3d_ksp_monitor'
+#petsc_3d_gmres_solver_options_sequential = '-ns3d_ksp_type gmres -ns3d_ksp_rtol 1.0e-6 -ns3d_ksp_atol 1e-8 -ns3d_pc_type ilu -ns3d_ksp_pc_side right -ns3d_ksp_monitor'
 
 
 
@@ -341,8 +341,8 @@ petsc_3d_gmres_solver_options = '-ns3d_ksp_type gmres  -ns3d_pc_type hypre -ns3d
 
 ##### 3D inner velocity convection diffusion solver options #####
 
-# Umfpack
-petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package umfpack'
+# Umfpack (obsolete, only use superlu_dist)
+###petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
 petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preonly -convection_diffusion_pc_type lu -convection_diffusion_pc_factor_mat_solver_package superlu_dist'
@@ -355,8 +355,8 @@ petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type preo
 
 #petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w  -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_mg_levels_pc_sor_omega 0.5 -convection_diffusion_ksp_monitor -mat_no_inode '
 
-# using ilu for the amg helps a lot
-#petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 3 -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_ksp_monitor -mat_no_inode '
+# using ilu for the amg helps a lot  (obsolete, only use hypre euclid)
+##petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 30 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 3 -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_ksp_monitor -mat_no_inode '
 
 
 # using ilu for the amg helps a lot (PREFERRED) changed to use hypre-euclid
@@ -364,8 +364,8 @@ petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmre
 
 
 
-# using ilu for the amg helps a lot (PREFERRED) using ilu (for older sequential simulations)
-petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 100 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 10 -convection_diffusion_pc_ml_CoarsenScheme Uncoupled -convection_diffusion_pc_ml_EnergyMinimization 2 -convection_diffusion_pc_ml_EnergyMinimizationCheap false -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_pc_mg_Reusable true -convection_diffusion_pc_ml_maxCoarseSize 256 -mat_no_inode -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_ksp_monitor'
+# using ilu for the amg helps a lot (PREFERRED) using ilu (for older sequential simulations)  (obsolete, only use superlu_dist)
+##petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmres -convection_diffusion_ksp_max_it 100 -convection_diffusion_ksp_rtol 1e-2 -convection_diffusion_ksp_atol 1e-8 -convection_diffusion_pc_type ml -convection_diffusion_pc_mg_cycle_type w -convection_diffusion_pc_ml_maxNlevels 10 -convection_diffusion_pc_ml_CoarsenScheme Uncoupled -convection_diffusion_pc_ml_EnergyMinimization 2 -convection_diffusion_pc_ml_EnergyMinimizationCheap false -convection_diffusion_pc_mg_smoothup 4 -convection_diffusion_pc_mg_smoothdown 1 -convection_diffusion_pc_mg_Reusable true -convection_diffusion_pc_ml_maxCoarseSize 256 -mat_no_inode -convection_diffusion_mg_levels_pc_factor_levels 1 -convection_diffusion_mg_levels_pc_factor_fill 2 -convection_diffusion_mg_levels_pc_type ilu -convection_diffusion_ksp_monitor'
 
 
 
@@ -384,8 +384,8 @@ petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmre
 
 #### 3D inner pressure solver options #####
 
-# Umfpack
-petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonly -navier_stokes_schur_pc_type lu -navier_stokes_schur_pc_factor_mat_solver_package umfpack'
+# Umfpack  (obsolete, only use superlu_dist)
+##petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonly -navier_stokes_schur_pc_type lu -navier_stokes_schur_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
 #petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonly -navier_stokes_schur_pc_type lu -navier_stokes_schur_pc_factor_mat_solver_package superlu_dist'
@@ -401,8 +401,8 @@ petsc_navier_stokes_schur_solver_options = '-navier_stokes_schur_ksp_type preonl
 
 #### inner mass solver options #####
 
-# Umfpack
-petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package umfpack'
+# Umfpack  (obsolete, only use superlu_dist)
+##petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
 #petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package superlu_dist'
@@ -416,8 +416,8 @@ petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_p
 
 #### inner laplacian solver options ####
 
-# Umfpack
-petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package umfpack'
+# Umfpack  (obsolete, only use superlu_dist)
+##petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package umfpack'
 
 # Superlu_dist
 
@@ -440,7 +440,8 @@ petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type
 
 
 ##### 1D solver options #####
-petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
+# direct  (obsolete, only use superlu_dist)
+##petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
 #petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
@@ -471,8 +472,8 @@ petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e
 # schur (older simulations)
 petsc_3d1d_schur_solver_options = '-ns3d1d_ksp_type fgmres -ns3d1d_ksp_rtol 1.0e-6 -ns3d1d_ksp_atol 1e-8 -ns3d1d_ksp_max_it 4000 -ns3d1d_ksp_pc_side right -ns3d1d_pc_type fieldsplit -ns3d1d_pc_fieldsplit_type schur -ns3d1d_pc_fieldsplit_schur_factorization_type diag -ns3d1d_ksp_monitor'
 
-# direct
-petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right'
+# direct  (obsolete, only use superlu_dist)
+##petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package umfpack -ns3d1d_ksp_pc_side right'
 
 # direct
 petsc_3d1d_direct_solver_options = '-ns3d1d_ksp_type preonly  -ns3d1d_pc_type lu -ns3d1d_pc_factor_mat_solver_package superlu_dist -ns3d1d_ksp_pc_side right'
@@ -488,8 +489,8 @@ petsc_3d1d_gmres_solver_options = '-ns3d1d_ksp_type gmres -ns3d1d_ksp_rtol 1.0e-
 
 ##### 3D1D inner navier stokes solver options #####
 
-# UMFPACK
-petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_0_ksp_monitor'
+# UMFPACK  (obsolete, only use superlu_dist)
+##petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_0_ksp_monitor'
 
 # Superlu_dist
 petsc_3d1d_navier_stokes_direct_solver_options = '-ns3d1d_fieldsplit_0_ksp_type preonly -ns3d1d_fieldsplit_0_pc_type lu -ns3d1d_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_0_ksp_monitor'
@@ -510,8 +511,8 @@ petsc_3d1d_navier_stokes_fieldsplit_preonly_solver_options = '-ns3d1d_fieldsplit
 
 ##### 3D1D inner 1D solver options #####
 
-# direct
-petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_1_ksp_monitor'
+# direct  (obsolete, only use superlu_dist)
+##petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package umfpack -ns3d1d_fieldsplit_1_ksp_monitor'
 
 # direct (parallel)
 #petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3d1d_fieldsplit_1_pc_type lu -ns3d1d_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -ns3d1d_fieldsplit_1_ksp_monitor'
@@ -526,23 +527,34 @@ petsc_3d1d_inner_1d_solver_options = '-ns3d1d_fieldsplit_1_ksp_type preonly -ns3
 
 ###### 3D1D schur stokes options
 
-# direct
-petsc_3d1d_schur_stokes_direct_solver_options = '-schur_stokes_ksp_type preonly -schur_stokes_pc_type lu -schur_stokes_pc_factor_mat_solver_package umfpack -schur_stokes_ksp_monitor'
+# direct  (obsolete, only use superlu_dist)
+##petsc_3d1d_schur_stokes_direct_solver_options = '-schur_stokes_ksp_type preonly -schur_stokes_pc_type lu -schur_stokes_pc_factor_mat_solver_package umfpack -schur_stokes_ksp_monitor'
 
 # gmres
 petsc_3d1d_schur_stokes_gmres_solver_options = '-schur_stokes_ksp_type gmres -schur_stokes_ksp_rtol 1.0e-6 -schur_stokes_ksp_atol 1e-8 -schur_stokes_pc_type ilu -schur_stokes_ksp_monitor'
 
+# fieldsplit (obsolete, only use superlu_dist)
+##petsc_3d1d_schur_stokes_fieldsplit_solver_options = '-schur_stokes_ksp_type fgmres -schur_stokes_ksp_rtol 1.0e-6 -schur_stokes_ksp_atol 1e-8 -schur_stokes_ksp_max_it 100 -schur_stokes_ksp_pc_side right -schur_stokes_pc_type fieldsplit -schur_stokes_pc_fieldsplit_type schur -schur_stokes_pc_fieldsplit_schur_factorization_type upper -schur_stokes_pc_fieldsplit_schur_precondition a11 -schur_stokes_fieldsplit_0_ksp_type preonly -schur_stokes_fieldsplit_0_pc_type lu -schur_stokes_fieldsplit_1_pc_type lu -schur_stokes_fieldsplit_1_ksp_type preonly -schur_stokes_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+
 # fieldsplit
-petsc_3d1d_schur_stokes_fieldsplit_solver_options = '-schur_stokes_ksp_type fgmres -schur_stokes_ksp_rtol 1.0e-6 -schur_stokes_ksp_atol 1e-8 -schur_stokes_ksp_max_it 100 -schur_stokes_ksp_pc_side right -schur_stokes_pc_type fieldsplit -schur_stokes_pc_fieldsplit_type schur -schur_stokes_pc_fieldsplit_schur_factorization_type upper -schur_stokes_pc_fieldsplit_schur_precondition a11 -schur_stokes_fieldsplit_0_ksp_type preonly -schur_stokes_fieldsplit_0_pc_type lu -schur_stokes_fieldsplit_1_pc_type lu -schur_stokes_fieldsplit_1_ksp_type preonly -schur_stokes_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+petsc_3d1d_schur_stokes_fieldsplit_solver_options = '-schur_stokes_ksp_type fgmres -schur_stokes_ksp_rtol 1.0e-6 -schur_stokes_ksp_atol 1e-8 -schur_stokes_ksp_max_it 100 -schur_stokes_ksp_pc_side right -schur_stokes_pc_type fieldsplit -schur_stokes_pc_fieldsplit_type schur -schur_stokes_pc_fieldsplit_schur_factorization_type upper -schur_stokes_pc_fieldsplit_schur_precondition a11 -schur_stokes_fieldsplit_0_ksp_type preonly -schur_stokes_fieldsplit_0_pc_type lu -schur_stokes_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -schur_stokes_fieldsplit_1_pc_type lu -schur_stokes_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -schur_stokes_fieldsplit_1_ksp_type preonly -schur_stokes_ksp_monitor' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
 
 
 ####### 3d1d post solve options
 
-# fieldsplit
-petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -post_solve_ksp_rtol 1.0e-6 -post_solve_ksp_atol 1e-8 -post_solve_ksp_pc_side right -post_solve_pc_type fieldsplit  -post_solve_pc_fieldsplit_type schur -post_solve_pc_fieldsplit_schur_factorization_type upper -post_solve_pc_fieldsplit_schur_precondition a11 -post_solve_fieldsplit_0_ksp_type preonly -post_solve_fieldsplit_0_pc_type lu -post_solve_fieldsplit_1_pc_type lu -post_solve_fieldsplit_1_ksp_type preonly -post_solve_ksp_monitor -post_solve_ksp_view' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+# fieldsplit (obsolete, only use superlu_dist)
+##petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -post_solve_ksp_rtol 1.0e-6 -post_solve_ksp_atol 1e-8 -post_solve_ksp_pc_side right -post_solve_pc_type fieldsplit  -post_solve_pc_fieldsplit_type schur -post_solve_pc_fieldsplit_schur_factorization_type upper -post_solve_pc_fieldsplit_schur_precondition a11 -post_solve_fieldsplit_0_ksp_type preonly -post_solve_fieldsplit_0_pc_type lu -post_solve_fieldsplit_1_pc_type lu -post_solve_fieldsplit_1_ksp_type preonly -post_solve_ksp_monitor -post_solve_ksp_view' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
 
-#petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type preonly -post_solve_pc_type lu -post_solve_pc_factor_mat_solver_package umfpack -post_solve_ksp_monitor'
+
+# fieldsplit
+petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -post_solve_ksp_rtol 1.0e-6 -post_solve_ksp_atol 1e-8 -post_solve_ksp_pc_side right -post_solve_pc_type fieldsplit  -post_solve_pc_fieldsplit_type schur -post_solve_pc_fieldsplit_schur_factorization_type upper -post_solve_pc_fieldsplit_schur_precondition a11 -post_solve_fieldsplit_0_ksp_type preonly -post_solve_fieldsplit_0_pc_type lu -post_solve_fieldsplit_0_pc_factor_mat_solver_package superlu_dist -post_solve_fieldsplit_1_pc_type lu -post_solve_fieldsplit_1_pc_factor_mat_solver_package superlu_dist -post_solve_fieldsplit_1_ksp_type preonly -post_solve_ksp_monitor -post_solve_ksp_view' # -ns3d1d_fieldsplit_0_fieldsplit_1_ksp_type preonly'
+
+#  (obsolete, only use superlu_dist)
+##petsc_3d1d_post_solve_direct_solver_options= '-post_solve_ksp_type preonly -post_solve_pc_type lu -post_solve_pc_factor_mat_solver_package umfpack -post_solve_ksp_monitor'
+
+# not currently in use
+#petsc_3d1d_post_solve_direct_solver_options = '-post_solve_ksp_type preonly -post_solve_pc_type lu -post_solve_pc_factor_mat_solver_package superlu_dist -post_solve_ksp_monitor'
 
 
 

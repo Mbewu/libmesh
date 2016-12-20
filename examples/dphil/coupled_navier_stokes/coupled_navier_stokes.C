@@ -1671,7 +1671,8 @@ int NavierStokesCoupled::read_parameters()
 
   set_bool_parameter(infile,"compute_eigenvalues",false);
 
-  // petsc options
+  // ************** PETSC OPTIONS ********************************* //
+
 	set_string_parameter(infile,"petsc_3d_fieldsplit_solver_options","");
 	set_string_parameter(infile,"petsc_3d_direct_solver_options","");
 	set_string_parameter(infile,"petsc_3d_gmres_solver_options","");
@@ -1707,7 +1708,7 @@ int NavierStokesCoupled::read_parameters()
 	set_string_parameter(infile,"petsc_solver_options","");
 	set_string_parameter(infile,"petsc_solver_options_ksp_view","");
 
-  //
+  // *********************** //
 
 	set_unsigned_int_parameter(infile,"random_1d_generations",0);
 	set_string_parameter(infile,"num_generations_string","");
