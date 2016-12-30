@@ -2523,6 +2523,16 @@ int NavierStokesCoupled::read_parameters()
 	//set_auto_fieldsplit_parameters();
 
 
+	// *************** MUST USE CUSTOM PARTITIONING FOR MONOLITHIC ************ //
+	// don't know why... lol doesn't set the boundary conditions properly
+	if(sim_type == 5 && !es->parameters.get<bool> ("custom_partitioning"))
+	{
+		std::cout << "Must use custom partitioning when using monolithi for some reason..." << std::endl;
+		std::cout << "Setting custom_partitioning to true." << std::endl;
+		es->parameters.set<bool> ("custom_partitioning") = true;
+
+	}
+
 
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
 
