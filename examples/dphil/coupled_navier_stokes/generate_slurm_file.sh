@@ -15,4 +15,4 @@
 OUTPUT_DIR="$6"
 BASE_FOLDER="$7"
 
-sed -e "s;%JOB_NAME%;$1;g" -e "s;%WALLTIME%;$2;g" -e "s;%NUM_NODES%;$3;g" -e "s;%NUM_PROCS_PER_NODE%;$4;g" -e "s;%LIBMESH_OPTIONS%;$5;g" -e "s;%BASE_DIR%;$7;g" $BASE_FOLDER/pbs_template.sh > $OUTPUT_DIR/job_script.sh
+sed -e "s;%JOB_NAME%;$1;g" -e "s;%WALLTIME%;$2;g" -e "s;%NUM_NODES%;$3;g" -e "s;%NUM_PROCS_PER_NODE%;$4;g" -e "s;%LIBMESH_OPTIONS%;$5;g" -e "s;%BASE_DIR%;$7;g" $BASE_FOLDER/slurm_template.sh > $OUTPUT_DIR/job_script.sh

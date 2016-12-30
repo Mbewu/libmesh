@@ -6,13 +6,14 @@
 ########################## SETUP SOME VARIABLES AND PARAMETERS ########################
 
 # variables for user
-BASE_DIR="/users/jmbewu/coupled_navier_stokes"
+#BASE_DIR="/users/jmbewu/coupled_navier_stokes"
+BASE_DIR="/home/james/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes/"
 OUTPUT_DIR="$BASE_DIR/results/reproducibility_testing/test_1"
 NUM_PROCS="1"
 
 # batch specific variables
-COMPUTER_TYPE="normal"		#"normal" is normal and "batch" is batch lol
-QUEUE_TYPE="develq"		#"develq" is test and "" is just normal
+COMPUTER_TYPE="arcus-b"		#"normal" is normal and "arcus-a" is arcus-a and "arcus-b" is arcus-b
+QUEUE_TYPE="devel"		#"develq" is test and "" is just normal
 JOB_NAME="arc_job"
 WALLTIME="00:10:00"
 NUM_NODES=2
@@ -49,14 +50,14 @@ fi
 
 
 
-######################## RUN PROGRAM ON BATCH PC ##########################
+######################## RUN PROGRAM ON arcus-a ##########################
 
 # - create the batch file (need to pass it some variables)
 # - submit the batch file and return the job name/number
 
-if [ "$COMPUTER_TYPE" = "batch" ]; then
+if [ "$COMPUTER_TYPE" = "arcus-a" ]; then
 	# generate file and make executable
-	$BASE_DIR/generate_pbs_file.sh "$JOB_NAME" "$WALLTIME" "$NUM_NODES" "$NUM_PROCS_PER_NODE" "$LIBMESH_OPTIONS" "$THIS_DIR"
+	$BASE_DIR/generate_pbs_file.sh "$JOB_NAME" "$WALLTIME" "$NUM_NODES" "$NUM_PROCS_PER_NODE" "$LIBMESH_OPTIONS" "$THIS_DIR" "$BASE_DIR"
 	chmod +x $THIS_DIR/job_script.sh
 
 	# submit job and record the job name/number
@@ -76,6 +77,39 @@ if [ "$COMPUTER_TYPE" = "batch" ]; then
 fi
 
 #####################################################################
+
+
+
+######################## RUN PROGRAM ON arcus-a ##########################
+
+# - create the batch file (need to pass it some variables)
+# - submit the batch file and return the job name/number
+
+if [ "$COMPUTER_TYPE" = "arcus-b" ]; then
+	# generate file and make executable
+	$BASE_DIR/generate_slurm_file.sh "$JOB_NAME" "$WALLTIME" "$NUM_NODES" "$NUM_PROCS_PER_NODE" "$LIBMESH_OPTIONS" "$THIS_DIR" "$BASE_DIR"
+	chmod +x $THIS_DIR/job_script.sh
+
+	# submit job and record the job name/number
+	# develq
+	if [ "$QUEUE_TYPE" = "devel" ]; then
+		JOB_ID=$(sbatch -p devel $THIS_DIR/job_script.sh)
+	else
+		JOB_ID=$(sbatch $THIS_DIR/job_script.sh)
+	fi
+	
+ 
+
+	# copy the batch file to the output directory
+	cp $THIS_DIR/job_script.sh $OUTPUT_DIR/
+	# copy the job id to the output directory
+	echo "$JOB_ID" > $OUTPUT_DIR/job_id.dat
+fi
+
+#####################################################################
+
+
+
 
 
 
