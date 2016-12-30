@@ -1,43 +1,18 @@
 #!/bin/sh
 
 ##############################################
-## Template for creating PBS files on arcus-a
+## Script for creating PBS files on arcus-a from a template
 ## - parameters:
 ## - JOB_NAME - name of job (text)
 ## - WALLTIME - max walltime (00:00:00)
 ## - NUM_NODES - number of nodes
 ## - NUM_PROCS_PER_NODE - number of procs per node
 ## - LIBMESH_OPTIONS - command line options for libmesh program
+## - OUTPUT_DIR - direrctory to output PBS script to
+## - BASE_DIR - directory where application is
 ##############################################
 
-# Pass environment to compute nodes
-#PBS -V
+OUTPUT_DIR="$6"
+BASE_FOLDER="$7"
 
-# Give the job a name
-#PBS -N %JOB_NAME%
-
-# Walltime limit
-#PBS -l walltime=%WALLTIME%
-
-# Use 2 nodes, each running 8 processes (Hal and Sal) or 16 (Arcus)
-#PBS -l nodes=%NUM_NODES%:ppn=%NUM_PROCS_PER_NODE%
-
-# Email me at the beginning and end of job
-#PBS -m be
-
-# at the following address
-#PBS -M james.mbewu@gmail.com
-
-# Go to the directory where you submitted the job
-cd $PBS_O_WORKDIR
-
-### script to define MPI_HOSTS for mpirun -- uncomment as appropriate
-## Hal and Sal: source the script enable_hal_mpi.sh
-##. enable_hal_mpi.sh
-## Arcus: source the script enable_arcus_mpi.sh
-. enable_arcus_mpi.sh
-
-# Launch the application
-/system/software/arcus/mpi/openmpi/1.8.1/gcc-4.8.2/bin/mpirun $MPI_HOSTS ./example-opt %LIBMESH_OPTIONS%
-# mpirun -np $MPI_NPROCS -machinefile $PBS_NODEFILE ./cluster_myprog
-
+sed -e "s;%JOB_NAME%;$1;g" -e "s;%WALLTIME%;$2;g" -e "s;%NUM_NODES%;$3;g" -e "s;%NUM_PROCS_PER_NODE%;$4;g" -e "s;%LIBMESH_OPTIONS%;$5;g" -e "s;%BASE_DIR%;$7;g" $BASE_FOLDER/pbs_template.sh > $OUTPUT_DIR/job_script.sh
