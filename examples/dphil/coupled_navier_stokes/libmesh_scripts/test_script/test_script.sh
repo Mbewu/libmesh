@@ -20,7 +20,6 @@ NUM_NODES=2
 NUM_PROCS_PER_NODE=16
 
 
-
 # variables for script
 THIS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 THIS_FILE="$0"
