@@ -28,6 +28,6 @@
 . enable_arcus-b_mpi.sh
 
 # Launch the application
-/system/software/arcus/mpi/openmpi/1.8.1/gcc-4.8.2/bin/mpirun $MPI_HOSTS ./example-opt %LIBMESH_OPTIONS%
+/system/software/arcus-b/lib/mpi/openmpi/1.8.4/gcc-4.9.2/bin/mpirun $MPI_HOSTS %BASE_DIR%/example-opt %LIBMESH_OPTIONS%
 # mpirun -np $MPI_NPROCS -machinefile $PBS_NODEFILE ./cluster_myprog
 
