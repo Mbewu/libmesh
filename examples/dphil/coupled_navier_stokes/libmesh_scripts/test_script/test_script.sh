@@ -6,10 +6,10 @@
 ##################### USER PARAMETERS ###########################
 # ideally these parameters should be read in as parameters and then the script can do its work
 
-COMPUTER_TYPE="arcus-b"         #"laptop" is laptop, "compute-lung" is compute-lung, "arcus-a" is arcus-a and "arcus-b" is arcus-b
+COMPUTER_TYPE="compute-lung"         #"laptop" is laptop, "compute-lung" is compute-lung, "arcus-a" is arcus-a and "arcus-b" is arcus-b
 
 # non-batch specific variables
-NUM_PROCS="1"
+NUM_PROCS="2"
 
 # batch specific variables
 QUEUE_TYPE="devel"              #"devel" is test and "" is just normal
@@ -29,10 +29,10 @@ NUM_PROCS_PER_NODE=2
 
 # set the code BASE_DIR and the OUTPUT_BASE_DIR
 if [ "$COMPUTER_TYPE" = "laptop" ] ; then
-	BASE_DIR="/users/jmbewu/coupled_navier_stokes"
+	BASE_DIR="/home/james/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes"
 	OUTPUT_BASE_DIR="$BASE_DIR/results"
 elif [ "$COMPUTER_TYPE" = "compute-lung" ] ; then
-	BASE_DIR="/home/james/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes"
+	BASE_DIR="/users/jmbewu/coupled_navier_stokes"
 	OUTPUT_BASE_DIR="$BASE_DIR/results"
 elif [ "$COMPUTER_TYPE" = "arcus-a" ] ; then
 	BASE_DIR="/home/comp-respiratory-modelling/jmbewu/libmesh-git/libmesh/examples/dphil/coupled_navier_stokes"
@@ -62,8 +62,8 @@ THIS_FILE="$0"
 OUTPUT_DIR_RELATIVE="reproducibility_testing/test_1"
 OUTPUT_DIR="$OUTPUT_BASE_DIR/$OUTPUT_DIR_RELATIVE"
 
-MESH_BASE_DIR="$BASE_DIR"
-MESH_BASE_DIR="~/meshes-git/dphil_meshes"
+MESH_BASE_DIR="$BASE_DIR/meshes"
+#MESH_BASE_DIR="~/meshes-git/dphil_meshes"
 
 CONSTANT_VARIABLES="--use-petsc --solver_variable_names --solver_group_ns3d_u 0 --solver_group_ns3d_v 0 --solver_group_ns3d_w 0 --solver_group_ns3d_p 1  --solver_group_ns3d1d_u 0 --solver_group_ns3d1d_v 0 --solver_group_ns3d1d_p 0 --solver_group_ns3d1d_w 0 --solver_group_ns3d1d_Q 1 --solver_group_ns3d1d_P 1 --solver_group_ns3d1d_0_u 0 --solver_group_ns3d1d_0_v 0 --solver_group_ns3d1d_0_w 0 --solver_group_ns3d1d_0_p 1 --solver_system_names -log_summary -newton 0 -streamline_diffusion true -stokes true -fieldsplit true -no_refinement 0 -output_no_refinement 0 -linear_shape_functions true -stab true -preconditioner_type_3d1d 12 -preconditioner_type_3d 9 -reuse_preconditioner false"
 
