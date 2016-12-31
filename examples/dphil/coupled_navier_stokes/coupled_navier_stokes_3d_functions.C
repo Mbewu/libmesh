@@ -2344,6 +2344,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 	std::cout << "Setting up submatrices for preconditioners." << std::endl;
 
+	//std::exit(0);
 
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") != 0 
 		|| es->parameters.get<unsigned int>("preconditioner_type_schur_stokes") != 0)
@@ -2398,7 +2399,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 
-		std::cout << "hello" << std::endl;
+		std::cout << "hello" << std::endl << std::flush;
 
 		// the pressure mass matrix, scaled mass matrix and pressure laplacian only need to be constructed once,
 		// while the convection diffusion matrix needs to be computed at each step.
@@ -2462,14 +2463,16 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				system->request_matrix("Velocity Mass Matrix")->create_submatrix(*velocity_mass_matrix,U_var_idx,U_var_idx);
 				velocity_mass_matrix->close();
 
-				std::cout << " yeah baby" << std::endl;
+				std::cout << " yeah baby" << std::endl << std::flush;
 
 				// now that this matrix has been set we can not assemble it again
 				es->parameters.set<bool>("assemble_velocity_mass_matrix") = false;
 			}
+			std::cout << "k?" << std::endl << std::flush;
 		}
 
 
+			std::cout << "k babe?" << std::endl << std::flush;
 		if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
 		{
 			// ************ pressure laplacian matrix *************** //
@@ -2483,7 +2486,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			pressure_laplacian_matrix->close();
 
 		}
+			std::cout << "k?" << std::endl << std::flush;
 
+			//std::exit(0);
 		if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
 		{
 			// ************ pressure convection diffusion matrix ***************** //
@@ -2497,18 +2502,20 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		}
 
 	
+			std::cout << "k?" << std::endl << std::flush;
 
 
 
 
-
+		//std::exit(0)
 
 
 
 		// set pressure in system matrix and preconditioner
 
 		std::vector<dof_id_type> rows_full;
-		rows_full.push_back(p_var_idx[0]);
+		//rows_full.push_back(p_var_idx[0]);	// there isn't necessarily a pressure dof on each processor
+		
 		//system->request_matrix("System Matrix")->zero_rows(rows_full,1.0);
 		//system->request_matrix("Preconditioner")->zero_rows(rows_full,1.0);
 		//system->request_matrix("System Matrix")->close();
@@ -2530,6 +2537,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 	}
 
+	
 
 	// give all monolithic preconditioners the mono_ctx for counting
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") >= 6)

@@ -108,12 +108,12 @@ void petsc_auto_fieldsplit (PC my_pc,
 			PCGetOperators(my_pc,&pc_mat,NULL);
 			PetscInt m,n;
 			MatGetLocalSize(pc_mat,&m,&n);
-			std::cerr << "RANK " << sys.comm().rank() << ": rows = " << m << ", cols = " << n << std::endl;
 			PetscInt r,s;
 			MatGetOwnershipRange(pc_mat,&r,&s);
-			std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
 
-	std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now" << std::endl; 
+	std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now\n"; 
+			std::cerr << "RANK " << sys.comm().rank() << ": rows = " << m << ", cols = " << n << "\n";
+			std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
 
           if (group_name != empty_string)
             {
@@ -251,6 +251,7 @@ void petsc_auto_fieldsplit (PC my_pc,
 					// need to sort because pressure dofs come after
 					std::sort(global_indices.begin(), global_indices.end());
 
+
 					// want to do groups first
 				  for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
 					 j = group_indices.begin(); j != group_indices.end(); ++j)
@@ -272,6 +273,7 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 				      indices_to_fieldsplit(sys.comm(), local_indices, sub_pc, j->first);
 				  }
+
 
 				//std::exit(0);
 				std::cerr << "RANK " << sys.comm().rank() << ": before ksp set up" << std::endl;

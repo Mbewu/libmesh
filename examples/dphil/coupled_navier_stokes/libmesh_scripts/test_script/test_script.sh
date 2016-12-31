@@ -8,7 +8,7 @@
 # variables for user
 BASE_DIR="/users/jmbewu/coupled_navier_stokes"
 OUTPUT_DIR="$BASE_DIR/results/reproducibility_testing/test_1"
-NUM_PROCS="1"
+NUM_PROCS="4"
 
 # batch specific variables
 COMPUTER_TYPE="normal"		#"normal" is normal and "batch" is batch lol
