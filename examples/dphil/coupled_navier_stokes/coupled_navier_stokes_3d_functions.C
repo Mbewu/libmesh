@@ -2512,10 +2512,10 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 		// set pressure in system matrix and preconditioner
-
 		std::vector<dof_id_type> rows_full;
-		//rows_full.push_back(p_var_idx[0]);	// there isn't necessarily a pressure dof on each processor
-		
+		// rows_full.push_back(p_var_idx[0]);		//doesn't do anything, but doesn't work cause need to only use one pressure dof for the whole system
+
+
 		//system->request_matrix("System Matrix")->zero_rows(rows_full,1.0);
 		//system->request_matrix("Preconditioner")->zero_rows(rows_full,1.0);
 		//system->request_matrix("System Matrix")->close();
