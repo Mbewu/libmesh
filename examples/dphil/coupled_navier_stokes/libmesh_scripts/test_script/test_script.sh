@@ -6,10 +6,10 @@
 ##################### USER PARAMETERS ###########################
 # ideally these parameters should be read in as parameters and then the script can do its work
 
-COMPUTER_TYPE="compute-lung"         #"laptop" is laptop, "compute-lung" is compute-lung, "arcus-a" is arcus-a and "arcus-b" is arcus-b
+COMPUTER_TYPE="laptop"         #"laptop" is laptop, "compute-lung" is compute-lung, "arcus-a" is arcus-a and "arcus-b" is arcus-b
 
 # non-batch specific variables
-NUM_PROCS="2"
+NUM_PROCS="1"
 
 # batch specific variables
 QUEUE_TYPE="devel"              #"devel" is test and "" is just normal

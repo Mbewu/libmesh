@@ -90,6 +90,16 @@ void NavierStokesCoupled::read_1d_mesh ()
 		std::ifstream infile_node(node_file.str().c_str());
 		std::ifstream infile_edge(edge_file.str().c_str());
 
+		// need to check if files have been opened (if they exist)
+		if(!infile_node.is_open() || !infile_edge.is_open())
+		{
+			std::cout << "Error, file did not open. Probably because incorrect path in input_1d_file option." << std::endl;
+			std::cout << "Exiting." << std::endl;
+			std::exit(0);
+		}
+
+		
+
 	
 		std::cout << "1";
 		// okay need to parse into a vector

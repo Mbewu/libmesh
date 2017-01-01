@@ -597,6 +597,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		}
 	}
 	
+	
 
 	std::cout << std::endl;
 	std::cout << "Subdomain identification summary:" << std::endl;
@@ -612,7 +613,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	for(unsigned int i=0; i<elem_types.size(); i++)
 		subdomains_3d.push_back(i);
 
-
+	
 
 }
 
