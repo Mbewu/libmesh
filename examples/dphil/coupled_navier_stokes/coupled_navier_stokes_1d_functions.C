@@ -1651,6 +1651,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 
 	int radius_var = extra_1d_data_system->add_variable("radius", CONSTANT, MONOMIAL,&active_subdomains);
 	int poiseuille_var = extra_1d_data_system->add_variable("poiseuille", CONSTANT, MONOMIAL,&active_subdomains);
+	int proc_id_var = extra_1d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
 
 	int efficiency_var = 0;
 	// variables for particle deposition system
@@ -1663,6 +1664,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	std::cout << "Q_var = " << Q_var << std::endl;
 	std::cout << "radius_var = " << radius_var << std::endl;
 	std::cout << "poiseuille_var = " << poiseuille_var << std::endl;
+	std::cout << "proc_id_var = " << proc_id_var << std::endl;
 	if(particle_deposition == 2)
 		std::cout << "efficiency_var = " << efficiency_var << std::endl;
 }
@@ -1791,6 +1793,7 @@ void NavierStokesCoupled::write_1d_solution()
 	variables_1d.push_back("Q");
 	variables_1d.push_back("radius");
 	variables_1d.push_back("poiseuille");
+	variables_1d.push_back("proc_id");
 	exo.set_output_variables(variables_1d);
 
 	//std::cout << "before write disc" << std::endl;
@@ -1798,7 +1801,7 @@ void NavierStokesCoupled::write_1d_solution()
 	exo.write_discontinuous_exodusII (file_name.str(),
                                     *es);
 
-	write_elem_pid_1d(exo);
+	//write_elem_pid_1d(exo);
 
 	exo.write_time(1,time *time_scale_factor);
 
@@ -1904,6 +1907,44 @@ void NavierStokesCoupled::set_radii()
 	//must close the vector after editing it
 
 	extra_1d_data_system->solution->close();
+}
+
+
+
+void NavierStokesCoupled::set_elem_proc_id_1d()
+{
+
+	//add the radius variable
+	// i'm sure we only need to do this once!
+	//create an equation system to hold data like the radius of the element
+
+	std::cout << "Setting 1D proc ids." << std::endl;
+	
+	const DofMap& dof_map = extra_1d_data_system->get_dof_map();
+
+	MeshBase::const_element_iterator       el     =
+		mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el =
+		mesh.active_local_elements_end();
+
+	std::vector<dof_id_type> dof_indices;
+	const unsigned int proc_id_var = extra_1d_data_system->variable_number ("proc_id");
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+			dof_map.dof_indices (elem, dof_indices,proc_id_var);
+			for(unsigned int i=0; i < dof_indices.size(); i++)
+				extra_1d_data_system->solution->set(dof_indices[i], elem->processor_id());
+		}
+	}
+
+	//must close the vector after editing it
+	extra_1d_data_system->solution->close();
+
+	std::cout << "1D proc ids set." << std::endl;
 }
 
 

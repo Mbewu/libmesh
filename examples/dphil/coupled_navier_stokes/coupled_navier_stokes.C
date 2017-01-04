@@ -221,6 +221,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	{
 	  system_3d = &es->add_system<TransientLinearImplicitSystem>("ns3d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
+		extra_3d_data_system = &es->add_system<ExplicitSystem> ("extra_3d_data");
 	}
 
 	if(sim_1d && sim_type != 5)
@@ -238,6 +239,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		system_coupled = &es->add_system<TransientLinearImplicitSystem> ("ns3d1d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
 		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
+		extra_3d_data_system = &es->add_system<ExplicitSystem> ("extra_3d_data");
 	}
 
 	mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
@@ -397,10 +399,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		}
 	}
 
-	if(sim_1d)
-	{
-		set_radii();
-	}
 
 	if(es->parameters.get<unsigned int>("prerefine"))
 	{
@@ -421,6 +419,18 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		else
 			std::cout << "WE DO NOT REFINE 1D MESHES" << std::endl;
 	}
+
+
+	if(sim_1d)
+	{
+		set_radii();
+	}
+
+	// **************************** SET THE ELEM PIDs *********************** //
+	if(sim_3d)
+		set_elem_proc_id_3d();
+	if(sim_1d)
+		set_elem_proc_id_1d();
 
 
 	// ************** CALCULATE THE RESISTANCE OF THE 1D TREES ************** //
@@ -586,7 +596,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			perf_log.push("output");
 			if(unsteady && !restart)
 			{
-				if(sim_3d) {write_3d_solution(true);}
+				if(sim_3d) {write_3d_solution(es->parameters.get<bool>("output_backup_files"));}
 				if(sim_1d) {write_1d_solution();}
 			}
 
@@ -1764,6 +1774,7 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"reuse_convection_diffusion_pc",true);
 
 	set_bool_parameter(infile,"use_command_line_auto_fieldsplit_options",true);
+	set_bool_parameter(infile,"output_backup_files",false);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -4150,18 +4161,20 @@ void NavierStokesCoupled::setup_variable_scalings_3D()
 	// these indices are based on the order in which they are given to exodus
 	if(!threed)
 	{
-		var_scalings_3D.resize(3);
+		var_scalings_3D.resize(4);
 		var_scalings_3D[0] = velocity_scale;	// u
 		var_scalings_3D[1] = velocity_scale;	// v
 		var_scalings_3D[2] = pressure_scale;	// p
+		var_scalings_3D[3] = 1.0;	// proc_id
 	}
 	else
 	{
-		var_scalings_3D.resize(4);
+		var_scalings_3D.resize(5);
 		var_scalings_3D[0] = velocity_scale;	// u
 		var_scalings_3D[1] = velocity_scale;	// v
 		var_scalings_3D[2] = velocity_scale;	// w
 		var_scalings_3D[3] = pressure_scale;	// p
+		var_scalings_3D[4] = 1.0;	// proc_id
 	}
 
 
@@ -4169,18 +4182,20 @@ void NavierStokesCoupled::setup_variable_scalings_3D()
 	{
 		if(!threed)
 		{
-			var_scalings_3D.resize(6);
+			var_scalings_3D.resize(7);
 			var_scalings_3D[3] = velocity_scale;	// u_adj
 			var_scalings_3D[4] = velocity_scale;	// v_adj
 			var_scalings_3D[5] = pressure_scale;	// p_adj
+			var_scalings_3D[6] = 1.0;	// proc_id
 		}
 		else
 		{		
-			var_scalings_3D.resize(8);
+			var_scalings_3D.resize(9);
 			var_scalings_3D[4] = velocity_scale;	// u_adj
 			var_scalings_3D[5] = velocity_scale;	// v_adj
 			var_scalings_3D[6] = velocity_scale;	// w_adj
 			var_scalings_3D[7] = pressure_scale;	// p_adj
+			var_scalings_3D[8] = 1.0;	// proc_id
 		}
 	}
 
@@ -4214,11 +4229,12 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 
 	}
 
-	var_scalings_1D.resize(4);
+	var_scalings_1D.resize(5);
 	var_scalings_1D[0] = mean_pressure_scale;	// P
 	var_scalings_1D[1] = flow_scale;	// Q
 	var_scalings_1D[2] = 1.0;	// radius
 	var_scalings_1D[3] = 1.0;	// poiseuille
+	var_scalings_1D[4] = 1.0;	// proc_id
 
 
 }

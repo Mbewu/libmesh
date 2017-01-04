@@ -719,6 +719,10 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 			system->add_variable ("p_adj", CONSTANT,MONOMIAL,&active_subdomains);
 	}
 
+	// add variable for proc id
+	int proc_id_var = extra_3d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
+
+
 	// ******** WE NEED TO ADD THE PRECONDITIONER MATRIX POSSIBLY ********** //
 
 	if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
@@ -1461,6 +1465,8 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 
 	}
 
+	variables_3d.push_back("proc_id");
+
 	exo.set_output_variables(variables_3d);
 
 	std::ostringstream file_name;
@@ -1534,8 +1540,8 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	}
 
 	//
-	std::cout << "before write pid" << std::endl;
-	write_elem_pid_3d(exo);
+	//std::cout << "before write pid" << std::endl;
+	//write_elem_pid_3d(exo);
 
 
 
@@ -4536,6 +4542,48 @@ void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
 // ************************************************************************** //
 
 
+
+
+
+
+// *************************SET ELEM PID 3D************************** //
+
+
+void NavierStokesCoupled::set_elem_proc_id_3d()
+{
+
+	//add the radius variable
+	// i'm sure we only need to do this once!
+	//create an equation system to hold data like the radius of the element
+	std::cout << "Setting 3D proc ids." << std::endl;
+	
+	const DofMap& dof_map = extra_3d_data_system->get_dof_map();
+
+	MeshBase::const_element_iterator       el     =
+		mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el =
+		mesh.active_local_elements_end();
+
+	std::vector<dof_id_type> dof_indices;
+	const unsigned int proc_id_var = extra_3d_data_system->variable_number ("proc_id");
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
+		{
+			dof_map.dof_indices (elem, dof_indices,proc_id_var);
+
+			for(unsigned int i=0; i < dof_indices.size(); i++)
+				extra_3d_data_system->solution->set(dof_indices[i], elem->processor_id());
+		}
+	}
+
+	//must close the vector after editing it
+
+	extra_3d_data_system->solution->close();
+	std::cout << "3D proc ids set." << std::endl;
+}
 
 
 

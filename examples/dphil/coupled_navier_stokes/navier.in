@@ -408,10 +408,10 @@ petsc_convection_diffusion_solver_options = '-convection_diffusion_ksp_type gmre
 #petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type lu -mass_matrix_pc_factor_mat_solver_package superlu_dist'
 
 # CG ML
-#petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type cg -mass_matrix_pc_type ml -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
+petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type cg -mass_matrix_pc_type ml -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
 
 # Jacobi Preonly
-petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type jacobi -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
+#petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_pc_type jacobi -mass_matrix_ksp_rtol 1e-6 -mass_matrix_ksp_atol 1e-8 -mass_matrix_ksp_monitor'
 
 
 #### inner laplacian solver options ####
@@ -424,7 +424,7 @@ petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_p
 #petsc_laplacian_solver_options = '-laplacian_ksp_type preonly -laplacian_pc_type lu -laplacian_pc_factor_mat_solver_package superlu_dist'
 
 # CG ML
-#petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-6 -laplacian_ksp_atol 1e-8 -laplacian_pc_type ml' #  -laplacian_ksp_monitor'
+petsc_laplacian_solver_options = '-laplacian_ksp_type cg -laplacian_ksp_rtol 1e-6 -laplacian_ksp_atol 1e-8 -laplacian_pc_type ml' #  -laplacian_ksp_monitor'
 
 
 
@@ -443,7 +443,7 @@ petsc_mass_matrix_solver_options = '-mass_matrix_ksp_type preonly -mass_matrix_p
 # direct  (obsolete, only use superlu_dist)
 ##petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package umfpack -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
-#petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
+petsc_1d_solver_options = '-ns1d_ksp_type preonly -ns1d_pc_type lu -ns1d_pc_factor_mat_solver_package superlu_dist -ns3d_fieldsplit_1_pc_lap_ksp_monitor'
 
 
 
@@ -564,9 +564,9 @@ petsc_3d1d_post_solve_fieldsplit_solver_options = '-post_solve_ksp_type fgmres -
 
 
 # 0 - direct, 1 - gmres (ilu etc), 2 - petsc lsc, 3 - pressure mass matrix, 4 - pcd preconditioner, 5 - pcd 2.0 preconditioner, 6 - james lsc, 7 - james lsc properly scaled, 8 - petsc lsc from command line, 9 - james lsc scaled linear stabilised, 10 - SIMPLE, 11 - other SIMPLE 
-preconditioner_type_3d = 0
+preconditioner_type_3d = 9
 # 0 - direct, 1 - gmres (ilu etc), 6 - diagonal monolithic preconditioner, 7 - full monolithic preconditioner, 8 - full monolithic with velocity schur preconditioner, 9 - full monolithic NS schur preconditioner (exact schur), 10 - stokes full monolithic NS schur (exact for stokes), 11 - full monolithic with stokes velocity schur preconditioner, 12 - default a11 preconditioner should be set in command line petsc options
-preconditioner_type_3d1d = 0
+preconditioner_type_3d1d = 12
 # 0 - direct, 1 - gmres (ilu etc) 2 - pressure mass matrix
 preconditioner_type_schur_stokes = 0
 monolithic_navier_stokes_preonly = 1
@@ -584,7 +584,7 @@ direct_post_solve = false
 outer_solver_rtol = 1.e-6
 reynolds_number = 100.0
 streamline_diffusion = true
-stokes = false
+stokes = true
 cube_length = 1.0
 cube_length_N = 2 #100
 cube_width = 1.0
@@ -678,9 +678,10 @@ mesh_file = meshes/meshes_for_ns_study/volume_mesh_1x1.xda
 #mesh_file = meshes/surface_mesh_no_holes_22.5_coarse.msh #usual
 #mesh_file = meshes/meshes_for_ns_study/volume_mesh_full_outlets_9.xda
 mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2.msh
+#mesh_file = meshes/meshes_for_paper/multi_bifurcation_symmetric_unstructured_2x2x2x2x2.msh
 inflow_bdy_id = 0	#vmtk labels the outlets, but you can't really renuber them so easily, -1 means just take the first number
 old_geometry = 0	# 1 - whatever i thought it was, 2 - matlab generated bifurcation geometries
-unsteady = 1
+unsteady = 0
 stokes_ic = false
 angle_of_inflow = 0.	#pi/4
 ramp_duration = .0
@@ -699,7 +700,7 @@ numerical_continuation_scaling_factor = 2.0
 numerical_continuation_starting_reynolds_number = 500.0
 element_length_scaling = 1.25
 output_nondim = true
-sim_type = 2
+sim_type = 5
 reynolds_number_calculation = true
 no_output = false
 max_initial_picard = 5
@@ -716,7 +717,7 @@ num_generations_2 = 1
 num_generations_3 = 1
 num_generations_4 = 1
 random_1d_generations = 0	# the number is the maximum number of 1d generations
-num_generations_string = 11111111111111 #1458769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
+num_generations_string = 1458769867866587959768695876959875 #14325423422143515324251432515431 #1432542342214351	# the number is the maximum number of 1d generations
 length_diam_ratio = 3.25 #3.36e0
 length_diam_ratio_1 = 3.25 #2.822
 length_diam_ratio_2 = 3.25 #8.9252
@@ -735,5 +736,5 @@ resistance_type_1d = 0
 known_boundary_conditions = false
 moghadam_coupling = true
 boundary_conditions_folder = results/uncoupled_testing/steady/coupled/
-output_folder = results/moghadam/monolithic/ #organised_parallel_plates/vol_opt/dt_0.02/1.0/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
+output_folder = results/test88/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
 restart_folder = results/ns_study/full_mesh/re500/unsteady/ref1.5_bdy1/
