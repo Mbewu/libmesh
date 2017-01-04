@@ -327,7 +327,7 @@ public:
 
 	// write the solution at a specific time and time_step, 
 	// backup=TRUE if backup is to be written
-	void write_3d_solution(bool backup);
+	void write_3d_solution();
 
 	void write_particles();
 

@@ -596,7 +596,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			perf_log.push("output");
 			if(unsteady && !restart)
 			{
-				if(sim_3d) {write_3d_solution(es->parameters.get<bool>("output_backup_files"));}
+				if(sim_3d) {write_3d_solution();}
 				if(sim_1d) {write_1d_solution();}
 			}
 
@@ -965,7 +965,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						if (time - ((int)((time) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") < dt)// (t_step)%write_interval == 0)
 						{
-							if(sim_3d) {write_3d_solution(es->parameters.get<bool>("output_backup_files"));}
+							if(sim_3d) {write_3d_solution();}
 							if(sim_1d) {write_1d_solution();}
 						}
 					std::cout << "yeah" << std::endl;
@@ -1480,6 +1480,7 @@ int NavierStokesCoupled::read_parameters()
 	set_unsigned_int_parameter(infile,"nelem_target",1000);
 	set_unsigned_int_parameter(infile,"face_level_mismatch_limit",0);
 	set_double_parameter(infile,"write_interval",0.1);
+	set_double_parameter(infile,"backup_write_interval",es->parameters.get<double> ("write_interval")*10);
 	set_unsigned_int_parameter(infile,"min_steps_between_dt_increase",3);	
 	set_double_parameter(infile,"period",2.0);	
 	//double density = set_double_parameter(infile,"density",1.176e-6);
@@ -1774,7 +1775,7 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"reuse_convection_diffusion_pc",true);
 
 	set_bool_parameter(infile,"use_command_line_auto_fieldsplit_options",true);
-	set_bool_parameter(infile,"output_backup_files",false);
+	set_bool_parameter(infile,"output_backup_files",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());

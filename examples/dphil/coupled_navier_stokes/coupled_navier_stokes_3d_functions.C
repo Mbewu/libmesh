@@ -1418,7 +1418,7 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 // *********************** WRITE OUT THE 3D SOLUTION ************************ //
 // write the solution at a specific time and time_step, backup=TRUE if backup is to be written
 
-void NavierStokesCoupled::write_3d_solution(bool backup)
+void NavierStokesCoupled::write_3d_solution()
 {
 
 	std::cout << "Writing 2D/3D solution" << std::endl;
@@ -1546,14 +1546,15 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 
 
 	// We write the equation systems and mesh object in .xda format
-	// for restarting... perhaps we don't wanna do this every time step
-	// but every n time_steps
+	// for restarting...
+	// By default every 10 writes
 
 	std::cout << "EXODUSII output for timestep " << t_step
 		<< " written to " << file_name_soln.str() << std::endl;
 
 
-	if(backup)
+	if(es->parameters.get<bool>("output_backup_files") && 
+	(time - ((int)((time) /es->parameters.get<Real>("backup_write_interval")))*es->parameters.get<Real>("backup_write_interval") < dt))
 	{
 		std::cout << "Writing backup files." << std::endl;
 		file_name_es << file_name.str();
