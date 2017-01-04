@@ -378,6 +378,9 @@ public:
 
 	void write_elem_pid_3d(ExodusII_IO_Extended& io);
 
+	void set_elem_proc_id_3d();
+	void set_elem_proc_id_1d();
+
 	double set_double_parameter(GetPot _infile, std::string name, double default_value);
 	unsigned int set_unsigned_int_parameter(GetPot _infile, std::string name, unsigned int default_value);
 	int set_int_parameter(GetPot _infile, std::string name, int default_value);
@@ -451,6 +454,7 @@ private:
 	TransientLinearImplicitSystem * system_coupled;
 	TransientLinearImplicitSystem * system_neumann;
 	ExplicitSystem * extra_1d_data_system;
+	ExplicitSystem * extra_3d_data_system;
 	ExplicitSystem * particle_deposition_system_1d;
 	unsigned int t_step;	
 	double time;
