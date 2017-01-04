@@ -1742,7 +1742,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 void NavierStokesCoupled::write_1d_solution()
 {
 	
-
+	
 
 	TransientLinearImplicitSystem * system;
   // Get a reference to the Stokes system object.
@@ -1798,6 +1798,7 @@ void NavierStokesCoupled::write_1d_solution()
 
 	//std::cout << "before write disc" << std::endl;
 
+	// discontinuous can write the proc id
 	exo.write_discontinuous_exodusII (file_name.str(),
                                     *es);
 
@@ -1813,7 +1814,7 @@ void NavierStokesCoupled::write_1d_solution()
 
 
 	//before we assemble take the old solution and solution back to the nodal space
-	convert_1d_monomial_to_nodal(*system->solution);	
+	convert_1d_monomial_to_nodal(*system->solution);
 	system->solution->close();
 
 }

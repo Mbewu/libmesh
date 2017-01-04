@@ -1465,7 +1465,6 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 
 	}
 
-	variables_3d.push_back("proc_id");
 
 	exo.set_output_variables(variables_3d);
 
@@ -1524,9 +1523,8 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 	//the time step variable needs to reflect the position in the file_name
 	// since we want one file per time step we just put 1 here
 	std::cout << "Actually writing file." << std::endl;
-	perf_log.push("output_normal");
 	exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
-	perf_log.pop("output_normal");
+	exo.write_element_data(*es);	// write the proc_id
 
 
 	if(es->parameters.get<unsigned int>("error_estimator"))
@@ -1555,7 +1553,6 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 		<< " written to " << file_name_soln.str() << std::endl;
 
 
-	perf_log.push("output_backup");
 	if(backup)
 	{
 		std::cout << "Writing backup files." << std::endl;
@@ -1574,7 +1571,6 @@ void NavierStokesCoupled::write_3d_solution(bool backup)
 		std::cout << "Backup files written to " << file_name_mesh.str()
 			<< " and " << file_name_es.str() << std::endl;
 	}
-	perf_log.pop("output_backup");
 
  
 	// now do the opposite

@@ -965,7 +965,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						if (time - ((int)((time+1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") <= dt)// (t_step)%write_interval == 0)
 						{
-							if(sim_3d) {write_3d_solution(true);}
+							if(sim_3d) {write_3d_solution(es->parameters.get<bool>("output_backup_files"));}
 							if(sim_1d) {write_1d_solution();}
 						}
 					std::cout << "yeah" << std::endl;
@@ -4161,20 +4161,18 @@ void NavierStokesCoupled::setup_variable_scalings_3D()
 	// these indices are based on the order in which they are given to exodus
 	if(!threed)
 	{
-		var_scalings_3D.resize(4);
+		var_scalings_3D.resize(3);
 		var_scalings_3D[0] = velocity_scale;	// u
 		var_scalings_3D[1] = velocity_scale;	// v
 		var_scalings_3D[2] = pressure_scale;	// p
-		var_scalings_3D[3] = 1.0;	// proc_id
 	}
 	else
 	{
-		var_scalings_3D.resize(5);
+		var_scalings_3D.resize(4);
 		var_scalings_3D[0] = velocity_scale;	// u
 		var_scalings_3D[1] = velocity_scale;	// v
 		var_scalings_3D[2] = velocity_scale;	// w
 		var_scalings_3D[3] = pressure_scale;	// p
-		var_scalings_3D[4] = 1.0;	// proc_id
 	}
 
 
@@ -4182,20 +4180,18 @@ void NavierStokesCoupled::setup_variable_scalings_3D()
 	{
 		if(!threed)
 		{
-			var_scalings_3D.resize(7);
+			var_scalings_3D.resize(6);
 			var_scalings_3D[3] = velocity_scale;	// u_adj
 			var_scalings_3D[4] = velocity_scale;	// v_adj
 			var_scalings_3D[5] = pressure_scale;	// p_adj
-			var_scalings_3D[6] = 1.0;	// proc_id
 		}
 		else
 		{		
-			var_scalings_3D.resize(9);
+			var_scalings_3D.resize(8);
 			var_scalings_3D[4] = velocity_scale;	// u_adj
 			var_scalings_3D[5] = velocity_scale;	// v_adj
 			var_scalings_3D[6] = velocity_scale;	// w_adj
 			var_scalings_3D[7] = pressure_scale;	// p_adj
-			var_scalings_3D[8] = 1.0;	// proc_id
 		}
 	}
 
