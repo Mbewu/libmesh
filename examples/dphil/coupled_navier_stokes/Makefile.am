@@ -15,6 +15,7 @@ data          = lid_driven_cavity_boundary_function.h  \
 								ns_assembler_3d.C \
 								picard.h \
 								picard.C \
+								picard_efficient.C \
 								optimised_stabilised_assembler_3d.h \
 								optimised_stabilised_assembler_3d.C \
 								navier_stokes_assembler.h \
