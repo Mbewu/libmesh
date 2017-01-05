@@ -59,8 +59,8 @@ using namespace libMesh;
 class NSAssembler3D : public System::Assembly
 {
 	public:
-		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> _subdomains_3d, unsigned int _n_initial_3d_elem) :
-			es (&es_in),subdomains_3d(_subdomains_3d), n_initial_3d_elem(_n_initial_3d_elem),pressure_coupled(false),estimating_error(false),threed(true)
+		NSAssembler3D (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> _subdomains_3d, unsigned int _n_initial_3d_elem, bool _efficient_assembly = false) :
+			es (&es_in),subdomains_3d(_subdomains_3d), n_initial_3d_elem(_n_initial_3d_elem),pressure_coupled(false),estimating_error(false),threed(true),efficient_assembly(_efficient_assembly)
 		
 		{
 			//rather insist on calling this yourself before each assembly so that you 
@@ -83,7 +83,12 @@ class NSAssembler3D : public System::Assembly
 		virtual void assemble ()
 		{
 			ErrorVector error;
-			this->assemble(error);
+
+			if(efficient_assembly)
+				this->assemble_efficient(error);
+			else
+				this->assemble(error);
+				
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 			{
 				this->assemble_preconditioner();
@@ -91,6 +96,7 @@ class NSAssembler3D : public System::Assembly
 		}
 
 		virtual void assemble (ErrorVector& error_vector) = 0;			//must be implemented by other class
+		virtual void assemble_efficient (ErrorVector& error_vector);			// if not implemented in other class defaults to normal assembly
 		virtual void assemble_preconditioner ();								//must be implemented by other class (may not be though)
 		virtual void calculate_peclet_number (ErrorVector& error_vector);
 		virtual double calculate_flux (const int boundary_id);
@@ -124,6 +130,7 @@ class NSAssembler3D : public System::Assembly
 		bool pressure_coupled;
 		bool estimating_error;
 		bool threed;
+		bool efficient_assembly;
 
 };
 

@@ -58,14 +58,17 @@ using namespace libMesh;
 class Picard : public NSAssembler3D
 {
 	public:
-		Picard (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> subdomains_3d, unsigned int n_initial_3d_elem) :
-			NSAssembler3D (es_in, _surface_boundaries, subdomains_3d, n_initial_3d_elem)
+		Picard (EquationSystems& es_in, std::vector<SurfaceBoundary* >& _surface_boundaries, std::vector<unsigned int> subdomains_3d, unsigned int n_initial_3d_elem, bool efficient_assembly) :
+			NSAssembler3D (es_in, _surface_boundaries, subdomains_3d, n_initial_3d_elem, efficient_assembly)
 		{
 			//std::cout << "hmm" << std::endl;
 		}
 
 		using NSAssembler3D::assemble;
 		virtual void assemble (ErrorVector& error_vector);
+
+		using NSAssembler3D::assemble_efficient;
+		virtual void assemble_efficient (ErrorVector& error_vector);
 
 };
 

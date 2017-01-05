@@ -735,6 +735,7 @@ renumber_nodes_and_elements = false
 resistance_type_1d = 0
 known_boundary_conditions = false
 moghadam_coupling = true
+efficient_assembly = false
 boundary_conditions_folder = results/uncoupled_testing/steady/coupled/
 output_folder = results/test88/ #results/expanding_pipe_study_high_re/optimised_volume_0.1/ # exodus files 
 restart_folder = results/ns_study/full_mesh/re500/unsteady/ref1.5_bdy1/

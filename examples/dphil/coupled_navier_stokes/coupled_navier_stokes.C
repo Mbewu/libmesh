@@ -266,7 +266,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_3d)
 	{
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
-			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
+			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly")));
 		else
 			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -1776,6 +1776,8 @@ int NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"use_command_line_auto_fieldsplit_options",true);
 	set_bool_parameter(infile,"output_backup_files",true);
+
+	set_bool_parameter(infile,"efficient_assembly",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());

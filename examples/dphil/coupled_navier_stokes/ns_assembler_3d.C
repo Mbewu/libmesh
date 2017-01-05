@@ -947,3 +947,13 @@ void NSAssembler3D::assemble_preconditioner ()
 	}
 }
 
+
+
+void NSAssembler3D::assemble_efficient (ErrorVector& error)
+{
+	std::cout << "Efficient assembly was not implemented for you assembly class." << std::endl;
+	std::cout << "Using standard assembly." << std::endl;
+	this->assemble(error);
+}
+
+
