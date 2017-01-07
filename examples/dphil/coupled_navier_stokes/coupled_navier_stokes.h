@@ -421,6 +421,7 @@ public:
 	void construct_petsc_options_string();
 
 	int setup_preconditioners(TransientLinearImplicitSystem * system, Mat& B);
+	int setup_preconditioners_efficient(TransientLinearImplicitSystem * system, Mat& B);
 
 	int compute_and_output_eigenvalues(TransientLinearImplicitSystem * system);
 
@@ -436,6 +437,8 @@ public:
 	int read_input_boundary_conditions();
 
 	void calculate_1d_linear_resistance_values();
+
+	void update_3d_dirichlet_boundary_conditions();
 
 
 private:

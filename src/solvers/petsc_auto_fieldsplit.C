@@ -73,7 +73,8 @@ void petsc_auto_fieldsplit (PC my_pc,
                             const System &sys)
 {
 
-	std::cerr << "RANK " << sys.comm().rank() << ": Setting up the IS for fieldsplit." << std::endl;
+	//std::cerr << "RANK " << sys.comm().rank() << ": Setting up the IS for fieldsplit." << std::endl;
+	std::cout << "Setting up the IS for fieldsplit." << std::endl;
 
   std::string sys_prefix = "--solver_group_";
 
@@ -111,9 +112,9 @@ void petsc_auto_fieldsplit (PC my_pc,
 			PetscInt r,s;
 			MatGetOwnershipRange(pc_mat,&r,&s);
 
-	std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now\n"; 
-			std::cerr << "RANK " << sys.comm().rank() << ": rows = " << m << ", cols = " << n << "\n";
-			std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
+	//std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now\n"; 
+	//std::cerr << "RANK " << sys.comm().rank() << ": rows = " << m << ", cols = " << n << "\n";
+	//std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
 
           if (group_name != empty_string)
             {
@@ -147,7 +148,8 @@ void petsc_auto_fieldsplit (PC my_pc,
   if(true)
   {
 
-	std::cerr << "RANK " << sys.comm().rank() << ": Setting up the IS for the sub fieldsplits." << std::endl;
+	//std::cerr << "RANK " << sys.comm().rank() << ": Setting up the IS for the sub fieldsplits." << std::endl;
+	std::cout << " Setting up the IS for the sub fieldsplits." << std::endl;
 	// do this so that they know what preconditioner to use for the sub systems
 	PetscErrorCode ierr=0;
 	ierr = PCSetUp(my_pc);
@@ -158,11 +160,11 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 	PCType pc_type;
 	ierr = PCGetType(my_pc,&pc_type);
-	std::cerr << "RANK " << sys.comm().rank() << ": outer pc type = " << pc_type << std::endl;
+	//std::cerr << "RANK " << sys.comm().rank() << ": outer pc type = " << pc_type << std::endl;
 	std::string fieldsplit_string = "fieldsplit";
 	if (pc_type == fieldsplit_string)
 	{
-		std::cerr << "RANK " << sys.comm().rank() << ": yeah..." << std::endl;
+		//std::cerr << "RANK " << sys.comm().rank() << ": yeah..." << std::endl;
 		// loop over the number of dofs, cause this is the possible amount of fieldsplits
 		KSP* subksp;	//subksps
 		PetscInt num_splits;
@@ -172,7 +174,7 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 		for (unsigned int i = 0; i < num_splits; ++i)
 		{
-			std::cerr << "RANK " << sys.comm().rank() << ": i = " << i << std::endl;
+			//std::cerr << "RANK " << sys.comm().rank() << ": i = " << i << std::endl;
 			PC sub_pc;
 			ierr = KSPGetPC(subksp[i],&sub_pc);// CHKERRQ(ierr);
 
@@ -180,16 +182,16 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 			PCType sub_pc_type;
 			ierr = PCGetType(sub_pc,&sub_pc_type);
-			std::cerr << "RANK " << sys.comm().rank() << ": sub_pc type = " << sub_pc_type << std::endl;
+			//std::cerr << "RANK " << sys.comm().rank() << ": sub_pc type = " << sub_pc_type << std::endl;
 			Mat sub_mat;
 			ierr = PCGetOperators(sub_pc,&sub_mat,NULL);
 			PetscInt m,n;
 			ierr = MatGetLocalSize(sub_mat,&m,&n);
-			std::cerr << "RANK " << sys.comm().rank() << ": subrows = " << m << ", subcols = " << n << std::endl;
+			//std::cerr << "RANK " << sys.comm().rank() << ": subrows = " << m << ", subcols = " << n << std::endl;
 			PetscInt r,s;
 			MatGetOwnershipRange(sub_mat,&r,&s);
-			std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
-			std::cerr << "RANK " << sys.comm().rank() << ": hmmm" << std::endl;
+			//std::cerr << "RANK " << sys.comm().rank() << ": subrange = " << r << " to " << s << std::endl;
+			//std::cerr << "RANK " << sys.comm().rank() << ": hmmm" << std::endl;
 
 
 			if (sub_pc_type == fieldsplit_string)
@@ -222,7 +224,7 @@ void petsc_auto_fieldsplit (PC my_pc,
 
 						if (group_name != empty_string)
 						{
-							std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now" << std::endl; 
+							//std::cerr << "RANK " << sys.comm().rank() << ": yeah doing " << var_name << " figuring out now" << std::endl; 
 							std::vector<dof_id_type> &indices =
 							group_indices[group_name];
 							const bool prior_indices = !indices.empty();
@@ -233,29 +235,28 @@ void petsc_auto_fieldsplit (PC my_pc,
 							std::sort(indices.begin(), indices.end());
 						}
 					}
-				  }
+				}
 
 				// need to create a local to global vector for this fieldsplit. Need to first collect all the indices from U and p.
 
 				std::vector<unsigned int> global_indices;
-				  for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
+				for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
 					 j = group_indices.begin(); j != group_indices.end(); ++j)
-				  {
-
+				{
 					global_indices.insert(global_indices.end(), j->second.begin(), j->second.end());
 				}
 
-					//need to put all the global indices from all the processes into a single vector so we can figure out the mapping
-					sys.comm().allgather(global_indices,false);
+				//need to put all the global indices from all the processes into a single vector so we can figure out the mapping
+				sys.comm().allgather(global_indices,false);
 
-					// need to sort because pressure dofs come after
-					std::sort(global_indices.begin(), global_indices.end());
+				// need to sort because pressure dofs come after
+				std::sort(global_indices.begin(), global_indices.end());
 
 
-					// want to do groups first
-				  for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
+				// want to do groups first
+			  	for (std::map<std::string, std::vector<dof_id_type> >::const_iterator
 					 j = group_indices.begin(); j != group_indices.end(); ++j)
-				  {
+			  	{
 
 					//need to put all the global indices from all the processes into a single vector so we can figure out the mapping
 					std::vector<unsigned int> local_indices = j->second;
@@ -265,22 +266,23 @@ void petsc_auto_fieldsplit (PC my_pc,
 					int find_start = 0;
 					for(unsigned int k=0; k<j->second.size(); k++)
 					{
-						int local_idx = find(global_indices.begin() + find_start,global_indices.end(),j->second[k]) - global_indices.begin();
+						// lower_bound finds the lower_bound, i.e. find for sorted data
+						int local_idx = std::lower_bound(global_indices.begin() + find_start,global_indices.end(),j->second[k]) - global_indices.begin();
 						local_indices[k] = local_idx;
 						find_start = local_idx;
 					}
 
 
 				      indices_to_fieldsplit(sys.comm(), local_indices, sub_pc, j->first);
-				  }
+			  	}
 
 
 				//std::exit(0);
-				std::cerr << "RANK " << sys.comm().rank() << ": before ksp set up" << std::endl;
+				//std::cerr << "RANK " << sys.comm().rank() << ": before ksp set up" << std::endl;
 				ierr = KSPSetUp(subksp[i]);// CHKERRQ(ierr);
-				std::cerr << "RANK " << sys.comm().rank() << ": before pc set up" << std::endl;
+				//std::cerr << "RANK " << sys.comm().rank() << ": before pc set up" << std::endl;
 				ierr = PCSetUp(sub_pc);
-				std::cerr << "RANK " << sys.comm().rank() << ": done" << std::endl;
+				//std::cerr << "RANK " << sys.comm().rank() << ": done" << std::endl;
 
 			}
 
@@ -292,7 +294,8 @@ void petsc_auto_fieldsplit (PC my_pc,
 	}
   }
 
-	std::cerr << "RANK " << sys.comm().rank() << ": done fieldsplit setup" << std::endl;
+	//std::cerr << "RANK " << sys.comm().rank() << ": done fieldsplit setup" << std::endl;
+	std::cout << "Done fieldsplit setup" << std::endl;
 
 	//int ierr = PCSetDiagonalScale(my_pc,sys.solution->vec());
   //CHKERRABORT(sys.comm().get(), ierr);

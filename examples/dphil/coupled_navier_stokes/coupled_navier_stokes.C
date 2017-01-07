@@ -266,7 +266,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_3d)
 	{
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
-			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly")));
+			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly"),perf_log));
 		else
 			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -664,9 +664,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 				if(!particle_deposition)
 				{
-					es->reinit ();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS
 					if(sim_3d)
 					{
+						update_3d_dirichlet_boundary_conditions();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS
 						if(sim_type != 5)
 	 						beforebefore_norm = system_3d->solution->l2_norm();
 						else
@@ -1778,6 +1778,9 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"output_backup_files",true);
 
 	set_bool_parameter(infile,"efficient_assembly",true);
+	set_bool_parameter(infile,"efficient_solve_setup",true);
+
+	set_bool_parameter(infile,"create_3d_preconditioner_once",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -1817,6 +1820,17 @@ int NavierStokesCoupled::read_parameters()
 
 
 
+	// ***************** if we aren't doing a monolithic simulation then the 3d1d preconditioner is irrelevant ********** //
+	if(sim_type != 5)
+	{
+		es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
+	}	
+
+	// ***************** if we aren't doing a 3D simulations then the 3d preconditioner is irrelevant ******************* //
+	if(!sim_3d)
+	{
+		es->parameters.set<unsigned int> ("preconditioner_type_3d") = 0;
+	}
 
 
 	// ******************** SETUP PETSC OPTIONS ******************************* //
@@ -2017,32 +2031,52 @@ int NavierStokesCoupled::read_parameters()
 	}
 
 
-	// ***************** if we aren't doing a monolithic simulation then the 3d1d preconditioner is irrelevant ********** //
-	if(sim_type != 5)
-	{
-		es->parameters.set<unsigned int> ("preconditioner_type_3d1d") = 0;
-	}	
 
 	// ***************** figure out what sub matrices we need to assemble ********************* //
-	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
-		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
-
-	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3
-			|| es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
-		es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
-
-	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
-			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
+	// defaults
+	es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = false;
+	es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = false;
+	es->parameters.set<bool> ("assemble_pressure_mass_matrix") = false;
+	es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = false;
+	es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = false;
+	es->parameters.set<bool> ("assemble_velocity_mass_matrix") = false;
+	if(sim_3d)
 	{
-		es->parameters.set<bool> ("assemble_pressure_mass_matrix") = true;
-		es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = true;
-		es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = true;
+
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 1)
+			es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3
+				|| es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
+			es->parameters.set<bool> ("assemble_scaled_pressure_mass_matrix") = true;
+
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4 
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 5)
+		{
+			es->parameters.set<bool> ("assemble_pressure_mass_matrix") = true;
+			es->parameters.set<bool> ("assemble_pressure_convection_diffusion_matrix") = true;
+			es->parameters.set<bool> ("assemble_pressure_laplacian_matrix") = true;
+		}
+	
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 8
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
+			es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
+	}
+
+	// if a 3d1d sim
+	// defaults
+	es->parameters.set<bool> ("assemble_velocity_matrix") = false;
+	
+	if(sim_type >= 3)
+	{
+		if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 8
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10
+				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11)
+			es->parameters.set<bool> ("assemble_velocity_matrix") = true;
 	}
 	
-	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 7
-			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 8
-			|| es->parameters.get<unsigned int> ("preconditioner_type_3d") == 9)
-		es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
 		
 
 
@@ -2545,6 +2579,22 @@ int NavierStokesCoupled::read_parameters()
 		std::cout << "Setting custom_partitioning to true." << std::endl;
 		es->parameters.set<bool> ("custom_partitioning") = true;
 
+	}
+
+
+	// ************** PARAMETER TO TELL WHEN STOKES VELOCITY MATRIX HAS BEEN ALLOCATED ******** //
+	es->parameters.set<bool> ("stokes_velocity_matrix_set") = false;
+
+	// ************** PARAMETER TO TELL WHEN LINEAR ASSEMBLY HAS BEEN DONE ************ //
+	es->parameters.set<bool> ("linear_assembly_done")   = false;
+
+	// ************** EFFICIENT ASSEMBLY NOT SET UP FOR ADAPTIVE TIME-STEPPING *************** //
+	// must make sure the time-step hasn't changed so no adaptive time-stepping
+	if(es->parameters.get<bool> ("adaptive_time_stepping") && es->parameters.get<bool> ("efficient_assembly"))
+	{
+		std::cout << "Efficient assembly not set up for adaptive time-stepping yet." << std::endl;
+		std::cout << "Changing to use regular assembly." << std::endl;
+		es->parameters.set<bool> ("efficient_assembly") = false;
 	}
 
 
