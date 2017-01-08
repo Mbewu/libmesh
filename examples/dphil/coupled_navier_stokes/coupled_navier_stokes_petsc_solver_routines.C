@@ -405,7 +405,7 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
    MonolithicShellPCSetUp - This routine sets up the monolithic shell preconditioner
 	when we don't construct the schur complement columnwise. mostly defunct.
 */
-PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
+PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp, KSP _outer_ksp)
 {
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
@@ -414,6 +414,9 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+
+	// ********* ASSOC outer ksp ************************** //
+	shell->outer_ksp = _outer_ksp;
 
 	// ********* SET THE MATRIX ******************* //
 
@@ -516,7 +519,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp)
 /*
    Monolithic2ShellPCSetUp - This solves the matrix in the schur complement vector by vector.
 */
-PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_cols, Vec non_zero_rows, KSP schur_ksp)
+PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_cols, Vec non_zero_rows, KSP schur_ksp, KSP _outer_ksp)
 {
   	NSShellPC  *shell;
   	PetscErrorCode ierr;
@@ -524,6 +527,9 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 	//ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+
+	// ********* ASSOC outer ksp ************************** //
+	shell->outer_ksp = _outer_ksp;
 
 	// ********* SET MASS MATRIX ******************* //
 

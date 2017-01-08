@@ -1695,7 +1695,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	{
 		// also zero the assemble bits for next time
 		system->request_matrix("Preconditioner")->close();
-		system->request_matrix("Preconditioner")->zero();
+		system->request_matrix("Preconditioner")->init();
 	}
 
 
@@ -2349,7 +2349,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	// the navier stokes 3d1d preconditioners need to be deleted and zeroed
 	if((es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10)
-		&& es->parameters.get<bool>("multiple_column_solve"))
+		&& es->parameters.get<unsigned int>("multiple_column_solve") == 1)
 	{
 
 		std::cout << "hiya" << std::endl;
@@ -2750,7 +2750,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			// set up a global Vec saying which columns have entries in the B1 matrix
 			// remember we only need to do this once, hence the !mono_shell_pc_created
 
-			if(es->parameters.get<bool>("multiple_column_solve") && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10)
+			if(es->parameters.get<unsigned int>("multiple_column_solve") == 1 && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10)
 			{
 				std::cout << "Identifying rows and columns of submatrix involved in monolithic schur complement." << std::endl;
 
@@ -2960,7 +2960,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 			std::cout << "YES" << std::endl;
 			// Do setup of preconditioner
-			if(es->parameters.get<bool>("multiple_column_solve"))
+			if(es->parameters.get<unsigned int>("multiple_column_solve") == 1)
 			{
 				if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10)
 				{
@@ -2971,14 +2971,14 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 					ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
 				}
 			}
-			else if(es->parameters.get<bool>("multiple_column_solve"))
+			else if(es->parameters.get<unsigned int>("multiple_column_solve") == 2)
 			{
 				if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
 					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
 					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
 				{
-					ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1]); CHKERRQ(ierr);
+					ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1],system_ksp); CHKERRQ(ierr);
 				}
 				else
 				{
@@ -2990,7 +2990,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			}
 			else
 			{
-				ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
+				ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1],system_ksp); CHKERRQ(ierr);
 			}
 
 			std::cout << "YES" << std::endl;
@@ -3853,6 +3853,7 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 			{
 				velocity_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 				system->request_matrix("Velocity Matrix")->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
+				//system->matrix->create_submatrix(*velocity_matrix,NS_var_idx,NS_var_idx);
 				velocity_matrix->close();
 			}
 		}
@@ -3883,7 +3884,7 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 		// set up a global Vec saying which columns have entries in the B1 matrix
 		// remember we only need to do this once, hence the !mono_shell_pc_created
 
-		if(es->parameters.get<bool>("multiple_column_solve") && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10)
+		if(es->parameters.get<unsigned int>("multiple_column_solve"))
 		{
 			std::cout << "Identifying rows and columns of submatrix involved in monolithic schur complement." << std::endl;
 
@@ -3997,15 +3998,15 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 			ierr = VecAssemblyEnd(non_zero_rows); CHKERRQ(ierr);
 
 
-			if(nonlinear_iteration == 1 && t_step == 1)
-			{
-				construct_schur_stokes_matrix(system,subksp[1]);
-			}
-
-
 		}
 	
 		
+		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1 && (nonlinear_iteration == 1 && t_step == 1))
+		{
+			construct_schur_stokes_matrix(system,subksp[1]);
+		}
+
+
 
 
 
@@ -4093,7 +4094,11 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 
 		std::cout << "YES" << std::endl;
 		// Do setup of preconditioner
-		if(es->parameters.get<bool>("multiple_column_solve"))
+		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1
+			|| !(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
 		{
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10)
 			{
@@ -4104,14 +4109,14 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
 			}
 		}
-		else if(es->parameters.get<bool>("multiple_column_solve"))
+		else if(es->parameters.get<unsigned int>("multiple_column_solve") == 2)
 		{
 			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
 				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
 				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
 			{
-				ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1]); CHKERRQ(ierr);
+				ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1],system_ksp); CHKERRQ(ierr);
 			}
 			else
 			{
@@ -4123,7 +4128,7 @@ int NavierStokesCoupled::setup_preconditioners_efficient(TransientLinearImplicit
 		}
 		else
 		{
-			ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1]); CHKERRQ(ierr);
+			ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1],system_ksp); CHKERRQ(ierr);
 		}
 
 		std::cout << "YES" << std::endl;

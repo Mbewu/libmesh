@@ -1238,7 +1238,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 		std::vector<std::vector<unsigned int> >& cell_vertices,unsigned int num_generations)
 {
 	//tree params
-	double bifurcation_angle = M_PI/4.0;
+	double bifurcation_angle = es->parameters.get<double> ("0d_bifurcation_angle");
 	double length_ratio = 1.0/1.25;	//halves the length of segments in each generation
 	double left_length_ratio = 0.876;	//halves the length of segments in each generation
 	double right_length_ratio = 0.686;	//halves the length of segments in each generation

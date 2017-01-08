@@ -2961,8 +2961,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			// copy entries from Ke to Ke_pre_velocity
 			if (assemble_velocity_matrix)
 			{
-				if(preconditioner_type_3d1d == 8
-					|| preconditioner_type_3d1d == 9)
+				// 8 is navier-stokes velocity part so take normal matrix and remove pressure
+				if(preconditioner_type_3d1d == 8)
 				{
 					Ke_pre_velocity = Ke;
 
@@ -2981,10 +2981,17 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 
 				}
+				// 9 is navier-stokes matrix so take whole matrix
+				else if (preconditioner_type_3d1d == 9)
+				{
+					Ke_pre_velocity = Ke;
+				}
+				// 10 is schur stokes matrix and that's what's in pre velocity
 				else if (preconditioner_type_3d1d == 10)
 				{
 					  // don't do anything, the stokes part has been assembled
 				}
+				// 11 is schur stokes velocity part so remove the pressure part
 				else if (preconditioner_type_3d1d == 11)
 				{
 

@@ -1724,7 +1724,8 @@ int NavierStokesCoupled::read_parameters()
 	set_unsigned_int_parameter(infile,"random_1d_generations",0);
 	set_string_parameter(infile,"num_generations_string","");
 
-	set_bool_parameter(infile,"multiple_column_solve",false);
+	// 0 is just use the whole matrix, 1 is multiple column solve in libmesh, 2 is multiple column solve in petsc
+	set_unsigned_int_parameter(infile,"multiple_column_solve",0);
 
 	set_bool_parameter(infile,"moghadam_coupling",false);
 
@@ -1781,6 +1782,8 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"efficient_solve_setup",true);
 
 	set_bool_parameter(infile,"create_3d_preconditioner_once",true);
+
+	set_double_parameter(infile,"0d_bifurcation_angle",M_PI/4.0);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -2028,6 +2031,18 @@ int NavierStokesCoupled::read_parameters()
 		std::cout << "No point doing schur stokes precompute if we aren't doing schur stokes." << std::endl;
 		es->parameters.set<bool> ("schur_stokes_precompute") = false;
 		
+	}
+
+	// **************** if we aren't doing a schur full matrix computation, no need for multiple column solve
+	if(es->parameters.get<unsigned int> ("multiple_column_solve") 
+		&& !(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 8
+		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9
+		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10
+		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11))
+	{
+		std::cout << "No need to do a multiple column solve if not doing preconditioner_type_3d1d 8,9,10,11." << std::endl;
+		std::cout << "Changing to not use multiple_column_solve." << std::endl;
+		es->parameters.set<unsigned int> ("multiple_column_solve") = 0;
 	}
 
 
