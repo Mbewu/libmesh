@@ -1006,6 +1006,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		} //end viscosity loop
 
 
+		// petsc clean up if we have actually done some simulation, i.e. time > 0
+		if(time > 1e-10)
+			petsc_clean_up();
+
+
 		//now compare to exact solution if we want to
 		if(es->parameters.get<unsigned int> ("problem_type") == 5)
 		{
@@ -2045,6 +2050,13 @@ int NavierStokesCoupled::read_parameters()
 		es->parameters.set<unsigned int> ("multiple_column_solve") = 0;
 	}
 
+	if(es->parameters.get<unsigned int> ("multiple_column_solve") && !es->parameters.get<bool> ("custom_partitioning"))
+	{
+		std::cout << "Must use custom partitioning when doing multiple column solve." << std::endl;
+		std::cout << "Changing to use custom partitioning." << std::endl;
+		es->parameters.set<bool> ("custom_partitioning") = true;
+	}
+
 
 
 	// ***************** figure out what sub matrices we need to assemble ********************* //
@@ -2089,7 +2101,13 @@ int NavierStokesCoupled::read_parameters()
 				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9
 				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10
 				|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11)
+		{
 			es->parameters.set<bool> ("assemble_velocity_matrix") = true;
+			if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2)
+				es->parameters.set<bool> ("assemble_velocity_mass_matrix") = true;
+				
+		}
+
 	}
 	
 		
@@ -4302,5 +4320,29 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 
 
 }
+
+// clean up all the matrices and stuff that may not have been deleted
+void NavierStokesCoupled::petsc_clean_up()
+{
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 9)
+	{
+		delete velocity_mass_matrix;
+	}
+
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 8
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10
+			|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11)
+	{
+		delete velocity_matrix;
+		MatDestroy(&schur_complement_approx);
+		if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d") != 9)
+			delete velocity_mass_matrix;
+
+		
+	}
+}
+
 
 

@@ -164,6 +164,29 @@ PetscErrorCode ShellPCCreate(NSShellPC **shell)
 }
 
 
+PetscErrorCode ShellPCCreate(MonoShellPC **shell)
+{
+  MonoShellPC  *newctx;
+  PetscErrorCode ierr;
+
+  //ierr         = PetscNew(NSShellPC,&newctx);CHKERRQ(ierr);
+	ierr         = PetscNew(&newctx);CHKERRQ(ierr);
+  newctx->pressure_mass_matrix = 0;
+  newctx->pressure_laplacian_matrix = 0;
+	newctx->pressure_laplacian_preconditioner = 0;
+  newctx->pressure_convection_diffusion_matrix = 0;
+  newctx->velocity_matrix = 0;
+  newctx->S_approx = 0;
+  newctx->inner_mass_ksp = 0;
+  newctx->inner_lap_ksp = 0;
+  newctx->inner_velocity_ksp = 0;
+  newctx->temp_vec = 0;
+  newctx->temp_vec_2 = 0;
+  *shell       = newctx;
+  return 0;
+}
+
+
 // ***** PCSHELL preconditioner
 /*
    SampleShellPCCreate - This routine creates a user-defined
@@ -407,10 +430,10 @@ PetscErrorCode PCD2ShellPCSetUp(PC pc,Mat pressure_mass_matrix,Mat pressure_lapl
 */
 PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp, KSP _outer_ksp)
 {
-  	NSShellPC  *shell;
+  	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
+	ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
@@ -509,7 +532,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp, 
 	ierr = MatDestroy(&S_approx_dense); CHKERRQ(ierr);
 	
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic velocity setup");
   return 0;
@@ -521,10 +544,10 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp, 
 */
 PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_cols, Vec non_zero_rows, KSP schur_ksp, KSP _outer_ksp)
 {
-  	NSShellPC  *shell;
+  	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -688,6 +711,17 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 		
 	}
 
+	std::cout << "T_vals:" << std::endl;
+	for(unsigned int i=0; i<num_coupling_points; i++)
+	{
+		
+		for(unsigned int j=0; j< num_coupling_points; j++)
+		{
+			std::cout << T_vals[i][j] << " ";		
+		}
+	
+		std::cout << std::endl;
+	}
 	// set the values of the matrix and assemble them
 	MatSetValues(new_T,num_coupling_points,T_rows,num_coupling_points,T_cols,(const PetscScalar*)T_vals,INSERT_VALUES);
 	MatAssemblyBegin(new_T,MAT_FINAL_ASSEMBLY );
@@ -696,6 +730,9 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 	// put the values into the correct matrix... for no good reason..
 	ierr = MatDuplicate(new_T,MAT_COPY_VALUES,&shell->S_approx);
 	
+	std::cout << "new_T:\n\n\n\n\n\n\n\n" << std::endl;
+	MatView(new_T,PETSC_VIEWER_STDOUT_WORLD);
+
 	// S_approx = A11 - S_approx
 	ierr = MatAXPY(shell->S_approx,-1.0,A11,DIFFERENT_NONZERO_PATTERN);
 	ierr = MatScale(shell->S_approx,-1.0);
@@ -717,7 +754,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 	ierr = ISDestroy(&iperm); CHKERRQ(ierr);
 	
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
 	printf ("inside shell pc monolithic 2 velocity setup");
   return 0;
@@ -731,10 +768,12 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
 */
 PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP schur_ksp, KSP _outer_ksp, bool negative_schur, bool schur_0d, double scaling_factor)
 {
-  	NSShellPC  *shell;
+  	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	std::cout << "In Monolithic3ShellPCSetUp." << std::endl;
+
+	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -797,9 +836,8 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	// setup up the operators for the solve later
 	ierr = KSPSetOperators(shell->inner_velocity_ksp,shell->S_approx,shell->S_approx); CHKERRQ(ierr);	
 
-	//ierr = PetscLogStagePop();
+	ierr = PetscLogStagePop();
 
-	printf ("inside shell pc monolithic 3 velocity setup");
   return 0;
 }
 
@@ -937,7 +975,6 @@ PetscErrorCode LSCScaledShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_
 
 PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, KSP schur_ksp, bool negative_bfbt)
 {
-	printf ("Inside shell pc lsc scaled stabilised james setup\n");
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
@@ -945,7 +982,7 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 
 
 
-	std::cout << "hello?" << std::endl;
+	std::cout << "Inside shell pc lsc scaled stabilised james setup" << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -963,7 +1000,6 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	// ********* SET THE VELOCITY MASS MATRIX ****************	//
   	shell->velocity_matrix = velocity_mass_matrix;
 
-	std::cout << "hello?" << std::endl;
 
 	
 	// ********** SETUP THE INTERMEDIATE VECS ***************	//
@@ -974,12 +1010,10 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	VecDuplicate(shell->temp_vec,&shell->lsc_scale);
 	MatDuplicate(Bt,MAT_COPY_VALUES,&Bt_scaled);	// create temporary place for B_scaled
 
-	std::cout << "hello?" << std::endl;
 	// ********** SETUP VELOCITY MASS DIAGONAL INVERSE ******************* //
 	MatGetDiagonal(shell->velocity_matrix,shell->lsc_scale); /* Should be the mass matrix, but we don't have plumbing for that yet */
 	VecReciprocal(shell->lsc_scale);
 	
-	std::cout << "hello?" << std::endl;
 	// ********** CALCULATE D_inv = inv(diag(B*diag(F)^-1*B^T - C)) ************ //
 	Mat D;	// D matrix
 	Mat D_temp;	// D matrix
@@ -1206,7 +1240,7 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	MatDestroy(&D_r_sqrt_C_D_r_sqrt);
 	MatDestroy(&Bt_scaled);
 
-	printf ("done shell pc lsc james setup");
+	std::cout << "done shell pc lsc james setup" << std::endl;
 
 	//std::cout << "hello?" << std::endl;
 	ierr = PetscLogStagePop();
@@ -1714,10 +1748,10 @@ PetscErrorCode PCD2ShellPCApply(PC pc,Vec x,Vec y)
 PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 {
 
-  	NSShellPC  *shell;
+  	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	//ierr = PetscLogStagePush(2);
+	ierr = PetscLogStagePush(2);
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -1783,7 +1817,7 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 	// get the rhs vec
 	Vec rhs_vec;
 	Vec rhs_sub_vec;
-	KSPGetRhs(shell->outer_ksp,&rhs_vec);
+	KSPGetRhs(shell->outer_ksp,&rhs_vec);	// not a copy don't delete
 	VecGetSubVector(rhs_vec,ns_is,&rhs_sub_vec);
 
 	VecNorm(rhs_vec,NORM_2,&norm);
@@ -1792,13 +1826,14 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 	Vec rd_vec;
 	Vec rd_sub_vec;
 	//KSPGetSolution(shell->outer_ksp,&rd_vec);
-	KSPBuildSolution(shell->outer_ksp,NULL,&rd_vec);
+	KSPBuildSolution(shell->outer_ksp,NULL,&rd_vec);	// don't delete
 
 	VecNorm(rd_vec,NORM_2,&norm);
 	VecGetSubVector(rd_vec,rd_is,&rd_sub_vec);
 
 	VecNorm(rd_sub_vec,NORM_2,&norm);
 	//VecView(rd_sub_vec,PETSC_VIEWER_STDOUT_SELF);
+	VecRestoreSubVector(rd_vec,rd_is,&rd_sub_vec);	// need to restore after use
 
 	VecNorm(rhs_sub_vec,NORM_2,&norm);
 
@@ -1811,15 +1846,19 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 
 
 	VecNorm(rhs_sub_vec,NORM_2,&norm);
+	VecRestoreSubVector(rhs_vec,ns_is,&rhs_sub_vec);	// need to restore after use
 
 	
 	VecNorm(rhs_vec,NORM_2,&norm);
 
 
+	// clean up some things
+	VecDestroy(&new_vec);
 
 
 
-	//ierr = PetscLogStagePop();
+
+	ierr = PetscLogStagePop();
   return 0;
 }
 
@@ -2384,7 +2423,7 @@ PetscErrorCode NSShellDestroy(PC pc)
   PetscErrorCode ierr;
 
 	ierr = PetscLogStagePush(1);
-  std::cout << "in shell destroy" << std::endl;
+  std::cout << "In NSShellDestroy." << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
@@ -2403,7 +2442,38 @@ PetscErrorCode NSShellDestroy(PC pc)
 
   ierr = PetscFree(shell);CHKERRQ(ierr);
 	
-  std::cout << "done shell destroy" << std::endl;
+	ierr = PetscLogStagePop();
+
+  return 0;
+}
+
+
+
+PetscErrorCode MonoShellDestroy(PC pc)
+{
+  MonoShellPC  *shell;
+  PetscErrorCode ierr;
+
+	ierr = PetscLogStagePush(2);
+  std::cout << "In MonoShellDestroy." << std::endl;
+
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+	ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
+	ierr = KSPDestroy(&shell->inner_lap_ksp);CHKERRQ(ierr);
+	ierr = KSPDestroy(&shell->inner_velocity_ksp);CHKERRQ(ierr);
+	ierr = KSPDestroy(&shell->inner_schur_ksp);CHKERRQ(ierr);
+	ierr = VecDestroy(&shell->temp_vec);CHKERRQ(ierr);
+	ierr = VecDestroy(&shell->temp_vec_2);CHKERRQ(ierr);
+	ierr = VecDestroy(&shell->temp_vec_3);CHKERRQ(ierr);
+	ierr = VecDestroy(&shell->lsc_scale);CHKERRQ(ierr);
+	ierr = MatDestroy(&shell->S_approx);CHKERRQ(ierr);
+//	ierr = MatDestroy(&shell->velocity_matrix);CHKERRQ(ierr);
+	ierr = MatDestroy(&shell->lsc_laplacian_matrix);CHKERRQ(ierr);
+	ierr = VecDestroy(&shell->lsc_stab_alpha_D_inv);CHKERRQ(ierr);
+
+
+  ierr = PetscFree(shell);CHKERRQ(ierr);
+	
 	ierr = PetscLogStagePop();
 
   return 0;
@@ -2429,7 +2499,7 @@ PetscErrorCode SIMPLEShellDestroy(PC pc)
 
 
 	//ierr = PetscLogStagePush(1);
-  std::cout << "in SIMPLE shell destroy" << std::endl;
+  std::cout << "In SIMPLEShellDestroy." << std::endl;
 
   ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
 	ierr = KSPDestroy(&shell->inner_schur_ksp);CHKERRQ(ierr);

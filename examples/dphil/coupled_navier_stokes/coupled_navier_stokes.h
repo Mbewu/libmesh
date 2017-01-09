@@ -191,6 +191,30 @@ typedef struct {
 } NSShellPC;
 
 typedef struct {
+  Mat pressure_mass_matrix;
+  Mat pressure_laplacian_matrix;
+  Mat pressure_laplacian_preconditioner;
+  Mat pressure_convection_diffusion_matrix;
+  Mat velocity_matrix;
+  Mat S_approx;
+  KSP inner_mass_ksp;
+  KSP inner_lap_ksp;
+  KSP inner_schur_ksp;
+  KSP inner_velocity_ksp;
+  KSP outer_ksp;
+  Vec temp_vec;
+  Vec temp_vec_2;
+  Vec temp_vec_3;
+  Vec lsc_scale;
+  Mat lsc_laplacian_matrix;
+  Vec lsc_stab_alpha_D_inv;
+	bool neg_schur;
+  PetscInt total_iterations;
+  Mat Bt;
+  InitialGuessCtx *initial_guess_ctx;
+} MonoShellPC;
+
+typedef struct {
   Mat velocity_matrix;
   Mat S_approx;
   Mat A;
@@ -231,6 +255,7 @@ typedef struct {
 
 /* Declare routines for user-provided preconditioner */
 extern PetscErrorCode ShellPCCreate(NSShellPC**);
+extern PetscErrorCode ShellPCCreate(MonoShellPC**);
 extern PetscErrorCode ShellPCCreate(SIMPLEShellPC**);
 extern PetscErrorCode PressureShellPCSetUp(PC,Mat,KSP);
 extern PetscErrorCode PressureShellPCApply(PC,Vec x,Vec y);
@@ -253,6 +278,7 @@ extern PetscErrorCode SIMPLECShellPCSetUp(PC,IS,IS,KSP);
 extern PetscErrorCode SIMPLEShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode SIMPLERShellPCApply(PC,Vec x,Vec y);
 extern PetscErrorCode NSShellDestroy(PC);
+extern PetscErrorCode MonoShellDestroy(PC);
 extern PetscErrorCode SIMPLEShellDestroy(PC);
 
 extern PetscErrorCode custom_outer_monitor(KSP ksp, PetscInt n, PetscReal rnorm, void *dummy);
@@ -421,7 +447,6 @@ public:
 	void construct_petsc_options_string();
 
 	int setup_preconditioners(TransientLinearImplicitSystem * system, Mat& B);
-	int setup_preconditioners_efficient(TransientLinearImplicitSystem * system, Mat& B);
 
 	int compute_and_output_eigenvalues(TransientLinearImplicitSystem * system);
 
@@ -439,6 +464,8 @@ public:
 	void calculate_1d_linear_resistance_values();
 
 	void update_3d_dirichlet_boundary_conditions();
+
+	void petsc_clean_up();
 
 
 private:
@@ -568,6 +595,7 @@ private:
 	int total_particles_inhaled;
 	int stokes_gmres_iterations;
 	bool shell_pc_created;
+	bool schur_shell_pc_created;
 	bool mono_shell_pc_created;
 
 	std::vector<std::vector<double> > all_input_pressure_values_3d;
@@ -590,8 +618,10 @@ private:
 	IS pressure_is;
 	Vec non_zero_cols;
 	Vec non_zero_rows;
+	std::vector<unsigned int> non_zero_cols_vec;
+	std::vector<unsigned int> non_zero_rows_vec;
 	NSShellPC  *shell;    /* user-defined preconditioner context */
-	NSShellPC  *mono_shell;    /* user-defined preconditioner context */
+	MonoShellPC  *mono_shell;    /* user-defined preconditioner context */
 	NSShellPC  *schur_stokes_shell;    /* user-defined preconditioner context */
 	NSShellPC  *post_solve_shell;    /* user-defined preconditioner context */
 	SIMPLEShellPC  *simple_shell;    /* user-defined preconditioner context */
