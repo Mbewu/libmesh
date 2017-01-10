@@ -597,6 +597,9 @@ private:
 	bool shell_pc_created;
 	bool schur_shell_pc_created;
 	bool mono_shell_pc_created;
+	bool first_3d_write;
+	bool first_1d_write;
+	bool init_names_done;
 
 	std::vector<std::vector<double> > all_input_pressure_values_3d;
 	std::vector<std::vector<double> > all_input_flux_values_0d;
@@ -629,6 +632,9 @@ private:
 	PCD2ShellMatrixCtx mat_ctx;
 	MonolithicMonitorCtx *mono_ctx;
 	InitialGuessCtx *initial_guess_ctx;
+
+	//ExodusII_IO_Extended exo_3d;
+	//ExodusII_IO_Extended exo_1d;
 
 
 };

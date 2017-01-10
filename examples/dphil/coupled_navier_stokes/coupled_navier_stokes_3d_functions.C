@@ -1434,6 +1434,7 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 void NavierStokesCoupled::write_3d_solution()
 {
 
+	
 	std::cout << "Writing 2D/3D solution" << std::endl;
 
 /*
@@ -1486,16 +1487,7 @@ void NavierStokesCoupled::write_3d_solution()
 	std::ostringstream file_name_es;
 	std::ostringstream file_name_mesh;
 
-//	file_name << "results/out_3D_viscosity"
-//	  	<< es->parameters.get<Real> ("viscosity");
 
-	file_name << output_folder.str() << "out_3D";
- 
-	// We write the file in the ExodusII format.
-	file_name_soln << file_name.str();
-	//file_name_soln << ".e" ;
-	file_name_soln << ".e-s." ;
-	file_name_soln << std::setw(4) << std::setfill('0') << t_step;
 
 	//exo.write_equation_systems (file_name_soln.str(),
    //                             *es);
@@ -1536,8 +1528,56 @@ void NavierStokesCoupled::write_3d_solution()
 	//the time step variable needs to reflect the position in the file_name
 	// since we want one file per time step we just put 1 here
 	std::cout << "Actually writing file." << std::endl;
-	exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
-	exo.write_element_data(*es);	// write the proc_id
+
+	if(!es->parameters.get<bool>("multiple_output_files"))
+	{
+
+		//	file_name << "results/out_3D_viscosity"
+		//	  	<< es->parameters.get<Real> ("viscosity");
+
+		file_name << output_folder.str() << "out_3D";
+	 
+		// We write the file in the ExodusII format.
+		file_name_soln << file_name.str();
+		file_name_soln << ".e" ;
+	
+
+		//file_name_soln << ".e-s." ;
+		//file_name_soln << std::setw(4) << std::setfill('0') << t_step;
+
+		if(!first_3d_write)
+		{
+			exo.append(true);
+		}
+		else
+			first_3d_write = false;
+
+		//exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
+		exo.write_timestep(file_name_soln.str(), *es,t_step+1,time*time_scale_factor);
+		std::cout << "hello" << std::endl;
+		exo.write_element_data(*es);	// write the proc_id
+	}
+	else
+	{
+
+		//	file_name << "results/out_3D_viscosity"
+		//	  	<< es->parameters.get<Real> ("viscosity");
+
+		file_name << output_folder.str() << "out_3D";
+	 
+		// We write the file in the ExodusII format.
+		file_name_soln << file_name.str();
+		//file_name_soln << ".e" ;
+	
+
+		file_name_soln << ".e-s." ;
+		file_name_soln << std::setw(4) << std::setfill('0') << t_step;
+
+		//exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
+		exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
+		std::cout << "hello" << std::endl;
+		exo.write_element_data(*es);	// write the proc_id
+	}
 
 
 	if(es->parameters.get<unsigned int>("error_estimator"))
@@ -2003,10 +2043,13 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	//ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 
-	perf_log.push("init_names");
-	if(nonlinear_iteration == 1 && es->parameters.get<bool>("fieldsplit"))
+	if(es->parameters.get<bool>("fieldsplit") && !init_names_done)
+	{
+		perf_log.push("init_names");
 		system->linear_solver->init_names(*system);
-	perf_log.pop("init_names");
+		init_names_done = true;
+		perf_log.pop("init_names");
+	}
 
 	std::cout << "after init names" << std::endl;
 
@@ -4784,8 +4827,8 @@ void NavierStokesCoupled::update_3d_dirichlet_boundary_conditions()
 
 	// for some reason, need to do reinit for the solver to work.
 	// not a problem now that we don't have separate linear and nonlinear matrices i don't think
-	//system->reinit_constraints();
-	es->reinit();
+	system->reinit_constraints();
+	//es->reinit();
 
 }
 

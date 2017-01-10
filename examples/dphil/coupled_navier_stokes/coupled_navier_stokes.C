@@ -142,6 +142,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		particle_deposition(false),
 		shell_pc_created(false),
 		mono_shell_pc_created(false),
+		first_3d_write(true),
+		first_1d_write(true),
+		init_names_done(false),
 		ic_set(true)
 {
 
@@ -666,7 +669,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				{
 					if(sim_3d)
 					{
+						perf_log.push("reinit");
 						update_3d_dirichlet_boundary_conditions();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS
+						perf_log.pop("reinit");
 						if(sim_type != 5)
 	 						beforebefore_norm = system_3d->solution->l2_norm();
 						else
@@ -683,7 +688,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				             ", time = " << time << " (" << time*time_scale_factor <<
 										 "s) ***" << std::endl;
 
-				perf_log.push("output");
 
 
 
@@ -1789,6 +1793,8 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"create_3d_preconditioner_once",true);
 
 	set_double_parameter(infile,"0d_bifurcation_angle",M_PI/4.0);
+
+	set_bool_parameter(infile,"multiple_output_files",false);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -4336,8 +4342,10 @@ void NavierStokesCoupled::petsc_clean_up()
 	{
 		delete velocity_matrix;
 		MatDestroy(&schur_complement_approx);
+	
+		// if we did a bfbt schur stokes, but didn't do bfbt for the rest
 		if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d") != 9)
+			&& es->parameters.get<unsigned int>("preconditioner_type_3d") != 9)
 			delete velocity_mass_matrix;
 
 		

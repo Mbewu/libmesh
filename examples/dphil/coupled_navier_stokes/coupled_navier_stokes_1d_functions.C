@@ -1770,19 +1770,6 @@ void NavierStokesCoupled::write_1d_solution()
 
 
 
-  std::ostringstream file_name;
-
-  // We write the file in the ExodusII format.
-  //file_name << "results/out_1D_viscosity"
-	//  				<< es->parameters.get<Real> ("viscosity")
-
-	file_name << output_folder.str() << "out_1D";
-
-	file_name	<< ".e-s."
-            << std::setw(4)
-            << std::setfill('0')
-            << std::right
-            << t_step;
 
 	ExodusII_IO_Extended exo(mesh);
 
@@ -1798,14 +1785,52 @@ void NavierStokesCoupled::write_1d_solution()
 
 	//std::cout << "before write disc" << std::endl;
 
-	// discontinuous can write the proc id
-	exo.write_discontinuous_exodusII (file_name.str(),
-                                    *es);
+  	std::ostringstream file_name;
 
-	//write_elem_pid_1d(exo);
+  	// We write the file in the ExodusII format.
+  	//file_name << "results/out_1D_viscosity"
+	//  				<< es->parameters.get<Real> ("viscosity")
 
-	exo.write_time(1,time *time_scale_factor);
+	if(!es->parameters.get<bool>("multiple_output_files"))
+	{
+		file_name << output_folder.str() << "out_1D";
 
+		file_name	<< ".e";
+
+		if(!first_1d_write)
+		{
+			exo.append(true);
+		}
+		else
+			first_1d_write = false;
+
+		// discontinuous can write the proc id
+		exo.write_discontinuous_exodusII (file_name.str(),
+		                            *es);
+
+		//write_elem_pid_1d(exo);
+
+		exo.write_time(t_step+1,time *time_scale_factor);
+	}
+	else
+	{
+
+		file_name << output_folder.str() << "out_1D";
+
+		file_name	<< ".e-s."
+		    << std::setw(4)
+		    << std::setfill('0')
+		    << std::right
+		    << t_step;
+		
+		// discontinuous can write the proc id
+		exo.write_discontinuous_exodusII (file_name.str(),
+		                            *es);
+
+		//write_elem_pid_1d(exo);
+
+		exo.write_time(1,time *time_scale_factor);
+	}
 	
 	std::cout << "EXODUSII output for timestep " << t_step
 		<< " written to " << file_name.str() << std::endl;
