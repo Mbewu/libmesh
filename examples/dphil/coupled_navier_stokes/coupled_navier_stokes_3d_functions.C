@@ -49,7 +49,9 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 				_mesh.all_second_order();
 
 		std::cout << "Refining mesh." << std::endl;
+		perf_log.push("refine");
 		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
+		perf_log.pop("refine");
 
 
 		std::cout << "Scaling mesh." << std::endl;
@@ -291,6 +293,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		//set surfaceboundary stuff
 		//inflow_surface_boundary_object.init(_mesh,0);
 
+		perf_log.push("surface_boundary");
 		for(unsigned int i=0; i < boundary_ids.size(); i++)
 		{
 
@@ -310,6 +313,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 				std::cout << std::endl;
 			}
 		}
+		perf_log.pop("surface_boundary");
 
 
 		//hard coded
@@ -525,6 +529,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 		// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
 		
+		perf_log.push("surface_boundary");
 		for(unsigned int i=0; i < boundary_ids.size(); i++)
 		{
 			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
@@ -534,6 +539,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
 			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
 		}
+		perf_log.pop("surface_boundary");
 		
 
 		//hard coded
@@ -575,6 +581,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	
 	std::vector<libMesh::ElemType>::iterator it;
 
+	perf_log.push("subdomain_init");
 	unsigned int count = 0;
 	for (; elem_it != elem_end; ++elem_it)
 	{
@@ -597,6 +604,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		}
 	}
 	
+	perf_log.pop("subdomain_init");
 	
 
 	std::cout << std::endl;
