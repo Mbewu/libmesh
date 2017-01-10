@@ -250,7 +250,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// ************** SET UP 3D MESH **************** //
 	if(sim_3d)
 	{
+		perf_log.push("setup_3d_mesh");
 		setup_3d_mesh(&*es,mesh);
+		perf_log.pop("setup_3d_mesh");
 	// in case not set already
 	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
@@ -260,14 +262,16 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// ******************** SETUP 1D MESH ********************* //
 	if(sim_1d)
 	{
-
-		setup_1d_mesh();
+		perf_log.push("setup_1d_mesh");
+		setup_1d_mesh();7
+		perf_log.pop("setup_1d_mesh");
 
 	}
 
 	// ************* SET UP 3D SYSTEM **************** //
 	if(sim_3d)
 	{
+		perf_log.push("setup_3d_system");
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
 			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly"),perf_log));
 		else
@@ -285,6 +289,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			system_3d->attach_assemble_object (*picard);
 		}
+		perf_log.pop("setup_3d_system");
 
 	}
 
@@ -294,6 +299,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// ******************* SETUP 1D SYSTEM ******************** //
 	if(sim_1d)
 	{
+		
+		perf_log.push("setup_1d_system");
 		ns_assembler = AutoPtr<NavierStokesAssembler>
 								(new NavierStokesAssembler(*es,airway_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -314,6 +321,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 										(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
+		
+		perf_log.pop("setup_1d_system");
 	}
 
 	if(sim_type == 5)
@@ -342,10 +351,16 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	std::cout << std::endl;
 	
 	//init the equation systems
+
+	perf_log.push("init_eq_systems");
 	std::cout << "Init equation systems." << std::endl;
 	es->init ();
+	perf_log.pop("init_eq_systems");
 	std::cout << "done initing equation systems" << std::endl;
+
+	perf_log.push("init_dof_var_vec");
 	init_dof_variable_vectors();
+	perf_log.pop("init_dof_var_vec");
 
 	if(restart)
 	{
@@ -385,7 +400,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
 	{
+		perf_log.push("update_eq_systems");
 		es->update();
+		perf_log.pop("update_eq_systems");
 		
 		if(sim_type == 5)
 		{
