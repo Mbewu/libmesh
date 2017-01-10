@@ -263,7 +263,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_1d)
 	{
 		perf_log.push("setup_1d_mesh");
-		setup_1d_mesh();7
+		setup_1d_mesh();
 		perf_log.pop("setup_1d_mesh");
 
 	}
