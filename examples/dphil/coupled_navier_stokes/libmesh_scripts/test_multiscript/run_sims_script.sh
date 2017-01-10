@@ -17,7 +17,7 @@
 
 
 ########### SOME GENERAL USER PARAMETERS #############
-COMPUTER_TYPE="compute-lung"
+COMPUTER_TYPE="arcus-b"
 NUM_PROCS=1
 QUEUE_TYPE="devel"
 JOB_NAME="arc-job"
@@ -51,8 +51,8 @@ OUTER_FILE="$0"
 #####################################################################################
 
 ########### SOME GENERAL LIBMESH/PETSC PARAMETERS FOR ALL SIMULATIONS ###############
-MESH_BASE_DIR="$BASE_DIR/meshes"
-#MESH_BASE_DIR="~/meshes-git/dphil_meshes"
+#MESH_BASE_DIR="$BASE_DIR/meshes"
+MESH_BASE_DIR="~/meshes-git/dphil_meshes"
 
 CONSTANT_VARIABLES="--use-petsc --solver_variable_names --solver_group_ns3d_u 0 --solver_group_ns3d_v 0 --solver_group_ns3d_w 0 --solver_group_ns3d_p 1  --solver_group_ns3d1d_u 0 --solver_group_ns3d1d_v 0 --solver_group_ns3d1d_p 0 --solver_group_ns3d1d_w 0 --solver_group_ns3d1d_Q 1 --solver_group_ns3d1d_P 1 --solver_group_ns3d1d_0_u 0 --solver_group_ns3d1d_0_v 0 --solver_group_ns3d1d_0_w 0 --solver_group_ns3d1d_0_p 1 --solver_system_names -log_summary"
 
@@ -71,7 +71,9 @@ $BASE_DIR/generate_test_script_file.sh "$COMPUTER_TYPE" "$NUM_PROCS" "$QUEUE_TYP
 # make it runnable
 chmod +x $RUN_DIR/test_script.sh
 # run the test_script (which will generate a job_script and run it etc
+cd $RUN_DIR
 $RUN_DIR/test_script.sh
+cd $OUTER_DIR
 
 # done running
 
@@ -81,14 +83,16 @@ OUTPUT_DIR_RELATIVE="test_multiscript/test_2"
 OUTPUT_DIR="$OUTPUT_BASE_DIR/$OUTPUT_DIR_RELATIVE"
 RUN_DIR="$OUTER_DIR/test_2"	# the directory 
 
-LIBMESH_OPTIONS="-input_file $OUTER_DIR/navier.in -output_folder $OUTPUT_DIR/ -sim_type 5 -dt 5.0  $CONSTANT_VARIABLES $SEMI_CONSTANT_VARIABLES"
+LIBMESH_OPTIONS="-input_file $OUTER_DIR/navier.in -output_folder $OUTPUT_DIR/ -sim_type 5 -dt 2.5  $CONSTANT_VARIABLES $SEMI_CONSTANT_VARIABLES"
 
 # generate the test_script file
 $BASE_DIR/generate_test_script_file.sh "$COMPUTER_TYPE" "$NUM_PROCS" "$QUEUE_TYPE" "$JOB_NAME" "$WALLTIME" "$NUM_NODES" "$NUM_PROCS_PER_NODE" "$OUTPUT_DIR" "$LIBMESH_OPTIONS" "$RUN_DIR" "$BASE_DIR"
 # make it runnable
 chmod +x $RUN_DIR/test_script.sh
 # run the test_script (which will generate a job_script and run it etc
+cd $RUN_DIR
 $RUN_DIR/test_script.sh
+cd $OUTER_DIR
 
 # done running
 
