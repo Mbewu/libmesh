@@ -983,8 +983,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						std::cout << "yeah" << std::endl;
 						output_sim_data(false);
 						std::cout << "yeah" << std::endl;
-						if (time - ((int)((time) /es->parameters.get<Real>("write_interval")))
-										*es->parameters.get<Real>("write_interval") < dt)// (t_step)%write_interval == 0)
+
+						if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
+										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
 						{
 							if(sim_3d) {write_3d_solution();}
 							if(sim_1d) {write_1d_solution();}

@@ -1613,9 +1613,8 @@ void NavierStokesCoupled::write_3d_solution()
 	std::cout << "EXODUSII output for timestep " << t_step
 		<< " written to " << file_name_soln.str() << std::endl;
 
-
 	if(es->parameters.get<bool>("output_backup_files") && 
-	(time - ((int)((time) /es->parameters.get<Real>("backup_write_interval")))*es->parameters.get<Real>("backup_write_interval") < dt))
+		(time - ((int)((time + 1e-10) /es->parameters.get<Real>("backup_write_interval")))*es->parameters.get<Real>("backup_write_interval") < dt - 1e-10))
 	{
 		std::cout << "Writing backup files." << std::endl;
 		file_name_es << file_name.str();
