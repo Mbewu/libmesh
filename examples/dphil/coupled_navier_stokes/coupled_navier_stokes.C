@@ -2690,10 +2690,10 @@ int NavierStokesCoupled::read_parameters()
 	// ************ SETUP STAGE NUMBERS FOR PETSC PROFILING *************** //
 	PetscErrorCode ierr;	// unused
 	PetscLogStage stage_num;
-	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 2)
-	{
-		ierr = PetscLogStageRegister("Petsc LSC (BFBt) Preconditioner",&stage_num); CHKERRQ(ierr);
-	}
+	if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 0)
+		ierr = PetscLogStageRegister("Exact Solver Dummy",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 2)
+		ierr = PetscLogStageRegister("Petsc LSC (BFBt) Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 3)
 		ierr = PetscLogStageRegister("Pressure Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d") == 4)
