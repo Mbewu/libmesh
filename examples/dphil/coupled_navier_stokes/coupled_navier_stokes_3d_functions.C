@@ -2693,8 +2693,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	}
 
 	// note we don't need to do anything for the schur 0D (12) preconditioner as this is all specified in the command line
-	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
 			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11
