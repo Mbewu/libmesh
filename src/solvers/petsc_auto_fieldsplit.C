@@ -60,6 +60,9 @@ void indices_to_fieldsplit (const Parallel::Communicator& comm,
 	ierr = PCGetType(my_pc,&type);
   CHKERRABORT(comm.get(), ierr);
 
+
+  ierr = LibMeshISDestroy(&is);
+
 	//std::cerr << "pc type = " << type << std::endl;
 
 }

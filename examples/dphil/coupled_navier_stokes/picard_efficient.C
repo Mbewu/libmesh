@@ -110,6 +110,11 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   // Problem parameters
   double sd_param = 0.;
 
+
+  std::cout << "convective_form = " << convective_form << std::endl;
+  std::cout << "neumann_stabilised = " << neumann_stabilised << std::endl;
+  std::cout << "bertoglio_stabilisation = " << bertoglio_stabilisation << std::endl;
+
   //
   std::cout << "nonlin iteration = " << es->parameters.get < unsigned int >("nonlinear_iteration") << std::endl;
   std::cout << "max initial picard = " << es->parameters.get < unsigned int >("max_initial_picard") << std::endl;

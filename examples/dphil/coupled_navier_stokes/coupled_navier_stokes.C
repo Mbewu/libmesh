@@ -156,11 +156,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	//************* READ AND OUTPUT GENERAL PARAMETERS *************//
 	infile = GetPot(_input_file);
 	read_parameters();
+	std::cout << "neumann_stabilised = " << es->parameters.get<bool>("neumann_stabilised") << std::endl;
 	output_parameters();
 	output_command_line_options();
 
 	//************* READ AND OUTPUT PARTICLE DEPOSITION PARAMETERS **********//
-	if(es->parameters.set<unsigned int>("particle_deposition"))
+	if(es->parameters.get<unsigned int>("particle_deposition"))
 	{
 		infileparticle = GetPot(_input_file_particle);
 		read_particle_parameters();
@@ -4351,6 +4352,9 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 // clean up all the matrices and stuff that may not have been deleted
 void NavierStokesCoupled::petsc_clean_up()
 {
+	std::cout << "In PETSc clean up." << std::endl;
+
+
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 9)
 	{
 		delete velocity_mass_matrix;
@@ -4368,8 +4372,7 @@ void NavierStokesCoupled::petsc_clean_up()
 		if(es->parameters.get<unsigned int> ("preconditioner_type_schur_stokes") == 2
 			&& es->parameters.get<unsigned int>("preconditioner_type_3d") != 9)
 			delete velocity_mass_matrix;
-
-		
+	
 	}
 }
 
