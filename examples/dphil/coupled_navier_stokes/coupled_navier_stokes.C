@@ -680,8 +680,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 				update_times();
 
-				shell_pc_created = false;
-				mono_shell_pc_created = false;
+				//shell_pc_created = false;
+				//mono_shell_pc_created = false;
 
 				if(!particle_deposition)
 				{

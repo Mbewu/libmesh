@@ -2398,6 +2398,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 
 	// delete the IS's we created in the SIMPLE paradigm
+	// now deleted  straight afterwards
+	/*
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 10 
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d") == 11
 		|| es->parameters.get<unsigned int>("preconditioner_type_3d") == 12)
@@ -2407,6 +2409,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 		std::cout << "hiya deleted SIMPLE IS's" << std::endl;
 	}
+	*/
 
 	
 	std::cout << "hi" << std::endl;
@@ -2787,7 +2790,11 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// remember we only need to do this once, hence the !mono_shell_pc_created
 
 		if(es->parameters.get<unsigned int>("multiple_column_solve") && es->parameters.get<bool>("custom_partitioning")
-			&& !mono_shell_pc_created)
+			&& !mono_shell_pc_created 
+			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
 		{
 			std::cout << "Identifying rows and columns of submatrix involved in monolithic schur complement." << std::endl;
 
@@ -2924,7 +2931,11 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		}
 	
 		
-		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1 && !mono_shell_pc_created)
+		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1 && !mono_shell_pc_created
+			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
 		{
 			construct_schur_stokes_matrix(system,subksp[1]);
 		}
@@ -2984,6 +2995,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// destroy old shell before it is created
 		if(mono_shell_pc_created)
 		{
+			std::cout << "About to destroy mono shell pc" << std::endl;
 			ierr = MonoShellDestroy(schur_pc);	// do destroy it every time because A_0D could change
 		}
 
@@ -3455,6 +3467,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				std::cout << "6" << std::endl;
 				       
 				ierr = SIMPLEShellPCSetUp(velocity_pc,velocity_is,pressure_is,velocity_ksp); CHKERRQ(ierr);
+				ierr = ISDestroy(&velocity_is); CHKERRQ(ierr);
+				ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 
 				std::cout << "7" << std::endl;
 				shell_pc_created = true;
@@ -3498,6 +3512,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				std::cout << "6" << std::endl;
 				       
 				ierr = SIMPLEShellPCSetUp(velocity_pc,velocity_is,pressure_is,velocity_ksp); CHKERRQ(ierr);
+				ierr = ISDestroy(&velocity_is); CHKERRQ(ierr);
+				ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 
 				std::cout << "7" << std::endl;
 				shell_pc_created = true;
@@ -3542,6 +3558,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				std::cout << "6" << std::endl;
 				       
 				ierr = SIMPLECShellPCSetUp(velocity_pc,velocity_is,pressure_is,velocity_ksp); CHKERRQ(ierr);
+				ierr = ISDestroy(&velocity_is); CHKERRQ(ierr);
+				ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 
 				std::cout << "7" << std::endl;
 				shell_pc_created = true;
@@ -3624,6 +3642,8 @@ int NavierStokesCoupled::construct_schur_stokes_matrix (TransientLinearImplicitS
 	PCFieldSplitSetIS(schur_stokes_pc,split_1.c_str(),velocity_is);
 	PCFieldSplitSetIS(schur_stokes_pc,split_2.c_str(),pressure_is);
 
+	ierr = ISDestroy(&velocity_is); CHKERRQ(ierr);
+	ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 	ierr = KSPSetUp(schur_stokes_ksp);// CHKERRQ(ierr);	
 
 
@@ -4011,6 +4031,8 @@ int NavierStokesCoupled::test_post_solve (TransientLinearImplicitSystem * sys)
 	PCFieldSplitSetIS(post_solve_pc,split_1.c_str(),velocity_is);
 	PCFieldSplitSetIS(post_solve_pc,split_2.c_str(),pressure_is);
 
+	ierr = ISDestroy(&velocity_is); CHKERRQ(ierr);
+	ierr = ISDestroy(&pressure_is); CHKERRQ(ierr);
 	//ierr = KSPView(post_solve_ksp,PETSC_VIEWER_STDOUT_WORLD);
 	std::cout << "yeah?" << std::endl;
 	ierr = KSPSetUp(post_solve_ksp);// CHKERRQ(ierr);
