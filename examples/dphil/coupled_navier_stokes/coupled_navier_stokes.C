@@ -1424,6 +1424,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(exit_program)
 		std::cout << "program aborted and exiting constructor" << std::endl;
 
+	// barrier before end so that procs don't quit too early
+	es->comm().barrier();
+
 	perf_log.pop("total");
 }
 
