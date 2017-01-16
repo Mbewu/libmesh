@@ -1816,7 +1816,7 @@ int NavierStokesCoupled::read_parameters()
 
 	set_double_parameter(infile,"0d_bifurcation_angle",M_PI/4.0);
 
-	set_bool_parameter(infile,"multiple_output_files",false);
+	set_bool_parameter(infile,"multiple_output_files",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
