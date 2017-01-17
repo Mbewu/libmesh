@@ -293,7 +293,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		//set surfaceboundary stuff
 		//inflow_surface_boundary_object.init(_mesh,0);
 
-		perf_log.push("surface_boundary");
 		for(unsigned int i=0; i < boundary_ids.size(); i++)
 		{
 
@@ -313,7 +312,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 				std::cout << std::endl;
 			}
 		}
-		perf_log.pop("surface_boundary");
 
 
 		//hard coded
@@ -529,7 +527,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 		// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
 		
-		perf_log.push("surface_boundary");
 		for(unsigned int i=0; i < boundary_ids.size(); i++)
 		{
 			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
@@ -539,7 +536,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
 			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
 		}
-		perf_log.pop("surface_boundary");
 		
 
 		//hard coded
@@ -581,7 +577,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	
 	std::vector<libMesh::ElemType>::iterator it;
 
-	perf_log.push("subdomain_init");
 	unsigned int count = 0;
 	for (; elem_it != elem_end; ++elem_it)
 	{
@@ -604,7 +599,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		}
 	}
 	
-	perf_log.pop("subdomain_init");
 	
 
 	std::cout << std::endl;
@@ -2052,10 +2046,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	if(es->parameters.get<bool>("fieldsplit") && !init_names_done)
 	{
-		perf_log.push("init_names");
 		system->linear_solver->init_names(*system);
-		init_names_done = true;
-		perf_log.pop("init_names");
+		init_names_done = true
 	}
 
 	std::cout << "after init names" << std::endl;
@@ -2447,7 +2439,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	//es->parameters.get<unsigned int>("preconditioner_type_3d") != 0 
 	//	|| es->parameters.get<unsigned int>("preconditioner_type_schur_stokes") != 0)
 
-	perf_log.push("setup pre mats");
 	if(es->parameters.get<bool>("assemble_pressure_mass_matrix") 
 		|| es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix")
 		|| es->parameters.get<bool>("assemble_velocity_mass_matrix")
@@ -2641,7 +2632,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 	}
-	perf_log.pop("setup pre mats");
 
 	
 
@@ -2787,7 +2777,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		// set up a global Vec saying which columns have entries in the B1 matrix
 		// remember we only need to do this once, hence the !mono_shell_pc_created
-
 		if(es->parameters.get<unsigned int>("multiple_column_solve") && es->parameters.get<bool>("custom_partitioning")
 			&& !mono_shell_pc_created 
 			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
@@ -2926,25 +2915,11 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			ierr = VecAssemblyBegin(non_zero_rows); CHKERRQ(ierr);
 			ierr = VecAssemblyEnd(non_zero_rows); CHKERRQ(ierr);
 
+			construct_schur_stokes_matrix(system,subksp[1]);
 
 		}
 	
 		
-		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1 && !mono_shell_pc_created
-			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
-		{
-			construct_schur_stokes_matrix(system,subksp[1]);
-		}
-
-
-
-
-
-
-
 
 
 
@@ -2991,96 +2966,104 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 		// (Required) Indicate to PETSc that we're using a "shell" preconditioner 
 		ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
-		// destroy old shell before it is created
-		if(mono_shell_pc_created)
+		// destroy old shell if we really need to rebuild it, i.e. preconditioners that use navier-stokes
+		if(mono_shell_pc_created 
+			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9))
 		{
 			std::cout << "About to destroy mono shell pc" << std::endl;
 			ierr = MonoShellDestroy(schur_pc);	// do destroy it every time because A_0D could change
 		}
 
-		// (Optional) Create a context for the user-defined preconditioner; this
-		//	context can be used to contain any application-specific data. 
-		ierr = ShellPCCreate(&mono_shell); CHKERRQ(ierr);
+		// create new preconditioner if required, i.e. first time step or ones that use navier-stokes
+		if(!mono_shell_pc_created 
+			|| (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9))
+		{
+			// (Optional) Create a context for the user-defined preconditioner; this
+			//	context can be used to contain any application-specific data. 
+			ierr = ShellPCCreate(&mono_shell); CHKERRQ(ierr);
 
-		// (Required) Set the user-defined routine for applying the preconditioner 
-		ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
-		ierr = PCShellSetContext(schur_pc,mono_shell); CHKERRQ(ierr);
+			// (Required) Set the user-defined routine for applying the preconditioner 
+			ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
+			ierr = PCShellSetContext(schur_pc,mono_shell); CHKERRQ(ierr);
 
-		// (Optional) Set user-defined function to free objects used by custom preconditioner 
-		ierr = PCShellSetDestroy(schur_pc,MonoShellDestroy); CHKERRQ(ierr);
+			// (Optional) Set user-defined function to free objects used by custom preconditioner 
+			ierr = PCShellSetDestroy(schur_pc,MonoShellDestroy); CHKERRQ(ierr);
 
-		// (Optional) Set a name for the preconditioner, used for PCView() 
-		ierr = PCShellSetName(schur_pc,"Monolithic Schur Complement Preconditioner"); CHKERRQ(ierr);
+			// (Optional) Set a name for the preconditioner, used for PCView() 
+			ierr = PCShellSetName(schur_pc,"Monolithic Schur Complement Preconditioner"); CHKERRQ(ierr);
 
-		bool schur_0d = false;
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
-			schur_0d = true;
+			bool schur_0d = false;
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12
+					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
+				schur_0d = true;
 
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
-			es->parameters.set<bool>("negative_mono_schur_complement") = false;	//because schur diag flips it the wrong way
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6)
+				es->parameters.set<bool>("negative_mono_schur_complement") = false;	//because schur diag flips it the wrong way
 
-		double scaling_factor = 1.0;
-		if(es->parameters.get<unsigned int>("scale_mono_preconditioner"))
-			scaling_factor = 1./es->parameters.get<double>("mono_preconditioner_resistance_scaling");
+			double scaling_factor = 1.0;
+			if(es->parameters.get<unsigned int>("scale_mono_preconditioner"))
+				scaling_factor = 1./es->parameters.get<double>("mono_preconditioner_resistance_scaling");
 
 		
 
 
-		std::cout << "YES" << std::endl;
-		// Do setup of preconditioner
-		if(es->parameters.get<unsigned int>("multiple_column_solve") == 1
-			|| !(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
-		{
-			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10)
-			{
-				ierr = Monolithic3ShellPCSetUp(schur_pc,NULL,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
-			}
-			else
-			{
-				ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
-			}
-		}
-		else if(es->parameters.get<unsigned int>("multiple_column_solve") == 2)
-		{
-			if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
+			std::cout << "YES" << std::endl;
+			// Do setup of preconditioner
+			if(es->parameters.get<unsigned int>("multiple_column_solve") == 1
+				|| !(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
 				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
-				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
 			{
-				ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1],system_ksp); CHKERRQ(ierr);
+				if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") != 10)
+				{
+					ierr = Monolithic3ShellPCSetUp(schur_pc,NULL,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
+				}
+				else
+				{
+					ierr = Monolithic3ShellPCSetUp(schur_pc,schur_complement_approx,subksp[1],system_ksp,es->parameters.get<bool>("negative_mono_schur_complement"),schur_0d,scaling_factor); CHKERRQ(ierr);
+				}
+			}
+			else if(es->parameters.get<unsigned int>("multiple_column_solve") == 2)
+			{
+				if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 
+					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
+					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 
+					|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11)
+				{
+					ierr = Monolithic2ShellPCSetUp(schur_pc,velocity_matrix->mat(),non_zero_cols,non_zero_rows,subksp[1],system_ksp); CHKERRQ(ierr);
+				}
+				else
+				{
+					std::cout << "Problem constructing monolithic matrix." << std::endl;
+					std::cout << "Exiting..." << std::endl;
+					std::exit(0);
+				}
+
 			}
 			else
 			{
-				std::cout << "Problem constructing monolithic matrix." << std::endl;
-				std::cout << "Exiting..." << std::endl;
-				std::exit(0);
+				ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1],system_ksp); CHKERRQ(ierr);
 			}
 
+			std::cout << "YES" << std::endl;
+
+
+			if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
+			{
+				PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
+				function_ptr = &custom_outer_monitor;
+
+				mono_ctx->total_velocity_iterations = 0;
+				mono_ctx->total_convection_diffusion_iterations = 0;
+
+				ierr = KSPMonitorSet(system_ksp,function_ptr,mono_ctx,NULL); CHKERRQ(ierr);
+			}
+			// let the method know we have calculated the shell preconditioner at least once before
+			mono_shell_pc_created = true;
 		}
-		else
-		{
-			ierr = MonolithicShellPCSetUp(schur_pc,velocity_matrix->mat(),subksp[1],system_ksp); CHKERRQ(ierr);
-		}
-
-		std::cout << "YES" << std::endl;
-
-
-		if(es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
-		{
-			PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
-			function_ptr = &custom_outer_monitor;
-
-			mono_ctx->total_velocity_iterations = 0;
-			mono_ctx->total_convection_diffusion_iterations = 0;
-
-			ierr = KSPMonitorSet(system_ksp,function_ptr,mono_ctx,NULL); CHKERRQ(ierr);
-		}
-		// let the method know we have calculated the shell preconditioner at least once before
-		mono_shell_pc_created = true;
 
 	}
 
@@ -3388,9 +3371,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 				ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner"); CHKERRQ(ierr);
 
-				perf_log.push("bfbt setup");
 				ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),velocity_subksp[1],es->parameters.get<bool> ("negative_bfbt_schur_complement")); CHKERRQ(ierr);
-				perf_log.pop("bfbt setup");
 
 				shell_pc_created = true;
 			}

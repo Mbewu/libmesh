@@ -121,9 +121,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		mesh_refinement (mesh),
 		es(AutoPtr<EquationSystems>(new EquationSystems(mesh))),
 		time(0.),
-	  reduce_dt(false),
-	  increase_dt(false),
-	  refine_mesh(false),
+	  	reduce_dt(false),
+	  	increase_dt(false),
+	  	refine_mesh(false),
 		steps_since_last_dt_change(0),
 		restart(false),
 		perf_log("Coupled Navier Stokes"),
@@ -353,15 +353,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	
 	//init the equation systems
 
-	perf_log.push("init_eq_systems");
 	std::cout << "Init equation systems." << std::endl;
 	es->init ();
-	perf_log.pop("init_eq_systems");
 	std::cout << "done initing equation systems" << std::endl;
 
-	perf_log.push("init_dof_var_vec");
 	init_dof_variable_vectors();
-	perf_log.pop("init_dof_var_vec");
 
 	if(restart)
 	{
@@ -516,6 +512,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}
 
+			perf_log.push("output");
 			if(!restart)
 			{
 				output_sim_data(true);
@@ -564,6 +561,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}
 
+			perf_log.pop("output");
 
 			// only do this when on the first step of num continuation
 			if(k==0)
