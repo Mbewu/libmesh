@@ -2047,7 +2047,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	if(es->parameters.get<bool>("fieldsplit") && !init_names_done)
 	{
 		system->linear_solver->init_names(*system);
-		init_names_done = true
+		init_names_done = true;
 	}
 
 	std::cout << "after init names" << std::endl;
