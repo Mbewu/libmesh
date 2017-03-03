@@ -300,6 +300,8 @@ void NSAssembler3D::find_1d_boundary_nodes()
 }
 
 
+
+// calculate the flux on a single boundary
 double NSAssembler3D::calculate_flux(const int boundary_id)
 {
 
@@ -443,6 +445,265 @@ double NSAssembler3D::calculate_flux(const int boundary_id)
   return flux;
 
 }
+
+// calculate the fluxes on multiple boundaries
+void NSAssembler3D::setup_flow_rate_and_mean_pressure_vectors()
+{
+
+	std::cout << "Setting up flow rate and mean pressure vectors.. " << std::endl;
+	
+	TransientLinearImplicitSystem * system;
+	// Get a reference to the Stokes system object.
+	if(pressure_coupled)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+
+	std::cout << "boo" << std::endl;
+
+
+	// clear the rhs before adding things in for flux
+	const MeshBase& mesh = es->get_mesh();
+
+  const unsigned int dim = mesh.mesh_dimension();
+  const unsigned int num_1d_trees = es->parameters.set<unsigned int> ("num_1d_trees");
+
+  const unsigned int u_var = system->variable_number ("u");
+  const unsigned int v_var = system->variable_number ("v");
+	//hmmm yeah you know const an shit
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+  const unsigned int p_var = system->variable_number ("p");
+
+  FEType fe_vel_type = system->variable_type(u_var);
+	//boundary finite element stuffs
+	AutoPtr<FEBase> fe_vel_face (FEBase::build(dim, fe_vel_type));
+
+	FEType fe_pres_type = system->variable_type(p_var);
+	//boundary finite element stuffs
+	AutoPtr<FEBase> fe_pres_face (FEBase::build(dim, fe_pres_type));
+
+	QGauss qface(dim-1, fe_vel_type.default_quadrature_order());
+	fe_vel_face->attach_quadrature_rule (&qface);
+	fe_pres_face->attach_quadrature_rule (&qface);
+
+
+	//variables for equation system
+  const std::vector<Real>& JxW_face = fe_vel_face->get_JxW();
+  const std::vector<std::vector<Real> >& phi_face = fe_vel_face->get_phi();
+  const std::vector<std::vector<Real> >& psi_face = fe_pres_face->get_phi();
+  const std::vector<Point>& 						 qface_normals = fe_vel_face->get_normals();
+
+
+  DenseVector<Number> Fe_Q, Fe_P;
+  DenseSubVector<Number>  Fu(Fe_Q), Fv(Fe_Q), Fw(Fe_Q), Fp(Fe_P);
+
+	// some dof stuff
+  const DofMap & dof_map = system->get_dof_map();
+
+  std::vector<dof_id_type> dof_indices;
+  std::vector<dof_id_type> dof_indices_u;
+  std::vector<dof_id_type> dof_indices_v;
+  std::vector<dof_id_type> dof_indices_w;
+  std::vector<dof_id_type> dof_indices_p;
+
+  std::vector<double> area(num_1d_trees+1);
+
+  //iterators
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	//for(unsigned int i=0; i<subdomains_3d.size(); i++)
+	//	std::cout << "subdomains[" << i << "] = " << subdomains_3d[i] << std::endl;
+	std::cout << "boo" << std::endl;
+
+  for ( ; el != end_el; ++el)
+  {				
+
+  	const Elem* elem = *el;
+	if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
+	{
+
+		
+	  	for (unsigned int s=0; s<elem->n_sides(); s++)
+		{
+		
+			//for some reason it is natural to have more than one boundary id per side or even node
+			std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
+
+			if(boundary_ids.size() > 0) 
+			{ 
+				// check whether boundary is in list of boundaries we want to make flux vectors for
+				if(boundary_ids[0] >= 0 && boundary_ids[0] <= num_1d_trees)
+				{	     
+					unsigned int boundary_id = boundary_ids[0];
+
+					dof_map.dof_indices (elem, dof_indices);
+					dof_map.dof_indices (elem, dof_indices_u, u_var);
+					dof_map.dof_indices (elem, dof_indices_v, v_var);
+					if(threed) { dof_map.dof_indices (elem, dof_indices_w, w_var); }
+					dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+					unsigned int n_dofs   = dof_indices.size();
+					unsigned int n_u_dofs = dof_indices_u.size();
+					unsigned int n_v_dofs = dof_indices_v.size();
+					unsigned int n_w_dofs = 0;
+					if(threed) { n_w_dofs = dof_indices_w.size(); }
+					unsigned int n_p_dofs = dof_indices_p.size();
+
+					// Compute shape functions etc of current element
+					Fe_Q.resize (n_dofs);
+					Fe_P.resize (n_dofs);
+
+					// Reposition the submatrices
+					Fu.reposition (u_var*n_u_dofs, n_u_dofs);
+					Fv.reposition (v_var*n_u_dofs, n_v_dofs);
+					if(threed) { Fw.reposition (w_var*n_u_dofs, n_w_dofs); }
+					Fp.reposition (p_var*n_u_dofs, n_p_dofs);
+
+
+					// contributions to flow rate vector
+					// note we assume only one side of the element on a boundary
+					fe_vel_face->reinit(elem, s);
+
+
+					for (unsigned int qp=0; qp<qface.n_points(); qp++)
+					{
+					  	for (unsigned int i=0; i<n_u_dofs; i++)
+						{
+					    		Fu(i) += JxW_face[qp]*(phi_face[i][qp]*qface_normals[qp](0));
+					    		Fv(i) += JxW_face[qp]*(phi_face[i][qp]*qface_normals[qp](1));
+					    		if(threed) { Fw(i) += JxW_face[qp]*(phi_face[i][qp]*qface_normals[qp](2)); }
+						}
+
+					}//end face quad loop
+
+					// contributions to mean pressure vector
+					fe_pres_face->reinit(elem, s);
+
+
+					// need this to calculate the total area on this boundary
+					AutoPtr<Elem> side (elem->build_side(s));
+					area[boundary_id] += side->volume();
+
+					for (unsigned int qp=0; qp<qface.n_points(); qp++)
+					{
+						for (unsigned int i=0; i<n_p_dofs; i++)
+						{
+						  Fp(i) += JxW_face[qp]*(psi_face[i][qp]);
+						}
+
+					}//end face quad loop     
+
+					std::ostringstream number;
+					number << boundary_id;
+				  	system->request_vector("Flow Rate Vector " + number.str())->add_vector    (Fe_Q, dof_indices);
+				  	system->request_vector("Mean Pressure Vector " + number.str())->add_vector    (Fe_P, dof_indices);
+
+					break;   
+				}//end if(mesh.boundary_info->boundary_id(elem,s) == boundary_id)
+
+			}
+		}//end side loop
+
+	}
+  } // end of element loop
+
+	std::cout << "boo" << std::endl;
+
+  for(unsigned int i=0; i<=num_1d_trees; i++)
+  {
+	std::ostringstream number;
+	number << i;
+	system->request_vector("Flow Rate Vector " + number.str())->close();
+
+	system->request_vector("Mean Pressure Vector " + number.str())->close();
+	es->comm().sum(area[i]);
+	system->request_vector("Mean Pressure Vector " + number.str())->scale(1./area[i]);
+  }
+
+
+}
+
+
+
+// calculate the fluxes on multiple boundaries
+std::vector<double> NSAssembler3D::calculate_fluxes(std::vector<unsigned int> boundary_ids)
+{
+
+	//std::cout << "begin calculating flux on bouundary " << boundary_id << std::endl;
+	
+	TransientLinearImplicitSystem * system;
+	// Get a reference to the Stokes system object.
+	if(pressure_coupled)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+
+
+	
+	std::vector<double> fluxes(boundary_ids.size());
+
+	for(unsigned int i=0; i<boundary_ids.size(); i++)
+	{
+		std::ostringstream number;
+		number << boundary_ids[i];
+		fluxes[i] = system->request_vector("Flow Rate Vector " + number.str())->dot(*system->solution);
+	}
+
+
+  	return fluxes;
+
+}
+
+// calculate the fluxes on multiple boundaries
+std::vector<double> NSAssembler3D::calculate_pressures(std::vector<unsigned int> boundary_ids)
+{
+
+	//std::cout << "begin calculating flux on bouundary " << boundary_id << std::endl;
+	
+	TransientLinearImplicitSystem * system;
+	// Get a reference to the Stokes system object.
+	if(pressure_coupled)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+	  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+
+
+	
+	std::vector<double> pressures(boundary_ids.size());
+
+	for(unsigned int i=0; i<boundary_ids.size(); i++)
+	{
+		std::ostringstream number;
+		number << boundary_ids[i];
+		pressures[i] = system->request_vector("Mean Pressure Vector " + number.str())->dot(*system->solution);
+	}
+
+
+  	return pressures;
+
+}
+
 
 
 double NSAssembler3D::calculate_pressure(const int boundary_id)

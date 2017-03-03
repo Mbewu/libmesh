@@ -800,6 +800,7 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 	ierr = KSPGetOperators(schur_ksp,&S,NULL); CHKERRQ(ierr);
 	ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,NULL,&A11);
 
+	//MatView(A11,PETSC_VIEWER_STDOUT_SELF);
 	// copy the schur_complement_approx containing the stokes approximation to the S_approx
 	if(schur_complement_approx == NULL)
 		ierr = MatDuplicate(A11,MAT_COPY_VALUES,&shell->S_approx);
@@ -841,6 +842,261 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
   return 0;
 }
 
+
+
+/*
+   Monolithic3ShellPCSetUp - This solves the matrix in the schur complement vector by vector.
+*/
+PetscErrorCode Monolithic4ShellPCSetUp(PC pc,Mat schur_complement_approx, Vec non_zero_cols, Vec non_zero_rows, KSP schur_ksp, KSP _outer_ksp, bool negative_schur, bool schur_0d, double scaling_factor)
+{
+  	MonoShellPC  *shell;
+  	PetscErrorCode ierr;
+
+	std::cout << "In Monolithic4ShellPCSetUp." << std::endl;
+
+	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+
+  	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+
+	// ********* ASSOC outer ksp ************************** //
+	shell->outer_ksp = _outer_ksp;
+
+
+	// ********* SETUP VELOCITY MATRIX KSP **************** //
+
+	// create
+	ierr = KSPCreate(PETSC_COMM_WORLD,&shell->inner_velocity_ksp); CHKERRQ(ierr);
+
+	// set the pc to be used, lu for now
+	ierr = KSPSetOptionsPrefix(shell->inner_velocity_ksp,"ns3d1d_fieldsplit_1_"); CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (shell->inner_velocity_ksp); CHKERRQ(ierr);
+
+
+
+
+	// Get the matrices we need from the system
+	Mat A3d,Ht,H,A0d;
+	Mat S;
+
+	printf ("3\n");
+	ierr = KSPGetOperators(schur_ksp,&S,NULL); CHKERRQ(ierr);
+	ierr = MatSchurComplementGetSubMatrices(S,&A3d,NULL,&Ht,&H,&A0d);
+
+	//MatView(A0d,PETSC_VIEWER_STDOUT_SELF);
+	printf ("3\n");
+
+	PetscInt num_3d_dofs;
+	MatGetSize(A3d,&num_3d_dofs,NULL);
+	PetscInt num_0d_dofs;
+	MatGetSize(A0d,&num_0d_dofs,NULL);
+
+	// compute the outer matrix
+	Mat HHt;
+	MatMatMult(H,Ht,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&HHt);		// could possibly use MAT_REUSE_MATRIX
+
+	printf ("3\n");
+
+	// compute the inner matrix
+	Mat HA3dHt;
+	MatMatMatMult(H,A3d,Ht,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&HA3dHt);
+
+	printf ("3\n");
+	// create an is containing the nonzero cols and rows
+	PetscInt num_non_zero_cols;
+	VecGetLocalSize(non_zero_cols,&num_non_zero_cols);
+	PetscInt num_non_zero_rows;
+	VecGetLocalSize(non_zero_rows,&num_non_zero_rows);
+	PetscScalar* non_zero_cols_array_sc;
+	PetscScalar* non_zero_rows_array_sc;
+	VecGetArray(non_zero_cols,&non_zero_cols_array_sc);
+	VecGetArray(non_zero_rows,&non_zero_rows_array_sc);
+	PetscInt non_zero_cols_array[num_non_zero_cols];
+	PetscInt non_zero_rows_array[num_non_zero_rows];
+
+	for(unsigned int i=0; i<num_non_zero_cols ; i++)
+	{
+		non_zero_cols_array[i] = non_zero_cols_array_sc[i];
+		std::cout << "array cols = " << non_zero_cols_array[i] << std::endl;
+	}
+
+	for(unsigned int i=0; i<num_non_zero_rows ; i++)
+	{
+		non_zero_rows_array[i] = non_zero_rows_array_sc[i];
+		std::cout << "array rows = " << non_zero_rows_array[i] << std::endl;
+	}
+
+	IS non_zero_cols_is;
+	IS non_zero_rows_is;
+	printf ("3\n");
+	printf ("3\n");
+	ISCreateGeneral(PETSC_COMM_SELF,num_non_zero_cols,(PetscInt*)non_zero_cols_array,PETSC_COPY_VALUES,&non_zero_cols_is);
+	ISCreateGeneral(PETSC_COMM_SELF,num_non_zero_rows,(PetscInt*)non_zero_rows_array,PETSC_COPY_VALUES,&non_zero_rows_is);
+
+	//ISView(non_zero_rows_is,PETSC_VIEWER_STDOUT_SELF);
+	//ISView(non_zero_cols_is,PETSC_VIEWER_STDOUT_SELF);
+	printf ("3\n");
+	Mat HA3dHt_sub;
+	MatGetSubMatrix(HA3dHt,non_zero_rows_is,non_zero_cols_is,MAT_INITIAL_MATRIX,&HA3dHt_sub);
+
+	Mat HHt_sub;
+	MatGetSubMatrix(HHt,non_zero_rows_is,non_zero_cols_is,MAT_INITIAL_MATRIX,&HHt_sub);
+
+	printf ("6\n");
+	MatView(HA3dHt_sub,PETSC_VIEWER_STDOUT_SELF);
+
+
+	printf ("3\n");
+	// make identity matrix for later
+	PetscInt n;
+  	ierr = MatGetSize(HA3dHt_sub,&n,NULL);CHKERRQ(ierr);
+
+	printf ("3\n");
+	Mat I;
+  	ierr = MatCreateDense(PETSC_COMM_WORLD,PETSC_DECIDE,PETSC_DECIDE,n,n,NULL,&I);CHKERRQ(ierr);
+  	ierr = MatSetFromOptions(I);CHKERRQ(ierr);
+	MatSetUp(I);
+
+	PetscScalar value = 1.0;
+ 	for (PetscInt i=0; i<n; i++)
+		MatSetValues(I,1,&i,1,&i,&value,INSERT_VALUES);
+ 
+ 	MatAssemblyBegin(I,MAT_FINAL_ASSEMBLY);
+	MatAssemblyEnd(I,MAT_FINAL_ASSEMBLY);
+
+	printf ("3\n");
+	//MatView(I,PETSC_VIEWER_STDOUT_SELF);
+
+	printf ("3\n");
+	// crap
+	IS perm, iperm;
+	MatFactorInfo info;
+  	ierr = MatGetOrdering(HA3dHt_sub,  MATORDERINGNATURAL,  &perm,  &iperm); CHKERRQ(ierr);     
+  	ierr = MatFactorInfoInitialize(&info); CHKERRQ(ierr);
+
+	std::cout << "shiftamount = " << info.dtcol << std::endl;
+	info.diagonal_fill = 1;
+	std::cout << "shiftamount = " << info.dtcol << std::endl;
+
+
+	
+	printf ("3\n");
+	// superlu doesn't work with matmatsolve, superlu_dist does.
+	Mat HA3dHt_factor;
+	ierr = MatGetFactor(HA3dHt_sub,MATSOLVERSUPERLU_DIST,MAT_FACTOR_LU,&HA3dHt_factor); CHKERRQ(ierr); 
+	printf ("3\n");
+	ierr = MatLUFactorSymbolic(HA3dHt_factor,HA3dHt_sub,perm,iperm,&info); CHKERRQ(ierr); 
+	printf ("4\n");
+	ierr = MatLUFactorNumeric(HA3dHt_factor,HA3dHt_sub,&info); CHKERRQ(ierr); 
+	
+
+	printf ("5\n");
+	// if using matlufactor then use shell->velocity_matrix, is using matgetfactor use F
+	Mat HA3dHt_inv_dense;
+	ierr = MatDuplicate(I,MAT_COPY_VALUES,&HA3dHt_inv_dense);
+	ierr = MatMatSolve(HA3dHt_factor,I,HA3dHt_inv_dense);
+
+	Mat HA3dHt_inv;
+	ierr = MatConvert(HA3dHt_inv_dense,MATAIJ,MAT_INITIAL_MATRIX,&HA3dHt_inv);
+
+	MatView(HA3dHt_inv,PETSC_VIEWER_STDOUT_SELF);
+
+	printf ("6\n");
+	// compute the whole matrix
+	Mat S_approx_dense;
+	MatMatMatMult(HHt_sub,HA3dHt_inv,HHt_sub,MAT_INITIAL_MATRIX,PETSC_DEFAULT,&S_approx_dense);
+	printf ("7\n");
+
+	//MatView(S_approx_dense,PETSC_VIEWER_STDOUT_SELF);
+
+	PetscScalar T_vals[num_non_zero_cols][num_non_zero_rows];
+
+	for(unsigned int i=0; i<num_non_zero_rows; i++)
+	{
+		for(unsigned int j=0; j<num_non_zero_cols; j++)
+		{
+			T_vals[i][j] = 0.;
+		}
+	}
+
+	for(unsigned int i=0; i<num_non_zero_rows; i++)
+	{
+
+		const PetscScalar *row_array;
+		const PetscInt *row_cols;
+		PetscInt row_n_cols;
+
+		// extract the correct row
+		ierr = MatGetRow(S_approx_dense,i,&row_n_cols,&row_cols,&row_array);
+		for(unsigned int j=0; j<row_n_cols; j++)
+		{
+			
+			T_vals[i][row_cols[j]] = row_array[j];
+		}
+	}
+
+	for(unsigned int i=0; i<num_non_zero_rows; i++)
+	{
+		for(unsigned int j=0; j<num_non_zero_cols; j++)
+		{
+			std::cout << "T[" << i << "][" << j << "] = " << T_vals[i][j] << std::endl;
+		}
+	}
+
+	// put small matrix into a bigger matrix
+	MatCreateAIJ(PETSC_COMM_WORLD,num_0d_dofs,num_0d_dofs,num_0d_dofs,num_0d_dofs,
+	               num_non_zero_cols,NULL,num_non_zero_cols,NULL,&shell->S_approx);
+
+	MatSetValues(shell->S_approx,num_non_zero_rows,non_zero_rows_array,num_non_zero_cols,non_zero_cols_array,(const PetscScalar*)T_vals,INSERT_VALUES);
+	MatAssemblyBegin(shell->S_approx,MAT_FINAL_ASSEMBLY );
+	MatAssemblyEnd(shell->S_approx,MAT_FINAL_ASSEMBLY );
+
+	//MatView(shell->S_approx,PETSC_VIEWER_STDOUT_SELF);
+
+	// put the values into the correct matrix... for no good reason..
+	//ierr = MatDuplicate(new_T,MAT_COPY_VALUES,&shell->S_approx);
+
+	// convert S_approx to sparse
+	//ierr = MatConvert(S_approx_dense,MATAIJ,MAT_INITIAL_MATRIX,&shell->S_approx);
+
+	// S_approx = A11 - S_approx
+	ierr = MatAXPY(shell->S_approx,-1.0,A0d,DIFFERENT_NONZERO_PATTERN);
+	ierr = MatScale(shell->S_approx,-1.0);
+
+
+	//MatView(shell->S_approx,PETSC_VIEWER_STDOUT_SELF);
+	//MatView(A0d,PETSC_VIEWER_STDOUT_SELF);
+
+	if(negative_schur)
+	{
+		ierr = MatScale(shell->S_approx,-1.0);
+		std::cout << "hello, scaling the schur approx" << std::endl;
+	}
+
+
+	// scale for resistance
+	ierr = MatScale(shell->S_approx,scaling_factor);
+		
+
+
+
+	shell->Bt = Ht;
+
+	//destroy everything
+	ierr = MatDestroy(&HA3dHt); CHKERRQ(ierr);
+	ierr = MatDestroy(&HA3dHt_factor); CHKERRQ(ierr);
+	ierr = MatDestroy(&HA3dHt_inv); CHKERRQ(ierr);
+	ierr = MatDestroy(&I); CHKERRQ(ierr);
+	ierr = ISDestroy(&perm); CHKERRQ(ierr);
+	ierr = ISDestroy(&iperm); CHKERRQ(ierr);
+	ierr = MatDestroy(&S_approx_dense); CHKERRQ(ierr);
+
+	// setup up the operators for the solve later
+	ierr = KSPSetOperators(shell->inner_velocity_ksp,shell->S_approx,shell->S_approx); CHKERRQ(ierr);	
+
+	ierr = PetscLogStagePop();
+
+  return 0;
+}
 
 
 

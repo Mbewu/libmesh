@@ -70,6 +70,7 @@ class NSAssembler3D : public System::Assembly
 
 			surface_boundaries = &_surface_boundaries;
 
+
 		}
 
 		// initialise bc information
@@ -99,6 +100,9 @@ class NSAssembler3D : public System::Assembly
 		virtual void assemble_efficient (ErrorVector& error_vector);			// if not implemented in other class defaults to normal assembly
 		virtual void assemble_preconditioner ();								//must be implemented by other class (may not be though)
 		virtual void calculate_peclet_number (ErrorVector& error_vector);
+		virtual void setup_flow_rate_and_mean_pressure_vectors ();
+		virtual std::vector<double> calculate_fluxes (std::vector<unsigned int> boundary_ids);
+		virtual std::vector<double> calculate_pressures(std::vector<unsigned int> boundary_ids);
 		virtual double calculate_flux (const int boundary_id);
 		virtual double calculate_pressure (const int boundary_id);
 		virtual double calculate_l2_norm(const unsigned int var_to_calc, bool reference=false);

@@ -599,7 +599,7 @@ void NavierStokesAssembler::add_to_matrices (TransientLinearImplicitSystem * sys
 {
 	
 	system->matrix->add (row_number,col_number,value);
-	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12)
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 6 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 7 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 12 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 13)
 		system->request_matrix("Preconditioner")->add (row_number,col_number,value);
 	
 }

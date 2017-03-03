@@ -126,7 +126,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	  	refine_mesh(false),
 		steps_since_last_dt_change(0),
 		restart(false),
-		perf_log("Coupled Navier Stokes"),
+		perf_log("Main Program"),
 		sim_3d(false),
 		sim_1d(false),
 		input_file(_input_file),
@@ -148,8 +148,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		ic_set(true)
 {
 
-	perf_log.push("total");
+	perf_log.push("misc");
 	perf_log.push("setup");
+	PerfLog perf_log_setup("Setup");
 
 	std::cout << "Starting simulation." << std::endl;
 
@@ -251,9 +252,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// ************** SET UP 3D MESH **************** //
 	if(sim_3d)
 	{
-		perf_log.push("setup_3d_mesh");
+		perf_log_setup.push("setup_3d_mesh");
 		setup_3d_mesh(&*es,mesh);
-		perf_log.pop("setup_3d_mesh");
+		perf_log_setup.pop("setup_3d_mesh");
 	// in case not set already
 	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
@@ -263,18 +264,18 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// ******************** SETUP 1D MESH ********************* //
 	if(sim_1d)
 	{
-		perf_log.push("setup_1d_mesh");
+		perf_log_setup.push("setup_1d_mesh");
 		setup_1d_mesh();
-		perf_log.pop("setup_1d_mesh");
+		perf_log_setup.pop("setup_1d_mesh");
 
 	}
 
 	// ************* SET UP 3D SYSTEM **************** //
 	if(sim_3d)
 	{
-		perf_log.push("setup_3d_system");
+		perf_log_setup.push("setup_3d_system");
 		if(!es->parameters.get<bool>("optimisation_stabilised"))
-			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly"),perf_log));
+			picard = AutoPtr<Picard>(new Picard(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem"),es->parameters.get<bool>("efficient_assembly")));
 		else
 			picard = AutoPtr<OptimisedStabilisedAssembler3D>(new OptimisedStabilisedAssembler3D(*es,surface_boundaries,subdomains_3d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -290,7 +291,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			system_3d->attach_assemble_object (*picard);
 		}
-		perf_log.pop("setup_3d_system");
+
+
+		perf_log_setup.pop("setup_3d_system");
 
 	}
 
@@ -301,7 +304,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	if(sim_1d)
 	{
 		
-		perf_log.push("setup_1d_system");
+		perf_log_setup.push("setup_1d_system");
 		ns_assembler = AutoPtr<NavierStokesAssembler>
 								(new NavierStokesAssembler(*es,airway_data,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 
@@ -323,7 +326,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
 		
-		perf_log.pop("setup_1d_system");
+		perf_log_setup.pop("setup_1d_system");
 	}
 
 	if(sim_type == 5)
@@ -358,6 +361,11 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	std::cout << "done initing equation systems" << std::endl;
 
 	init_dof_variable_vectors();
+	
+	perf_log_setup.push("boundary vectors compute");
+	if(sim_3d)
+		picard->setup_flow_rate_and_mean_pressure_vectors();
+	perf_log_setup.pop("boundary vectors compute");
 
 	if(restart)
 	{
@@ -397,9 +405,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
 	if(sim_3d)
 	{
-		perf_log.push("update_eq_systems");
+		perf_log_setup.push("update_eq_systems");
 		es->update();
-		perf_log.pop("update_eq_systems");
+		perf_log_setup.pop("update_eq_systems");
 		
 		if(sim_type == 5)
 		{
@@ -461,8 +469,10 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	es->print_info();
 
 
-
+	perf_log_setup.disable_logging();
 	perf_log.pop("setup");
+
+	PerfLog perf_log_misc("Miscellaneous");
 
  	// ************ TIME AND NONLINEAR LOOPS ***************************** //
 
@@ -653,6 +663,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
+				perf_log_misc.push("update times");
 				// INCREMENT TIME
 				++t_step;
 
@@ -678,6 +689,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 				update_times();
 
+				perf_log_misc.pop("update times");
+
 				//shell_pc_created = false;
 				//mono_shell_pc_created = false;
 
@@ -685,13 +698,15 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				{
 					if(sim_3d)
 					{
-						perf_log.push("reinit");
+						perf_log_misc.push("reinit");
 						update_3d_dirichlet_boundary_conditions();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS
-						perf_log.pop("reinit");
+						perf_log_misc.pop("reinit");
+						perf_log_misc.push("calc norm");	
 						if(sim_type != 5)
 	 						beforebefore_norm = system_3d->solution->l2_norm();
 						else
 	 						beforebefore_norm = system_coupled->solution->l2_norm();
+						perf_log_misc.pop("calc norm");
 
 					}
 				}
@@ -746,8 +761,10 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							nonlinear_iteration++;
 							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 
+							perf_log_misc.push("calculate 1d boundary values");
 							if(sim_1d)
 								calculate_1d_boundary_values();
+							perf_log_misc.pop("calculate 1d boundary values");
 
 							// sim type 3 is when we tightly couple the 1d sim to the 3d sim
 							if(sim_type == 0 || sim_type == 2)
@@ -799,15 +816,23 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 								if(solve_3d_system_iteration(system_3d))
 									break;
 				
+								perf_log_misc.push("calculate 3d boundary values");
 								calculate_3d_boundary_values();
+								perf_log_misc.pop("calculate 3d boundary values");
 								ns_assembler->init_bc(flux_values_3d);
 								for(unsigned int i=0; i<flux_values_3d.size(); i++)
 									std::cout << "flux_values_3d[" << i << "] = " << flux_values_3d[i] << std::endl;
 								solve_1d_system();
 
+								perf_log_misc.push("calculate 3d boundary values");
 								calculate_3d_boundary_values();
+								perf_log_misc.pop("calculate 3d boundary values");
+								perf_log_misc.push("calculate 3d boundary values");
 								calculate_1d_boundary_values();
+								perf_log_misc.pop("calculate 3d boundary values");
+								perf_log.push("output");
 								print_flux_and_pressure();
+								perf_log.pop("output");
 					
 
 							}
@@ -898,7 +923,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							std::cout << "bye" << std::endl;
 							solve_1d_system();
 							std::cout << "bye" << std::endl;
+							perf_log_misc.push("calculate 1d boundary values");
 							calculate_1d_boundary_values();
+							perf_log_misc.pop("calculate 1d boundary values");
 							
 
 							// stop when pressure has converged
@@ -948,10 +975,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 							es->parameters.set<unsigned int> ("nonlinear_iteration") = nonlinear_iteration;
 							es->parameters.set<unsigned int> ("nonlinear_iteration_1d") = nonlinear_iteration;
 
+							perf_log_misc.push("calculate 1d boundary values");
 							calculate_1d_boundary_values();
+							perf_log_misc.pop("calculate 1d boundary values");
 							picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,linear_resistance_values_1d,previous_flux_values_3d,previous_previous_flux_values_3d);
 							std::cout << "about to calculate 3d boundary values" << std::endl;
+							perf_log_misc.push("calculate 3d boundary values");
 							calculate_3d_boundary_values();
+							perf_log_misc.pop("calculate 3d boundary values");
 							std::cout << "done about to calculating 3d boundary values" << std::endl;
 							ns_assembler->init_bc(flux_values_3d);
 
@@ -1000,7 +1031,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 				std::cout << "kk" << std::endl;
 
+				perf_log_misc.push("end time step admin");
 				end_timestep_admin();		//decide on what to do next and get vectors ready
+				perf_log_misc.pop("end time step admin");
 
 				std::cout << "AHHHHHHHHHH" << std::endl;
 
@@ -1030,6 +1063,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		// petsc clean up if we have actually done some simulation, i.e. time > 0
 		if(time > 1e-10)
 			petsc_clean_up();
+
+		output_logging();
 
 
 		//now compare to exact solution if we want to
@@ -1426,7 +1461,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	// barrier before end so that procs don't quit too early
 	es->comm().barrier();
 
-	perf_log.pop("total");
+	perf_log.pop("misc");
 }
 
 // ******************************************************************* //
@@ -1810,7 +1845,7 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"efficient_assembly",true);
 	set_bool_parameter(infile,"efficient_solve_setup",true);
 
-	set_bool_parameter(infile,"create_3d_preconditioner_once",true);
+	set_bool_parameter(infile,"create_3d_preconditioner_once",false);
 
 	set_double_parameter(infile,"0d_bifurcation_angle",M_PI/4.0);
 
@@ -2069,7 +2104,8 @@ int NavierStokesCoupled::read_parameters()
 		&& !(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 8
 		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 9
 		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 10
-		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11))
+		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 11
+		|| es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 13))
 	{
 		std::cout << "No need to do a multiple column solve if not doing preconditioner_type_3d1d 8,9,10,11." << std::endl;
 		std::cout << "Changing to not use multiple_column_solve." << std::endl;
@@ -2728,6 +2764,8 @@ int NavierStokesCoupled::read_parameters()
 		ierr = PetscLogStageRegister("Mono Schur Stokes Velocity Preconditioner",&stage_num);
 	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 12)
 		ierr = PetscLogStageRegister("Mono Schur 0D Preconditioner",&stage_num);
+	else if(es->parameters.get<unsigned int> ("preconditioner_type_3d1d") == 13)
+		ierr = PetscLogStageRegister("Mono Schur NS Approx Preconditioner",&stage_num);
 
 
 
@@ -3674,6 +3712,19 @@ void NavierStokesCoupled::output_particle_data(bool header)
 
 		particle_output_file << std::endl;
 	}
+}
+
+
+void NavierStokesCoupled::output_logging()
+{
+
+	std::ostringstream logging_data_file_name;
+
+	logging_data_file_name << output_folder.str() << "perf_log.dat";
+	std::ofstream logging_output_file(logging_data_file_name.str().c_str());
+
+	logging_output_file << perf_log.get_log();
+	logging_output_file.close();
 }
 
 
