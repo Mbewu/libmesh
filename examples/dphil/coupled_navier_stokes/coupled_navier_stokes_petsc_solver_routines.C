@@ -2120,6 +2120,76 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
 
 
 
+PetscErrorCode Monolithic2ShellPCApply(PC pc,Vec x,Vec y)
+{
+
+  	MonoShellPC  *shell;
+  	PetscErrorCode ierr;
+
+	ierr = PetscLogStagePush(2);
+
+
+  	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+
+	double norm;	
+
+	PC outer_pc;
+	KSPGetPC(shell->outer_ksp,&outer_pc);
+
+	
+/*
+	{
+		int num_splits = 0;
+		KSP* subksp;	//subksps
+		ierr = PCFieldSplitGetSubKSP(outer_pc,&num_splits,&subksp); CHKERRQ(ierr);
+
+
+		PetscReal residual_norm;
+		KSPGetResidualNorm(subksp[0],&residual_norm);
+
+		std::cout << "residual norm = " << residual_norm << std::endl;
+
+
+		std::cout << "ya" << std::endl;
+		VecNorm(shell->initial_guess_ctx->inner_solution,NORM_2,&norm);
+		std::cout << "inner solution norm before = " << norm << std::endl;
+
+		//KSPBuildSolution(subksp[0],shell->initial_guess_ctx->inner_solution,NULL);
+
+		std::cout << "hello" << std::endl;
+
+		VecNorm(shell->initial_guess_ctx->inner_solution,NORM_2,&norm);
+		std::cout << "inner solution norm after = " << norm << std::endl;
+
+		Mat Amat,Pmat;
+		KSPGetOperators(subksp[0],&Amat,&Pmat);
+		KSPSetComputeOperators(subksp[0],compute_matrix,NULL);
+		KSPSetOperators(subksp[0],Amat,Pmat);
+	
+	}
+	*/
+	// apply the preconditioner (lu)	
+	PC local_velocity_pc;
+	ierr = KSPGetPC(shell->inner_velocity_ksp,&local_velocity_pc); CHKERRQ(ierr);
+	ierr = PCApply(local_velocity_pc,x,y); CHKERRQ(ierr);
+
+
+
+	// let's try and change the rhs of the navier stokes solve bit...	
+	// get the H^t matrix
+	//	Mat S,Bt;	// unused
+	//ierr = KSPGetOperators(shell->outer_ksp,&S,NULL);// CHKERRQ(ierr);
+	//ierr = MatSchurComplementGetSubMatrices(S,NULL,NULL,&Bt,NULL,NULL);
+	//Bt = shell->Bt;	// unused
+	
+
+
+
+
+	ierr = PetscLogStagePop();
+  return 0;
+}
+
 
 
 

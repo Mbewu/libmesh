@@ -247,7 +247,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		extra_3d_data_system = &es->add_system<ExplicitSystem> ("extra_3d_data");
 	}
 
-	mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
+	mesh.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
 
 	// ************** SET UP 3D MESH **************** //
 	if(sim_3d)
@@ -1734,7 +1734,7 @@ int NavierStokesCoupled::read_parameters()
 
   set_bool_parameter(infile,"use_centreline_data",false);
 
-  set_bool_parameter(infile,"custom_partitioning",false);
+  set_unsigned_int_parameter(infile,"custom_partitioning",0);
   set_bool_parameter(infile,"output_resistance_for_each_tree",false);
   set_bool_parameter(infile,"output_resistance",true);
 
@@ -1850,6 +1850,8 @@ int NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"0d_bifurcation_angle",M_PI/4.0);
 
 	set_bool_parameter(infile,"multiple_output_files",true);
+
+	set_bool_parameter(infile,"efficient_monolithic",true);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -2112,11 +2114,11 @@ int NavierStokesCoupled::read_parameters()
 		es->parameters.set<unsigned int> ("multiple_column_solve") = 0;
 	}
 
-	if(es->parameters.get<unsigned int> ("multiple_column_solve") && !es->parameters.get<bool> ("custom_partitioning"))
+	if(es->parameters.get<unsigned int> ("multiple_column_solve") && es->parameters.get<unsigned int> ("custom_partitioning") != 1)
 	{
-		std::cout << "Must use custom partitioning when doing multiple column solve." << std::endl;
-		std::cout << "Changing to use custom partitioning." << std::endl;
-		es->parameters.set<bool> ("custom_partitioning") = true;
+		std::cout << "Must use custom partitioning = 1 when doing multiple column solve for now." << std::endl;
+		std::cout << "Changing to use custom partitioning = 1." << std::endl;
+		es->parameters.set<unsigned int> ("custom_partitioning") = 1;
 	}
 
 
@@ -2668,11 +2670,11 @@ int NavierStokesCoupled::read_parameters()
 
 	// *************** MUST USE CUSTOM PARTITIONING FOR MONOLITHIC ************ //
 	// don't know why... lol doesn't set the boundary conditions properly
-	if(sim_type == 5 && !es->parameters.get<bool> ("custom_partitioning"))
+	if(sim_type == 5 && es->parameters.get<unsigned int> ("custom_partitioning") != 1)
 	{
-		std::cout << "Must use custom partitioning when using monolithi for some reason..." << std::endl;
-		std::cout << "Setting custom_partitioning to true." << std::endl;
-		es->parameters.set<bool> ("custom_partitioning") = true;
+		std::cout << "Must use custom partitioning = 1 when using monolithi for some reason..." << std::endl;
+		std::cout << "Setting custom_partitioning = 1." << std::endl;
+		es->parameters.set<unsigned int> ("custom_partitioning") = 1;
 
 	}
 
@@ -2690,6 +2692,26 @@ int NavierStokesCoupled::read_parameters()
 		std::cout << "Efficient assembly not set up for adaptive time-stepping yet." << std::endl;
 		std::cout << "Changing to use regular assembly." << std::endl;
 		es->parameters.set<bool> ("efficient_assembly") = false;
+	}
+
+
+
+	// ************** IF DOING A 1D SIMULATION THEN CAN'T GET SEGMENT LENGTH FROM MESH *************** //
+	// must make sure the time-step hasn't changed so no adaptive time-stepping
+	if(sim_type == 1 && es->parameters.get<bool> ("initial_segment_length_from_mesh"))
+	{
+		std::cout << "Can't get initial segment length from mesh if doing a 1d simulations." << std::endl;
+		std::cout << "Setting initial_segment_length_from_mesh=false." << std::endl;
+		es->parameters.set<bool> ("initial_segment_length_from_mesh") = false;
+	}
+
+	// ************** IF DOING A 1D SIMULATION THEN CAN'T MACTH TO MESH *************** //
+	// must make sure the time-step hasn't changed so no adaptive time-stepping
+	if(sim_type == 1 && es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh"))
+	{
+		std::cout << "Can't match 1d to 3d mesh if doing a 1d simulations." << std::endl;
+		std::cout << "Setting match_1d_mesh_to_3d_mesh=false." << std::endl;
+		es->parameters.set<bool> ("match_1d_mesh_to_3d_mesh") = false;
 	}
 
 

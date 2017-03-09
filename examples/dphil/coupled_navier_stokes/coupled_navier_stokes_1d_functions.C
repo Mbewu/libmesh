@@ -867,6 +867,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			if(sim_type == 1)
 			{
 				centroid = Point(0.,0.,0.);
+				normal = Point(1.,0.,0.);
 			}
 			else
 			{
@@ -1699,21 +1700,31 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		}
 		else
 		{
-
-			// hmmm why is this not working
-			flux_values_1d[0] = ns_assembler->calculate_flux(0);
-			pressure_values_1d[0] = ns_assembler->calculate_pressure(0);
-
-			// i is the tree id
-			if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
+			if(sim_type == 1)
 			{
-				for(unsigned int i=1; i<subtree_starting_elements.size();i++)
+				// we count from 1 for some reason
+				flux_values_1d[0] = ns_assembler->calculate_flux(1);
+				pressure_values_1d[0] = ns_assembler->calculate_pressure(1);
+
+			}
+			else
+			{			
+				// hmmm why is this not working
+				flux_values_1d[0] = ns_assembler->calculate_flux(0);
+				pressure_values_1d[0] = ns_assembler->calculate_pressure(0);
+
+
+				// i is the tree id
+				if(es->parameters.get<bool> ("calculate_1d_info_at_coupling_nodes"))
 				{
-					std::cout << "subtree_starting_elements[i] = " << subtree_starting_elements[i] << std::endl;
-					if(subtree_starting_elements[i] > -1)
+					for(unsigned int i=1; i<subtree_starting_elements.size();i++)
 					{
-						flux_values_1d[i] = ns_assembler->calculate_flux(i,subtree_starting_elements[i]);
-						pressure_values_1d[i] = ns_assembler->calculate_pressure(i,subtree_starting_elements[i]);
+						std::cout << "subtree_starting_elements[i] = " << subtree_starting_elements[i] << std::endl;
+						if(subtree_starting_elements[i] > -1)
+						{
+							flux_values_1d[i] = ns_assembler->calculate_flux(i,subtree_starting_elements[i]);
+							pressure_values_1d[i] = ns_assembler->calculate_pressure(i,subtree_starting_elements[i]);
+						}
 					}
 				}
 			}
@@ -2894,7 +2905,7 @@ void NavierStokesCoupled::write_elem_pid_1d(ExodusII_IO_Extended& io)
 
   AutoPtr<MeshBase> meshptr = mesh.clone();
   MeshBase &temp_mesh = *meshptr;
-	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
+	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
   temp_mesh.all_first_order();
   EquationSystems temp_es (temp_mesh);
   ExplicitSystem& processor_system

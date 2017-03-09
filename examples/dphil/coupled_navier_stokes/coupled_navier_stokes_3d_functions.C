@@ -2803,7 +2803,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 		// set up a global Vec saying which columns have entries in the B1 matrix
 		// remember we only need to do this once, hence the !mono_shell_pc_created
-		if(es->parameters.get<unsigned int>("multiple_column_solve") && es->parameters.get<bool>("custom_partitioning")
+		if(es->parameters.get<unsigned int>("multiple_column_solve") && es->parameters.get<unsigned int>("custom_partitioning") == 1
 			&& !mono_shell_pc_created 
 			&& (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
 				|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 9
@@ -3021,8 +3021,16 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			//	context can be used to contain any application-specific data. 
 			ierr = ShellPCCreate(&mono_shell); CHKERRQ(ierr);
 
-			// (Required) Set the user-defined routine for applying the preconditioner 
-			ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
+			// (Required) Set the user-defined routine for applying the preconditioner
+			// - efficient just doesn't do some extra crap - default now
+			if(es->parameters.get<bool>("efficient_monolithic"))
+			{
+				ierr = PCShellSetApply(schur_pc,Monolithic2ShellPCApply); CHKERRQ(ierr);
+			}
+			else
+			{
+				ierr = PCShellSetApply(schur_pc,MonolithicShellPCApply); CHKERRQ(ierr);
+			}
 			ierr = PCShellSetContext(schur_pc,mono_shell); CHKERRQ(ierr);
 
 			// (Optional) Set user-defined function to free objects used by custom preconditioner 
@@ -4672,7 +4680,7 @@ void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
   AutoPtr<MeshBase> meshptr = mesh.clone();
 	std::cout << "hi" << std::endl;
   MeshBase &temp_mesh = *meshptr;
-	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<bool>("custom_partitioning"));
+	temp_mesh.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
 	std::cout << "hi" << std::endl;
   temp_mesh.all_first_order();
 	std::cout << "hi" << std::endl;

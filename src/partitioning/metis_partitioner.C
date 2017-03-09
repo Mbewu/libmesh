@@ -61,10 +61,12 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 
 	std::cout << "in metis partitioner" << std::endl;
 
-	// if doing custom partitioning then we partition onto n_procs -1
-	// then reassign all the 1d elements onto the last processor
+	// custom partitioning = 1 ->  then we partition onto n_procs -1
+	//   then reassign all the 1d elements onto the last processor
+	// custom partitioning = 2 ->  then we partition onto n_procs
+	//   then reassign all the 1d elements onto all procs evenly
 	unsigned int var_n_pieces = n_pieces;
-	if(custom_partitioning)
+	if(custom_partitioning == 1)
 	{
 		std::cout << "var_n_pieces before = " << var_n_pieces << std::endl;
 		var_n_pieces -= 1;
@@ -82,7 +84,7 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 			std::cout << "i'm not here?" << std::endl;
       this->single_partition (mesh);
 
-			// assign the 1d elements to the last processor
+			// assign the 1d elements to the single processor
 			if(custom_partitioning)
 			{
 		
@@ -399,29 +401,73 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
       }
   }
 
-	std::cout << "before custom partition" << std::endl;
-	std::cout << "var_n_pieces = " << var_n_pieces << std::endl;
 
-	// assign the 1d elements to the last processor
-	if(custom_partitioning)
+	// assign the 1d elements to the last proc
+	if(custom_partitioning == 1)
 	{
+		std::cout << "before custom partition = 1" << std::endl;
+		std::cout << "var_n_pieces = " << var_n_pieces << std::endl;
   
-    MeshBase::element_iterator       it  = mesh.active_elements_begin();
-    const MeshBase::element_iterator end = mesh.active_elements_end();
+    		MeshBase::element_iterator       it  = mesh.active_elements_begin();
+    		const MeshBase::element_iterator end = mesh.active_elements_end();
 
-    for (; it!=end; ++it)
-    {
-      Elem* elem = *it;
+    		for (; it!=end; ++it)
+    		{
+      			Elem* elem = *it;
 
 			if(elem->type() < 3 || elem->type() == 27)
 			{
-	      elem->processor_id() = var_n_pieces;	// should already be n_pieces - 1
+	      			elem->processor_id() = var_n_pieces;	// should already be n_pieces - 1
 			}
-    }
+    		}
+		std::cout << "done custom partition = 1" << std::endl;
+ 	}
+	// assign the 1d elements evenly over all procs
+	else if(custom_partitioning == 2)
+	{
+		std::cout << "before custom partition = 2" << std::endl;
+		std::cout << "var_n_pieces = " << var_n_pieces << std::endl;
   
-	}
+    		MeshBase::element_iterator       it  = mesh.active_elements_begin();
+    		const MeshBase::element_iterator end = mesh.active_elements_end();
 
-	std::cout << "done custom partition" << std::endl;
+		// first need to count 1d elements
+		unsigned int total_elements_1d = 0;
+    		for (; it!=end; ++it)
+    		{
+      			Elem* elem = *it;
+
+			if(elem->type() < 3 || elem->type() == 27)
+			{
+	      			total_elements_1d++;
+			}
+    		}
+
+		std::cerr << "1d elements on proc " << mesh.comm().rank() << " = " << total_elements_1d << std::endl;
+
+		// add up the counts from all procs
+		mesh.comm().sum(total_elements_1d);
+		std::cout << "global 1d elements on proc = " << total_elements_1d << std::endl;
+
+
+		// distribute 1d elements evenly
+		unsigned int elements_per_proc_1d = (unsigned int) ceil(((double)total_elements_1d/(double)var_n_pieces));
+		unsigned int elements_added_1d = 0;
+    		for (; it!=end; ++it)
+    		{
+      			Elem* elem = *it;
+
+			if(elem->type() < 3 || elem->type() == 27)
+			{
+				unsigned int proc_id = elements_added_1d/elements_per_proc_1d;
+	      			elem->processor_id() = proc_id;	// should already be n_pieces - 1				
+	      			elements_added_1d++;
+			}
+    		}
+		
+		std::cout << "done custom partition = 1" << std::endl;
+ 	}
+
 
   STOP_LOG("partition()", "MetisPartitioner");
 #endif
