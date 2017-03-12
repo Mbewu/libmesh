@@ -1652,7 +1652,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 
 	int radius_var = extra_1d_data_system->add_variable("radius", CONSTANT, MONOMIAL,&active_subdomains);
 	int poiseuille_var = extra_1d_data_system->add_variable("poiseuille", CONSTANT, MONOMIAL,&active_subdomains);
-	int proc_id_var = extra_1d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
+	int proc_id_var = extra_1d_data_system->add_variable("proc_id_1d", CONSTANT, MONOMIAL,&active_subdomains);
 
 	int efficiency_var = 0;
 	// variables for particle deposition system
@@ -1665,7 +1665,7 @@ void NavierStokesCoupled::setup_1d_system(TransientLinearImplicitSystem * system
 	std::cout << "Q_var = " << Q_var << std::endl;
 	std::cout << "radius_var = " << radius_var << std::endl;
 	std::cout << "poiseuille_var = " << poiseuille_var << std::endl;
-	std::cout << "proc_id_var = " << proc_id_var << std::endl;
+	std::cout << "proc_id_1d_var = " << proc_id_var << std::endl;
 	if(particle_deposition == 2)
 		std::cout << "efficiency_var = " << efficiency_var << std::endl;
 }
@@ -1791,7 +1791,7 @@ void NavierStokesCoupled::write_1d_solution()
 	variables_1d.push_back("Q");
 	variables_1d.push_back("radius");
 	variables_1d.push_back("poiseuille");
-	variables_1d.push_back("proc_id");
+	variables_1d.push_back("proc_id_1d");
 	exo.set_output_variables(variables_1d);
 
 	//std::cout << "before write disc" << std::endl;
@@ -1965,7 +1965,7 @@ void NavierStokesCoupled::set_elem_proc_id_1d()
 		mesh.active_local_elements_end();
 
 	std::vector<dof_id_type> dof_indices;
-	const unsigned int proc_id_var = extra_1d_data_system->variable_number ("proc_id");
+	const unsigned int proc_id_var = extra_1d_data_system->variable_number ("proc_id_1d");
 
 	for ( ; el != end_el; ++el)
 	{

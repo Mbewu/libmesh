@@ -443,16 +443,13 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 			}
     		}
 
-		std::cerr << "1d elements on proc " << mesh.comm().rank() << " = " << total_elements_1d << std::endl;
-
-		// add up the counts from all procs
-		mesh.comm().sum(total_elements_1d);
 		std::cout << "global 1d elements on proc = " << total_elements_1d << std::endl;
 
 
 		// distribute 1d elements evenly
 		unsigned int elements_per_proc_1d = (unsigned int) ceil(((double)total_elements_1d/(double)var_n_pieces));
 		unsigned int elements_added_1d = 0;
+    		it  = mesh.active_elements_begin();
     		for (; it!=end; ++it)
     		{
       			Elem* elem = *it;
@@ -460,7 +457,8 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 			if(elem->type() < 3 || elem->type() == 27)
 			{
 				unsigned int proc_id = elements_added_1d/elements_per_proc_1d;
-	      			elem->processor_id() = proc_id;	// should already be n_pieces - 1				
+	      			elem->processor_id() = proc_id;	// should already be n_pieces - 1
+				std::cout << "proc id = " << proc_id << std::endl;				
 	      			elements_added_1d++;
 			}
     		}

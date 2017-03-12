@@ -2670,7 +2670,7 @@ int NavierStokesCoupled::read_parameters()
 
 	// *************** MUST USE CUSTOM PARTITIONING FOR MONOLITHIC ************ //
 	// don't know why... lol doesn't set the boundary conditions properly
-	if(sim_type == 5 && es->parameters.get<unsigned int> ("custom_partitioning") != 1)
+	if(sim_type == 5 && es->parameters.get<unsigned int> ("custom_partitioning") < 1)
 	{
 		std::cout << "Must use custom partitioning = 1 when using monolithi for some reason..." << std::endl;
 		std::cout << "Setting custom_partitioning = 1." << std::endl;
