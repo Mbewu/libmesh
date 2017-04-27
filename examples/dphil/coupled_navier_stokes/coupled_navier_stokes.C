@@ -2937,7 +2937,7 @@ void NavierStokesCoupled::read_particle_parameters()
 	set_double_parameter(infileparticle,"distance_deposited_inside",1.0);
 	set_unsigned_int_parameter(infileparticle,"deposition_pattern",0);
 	set_double_parameter(infileparticle,"brownian_motion_magnitude",0.);
-	set_unsigned_int(infileparticle,"deposit_within_radius",0.);
+	set_unsigned_int_parameter(infileparticle,"deposit_within_radius",0.);
 
 	//some parameters
 	set_double_parameter(infileparticle,"particle_diameter",10.e-6);
