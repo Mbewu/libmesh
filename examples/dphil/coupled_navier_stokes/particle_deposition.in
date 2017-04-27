@@ -6,10 +6,14 @@ unsteady_from_steady = true
 particle_dt = 0.1
 particle_end_time = 4.0		#need 200
 
-# 0 - test particle deposition just in the middle of a domain, 1 - particle deposition at a specified rate on a surface
+# 0 - particle deposition all at once, 1 - particle deposition at a specified rate on a surface
 particle_deposition_type = 1
-particle_deposition_rate = 10 	#rate at which particles are deposited per second
+# 0 - test particle deposition just in the middle of a domain, 1 - particle deposition at a specified rate on a surface
+particle_deposition_location = 1
+particle_deposition_rate = 10 	#rate at which particles are deposited per second or right at the beginning
 particle_deposition_surface = 0		#surface on which particles are deposited
+deposition_pattern = 0	# 0 is just a square, 1 is circular uniform
+distance_deposited_inside = 0.1
 brownian_motion_magnitude = 0.;	#adds random vector of sqrt(3)*mag to the velocity at each time step
 
 #some parameters

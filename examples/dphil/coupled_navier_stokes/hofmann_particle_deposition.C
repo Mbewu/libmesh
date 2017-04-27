@@ -21,8 +21,7 @@ HofmannParticleDeposition::HofmannParticleDeposition (EquationSystems& es_in, st
 	particle_density = es->parameters.get<double>("particle_density");
 	double lambda = es->parameters.get<double>("mean_free_path");
 	double particle_diameter =  es->parameters.get<double>("particle_diameter");
-	cunningham_correction_factor = 1. + 2.*lambda/particle_diameter*
-																	(1.257 + 0.4*exp(-1.1*(particle_diameter/(2*lambda))));
+	cunningham_correction_factor = 1. + 2.*lambda/particle_diameter*(1.257 + 0.4*exp(-1.1*(particle_diameter/(2*lambda))));
 
 	particle_radius = 0.5 * particle_diameter;
 	

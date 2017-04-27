@@ -234,10 +234,11 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			C = density*pow(velocity_scale,2)*C/length_scale;
 			I = I*length_scale/density;
 
-		//std::cout << "R = " << R << std::endl;
-		//std::cout << "viscosity = " << viscosity << std::endl;
-		//std::cout << "l = " << l << std::endl;
-		//std::cout << "r = " << r << std::endl;
+		std::cout << "R = " << R << std::endl;
+		std::cout << "viscosity = " << viscosity << std::endl;
+		std::cout << "density = " << density << std::endl;
+		std::cout << "l = " << l << std::endl;
+		std::cout << "r = " << r << std::endl;
 		//std::cout << "r^4 = " << pow(r,4.0) << std::endl;
 
 

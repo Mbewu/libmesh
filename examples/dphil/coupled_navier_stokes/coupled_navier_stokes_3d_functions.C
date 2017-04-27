@@ -210,6 +210,12 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 						std::cout << "old bdy id = " << *it << std::endl;
 						std::cout << "new bdy id = " << 0 << std::endl;					
 					}
+					else if(*it == es->parameters.get<int> ("wall_bdy_id"))
+					{
+						MeshTools::Modification::change_boundary_id(_mesh,*it,-1);		//inflow
+						std::cout << "old bdy id = " << *it << std::endl;
+						std::cout << "new bdy id = " << -1 << std::endl;					
+					}
 					else
 					{
 						MeshTools::Modification::change_boundary_id(_mesh,*it,count);		//outlets
@@ -2149,6 +2155,15 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 	std::cout << "after setup preconditioner" << std::endl;
 
+	// output system matrix
+	if(es->parameters.get<bool>("output_system_matrix"))
+	{
+		
+  		std::ostringstream file_name;
+		file_name << output_folder.str() << "system_matrix.dat";
+
+		system->request_matrix("System Matrix")->print_matlab(file_name.str());
+	}
 
 	if(es->parameters.get<bool>("ksp_view_before"))
 	{
@@ -2657,6 +2672,7 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 
 	}
+
 
 	
 

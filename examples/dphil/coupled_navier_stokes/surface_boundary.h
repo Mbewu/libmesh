@@ -938,6 +938,26 @@ public:
 		}
 
 	}
+
+
+   // returns the radius at a given angle
+	double get_radius_from_angle(double angle)
+	{
+		// loop over the angles and then find the corresponding radius at that angle
+		for(unsigned int i=1; i<boundary_point_angles.size(); i++)
+		{
+			if(angle < boundary_point_angles[i])
+			{
+				// return the minimum of the place where they are to be safe
+				return std::min(boundary_point_radii[i],boundary_point_radii[i-1]);
+			}
+		}
+
+		// if we got here there was a problem and it's probably in the last segment, but maybe not...
+		std::cout << "angle " << angle << " in the last segment" << std::endl;
+		return std::min(boundary_point_radii[0],boundary_point_radii[boundary_point_radii.size() - 1]);
+	}
+
 };
 
 }

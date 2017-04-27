@@ -1878,7 +1878,9 @@ int NavierStokesCoupled::solve_1d_system()
 
 	// Assemble & solve the linear system.
 	perf_log.push("Linear 1D solve");
+	std::cout << "hello" << std::endl;
 	es->get_system("ns1d").solve();
+	std::cout << "hello" << std::endl;
 	perf_log.pop("Linear 1D solve");
 
 

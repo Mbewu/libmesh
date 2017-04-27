@@ -319,6 +319,8 @@ public:
 
 	void output_parameters();
 
+	void print_parameters();
+
 	void output_command_line_options();
 
 	void set_auto_fieldsplit_parameters();
@@ -347,7 +349,11 @@ public:
 
 	void output_linear_iteration_count(bool header=false);
 
-	void output_particle_data(bool header=false);
+	void output_particle_data();
+
+	void output_particle_data_old(bool header=false);
+
+	void print_particle_data();
 
 	void output_deposition_data(bool header=false);
 

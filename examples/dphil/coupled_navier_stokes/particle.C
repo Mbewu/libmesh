@@ -37,8 +37,7 @@ Particle::Particle (EquationSystems& es_in,Point& p, const Elem* element, unsign
 																	(1.257 + 0.4*exp(-1.1*(particle_diameter/(2*lambda))));
 
 
-  constant_drag_force = 18. / 24. * es->parameters.get<double>("particle_air_viscosity") / 
-														(es->parameters.get<double>("particle_density") * 
+  constant_drag_force = 18. / 24. * es->parameters.get<double>("particle_air_viscosity") / (es->parameters.get<double>("particle_density") * 
 														pow(es->parameters.get<double>("particle_diameter"),2.0) *
 														cunningham_correction_factor);
 
@@ -47,6 +46,8 @@ Particle::Particle (EquationSystems& es_in,Point& p, const Elem* element, unsign
 	impaction = es->parameters.get<bool>("particle_impaction");
 	drag = es->parameters.get<bool>("particle_drag");
 
+
+	std::cout << "cunningham correction factor = " << cunningham_correction_factor << std::endl;
 	//std::cout << "current_velocity = " << current_velocity << std::endl;
 	//std::cout << "elem number = " << current_elem->id() << std::endl;
 
@@ -159,7 +160,7 @@ void Particle::try_and_move ()
 
 	if(!on_wall || !exited)
 	{
-		std::cout << "moving particle " << particle_id << std::endl;
+		//std::cout << "moving particle " << particle_id << std::endl;
 		move();
 	}
 
@@ -200,80 +201,43 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 
 	//std::cout << "gravity = " << gravity << std::endl;
 
-	if(!sedimentation && !impaction && !drag)
+	if(!sedimentation && !drag)
 	{
 		particle_velocity = velocity;
 	}
-	else if(impaction)
+	else if(drag)
 	{
 
-		//double Re_p = 0.;	// unused
-		//double C_D = 0.;	// unused
-		double F_D = 0.;
 		
-		
-		if(drag)
-		{
 	
-
-			double Re_p = particle_reynolds_number ();
-			double C_D = drag_coeff (Re_p);
-			double F_D = constant_drag_force * C_D * Re_p;
-
-			particle_velocity = current_particle_velocity/(1. + dt*F_D);
-
-			//std::cout << "Re_p = " << Re_p << std::endl;
-			//std::cout << "constant_drag_force = " << constant_drag_force << std::endl;
-			//std::cout << "C_D = " << C_D << std::endl;
-			//std::cout << "F_D = " << F_D << std::endl; 
-			particle_velocity += dt * F_D * (velocity)/(1. + dt*F_D);
-		}
-		else
-		{
-			particle_velocity = current_particle_velocity;
-		}
-
-		if(sedimentation)
-		{
-
-			double particle_density = es->parameters.get<double>("particle_density");
-			double particle_air_density = es->parameters.get<double>("particle_air_density");
-
-			if(drag)
-			{
-				particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) 
-																/ es->parameters.get<double>("particle_velocity_units") / (1. + dt*F_D);
-			}
-			else
-			{
-				particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) 
-																/ es->parameters.get<double>("particle_velocity_units");
-			}
-
-		}
-	}
-	else if(!impaction)
-	{
-
 		double Re_p = particle_reynolds_number ();
 		double C_D = drag_coeff (Re_p);
 		double F_D = constant_drag_force * C_D * Re_p;
 
-		if(fabs(Re_p) < 1e-10)
-		{
-			std::cout << "can't do without impaction if the relative reynolds number is 0... EXITING" << std::endl;
-			std::exit(0);
-		}
+		particle_velocity = current_particle_velocity/(1. + dt*F_D) + dt * F_D * (velocity)/(1. + dt*F_D);
 
 		//std::cout << "Re_p = " << Re_p << std::endl;
 		//std::cout << "constant_drag_force = " << constant_drag_force << std::endl;
 		//std::cout << "C_D = " << C_D << std::endl;
-		//std::cout << "F_D = " << F_D << std::endl; 
+		//std::cout << "F_D = " << F_D << std::endl;
 
-		if(drag)
+
+		if(sedimentation)
 		{
-			particle_velocity = velocity;
+
+			double particle_density = es->parameters.get<double>("particle_density");
+			double particle_air_density = es->parameters.get<double>("particle_air_density");
+
+			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) / es->parameters.get<double>("particle_velocity_units") / (1. + dt*F_D);
+
 		}
+	}
+	else if(!drag)
+	{
+
+
+
+		particle_velocity = current_particle_velocity;
 		
 		if(sedimentation)
 		{
@@ -281,9 +245,8 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 
 			double particle_density = es->parameters.get<double>("particle_density");
 			double particle_air_density = es->parameters.get<double>("particle_air_density");
-			particle_velocity += gravity / F_D * (1. - particle_air_density/particle_density) 
-															/ es->parameters.get<double>("particle_velocity_units");
 
+			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) / es->parameters.get<double>("particle_velocity_units");
 		}
 	}
 
@@ -303,9 +266,7 @@ void Particle::move ()
 	//const MeshBase& mesh = es->get_mesh();	// unused
 
 	current_velocity = compute_velocity(); //calculate velocity for the current timestep
-	//std::cout << "current_velocity = " << current_velocity << std::endl;
 	current_particle_velocity = compute_particle_velocity(current_velocity); //calculate velocity for the current timestep
-	//std::cout << "current_particle_velocity = " << current_particle_velocity << std::endl;
 
 	const double dt = es->parameters.get<Real>("dt");
 	double local_time = system->time;
@@ -314,13 +275,16 @@ void Particle::move ()
 
 	unsigned int count = 0;
 
-	//std::cout << "new particle" << std::endl;
 
+	// move particle in sub time steps
 	while(local_time < local_end_time - 1e-10 && !on_wall && !exited)
 	{
 		count++;
+		// if there are too many sub time steps
 		if(count > 10)
 			exit(0);
+
+
 		//std::cout << "local_time = " << local_time << std::endl;
 		//std::cout << "dt = " << dt << std::endl;
 		//std::cout << "local_end_time = " << local_end_time << std::endl;
@@ -333,7 +297,9 @@ void Particle::move ()
 		//if(maximum_timestep < dt)
 		//	particle_dt = maximum_timestep;
 		//else
-			particle_dt = dt;
+
+
+		particle_dt = dt;
 			
 		// check not past end of timestep
 		if(local_time + particle_dt >= local_end_time)
@@ -401,7 +367,7 @@ void Particle::move ()
 // that the new s_param is greater than the old one
 void Particle::check_neighbors(const Elem* element, Point& new_position, double old_s_param, std::vector<unsigned int>& elements_checked,  bool& element_found)
 {
-	std::cout << "in_check_neighbors" << std::endl;
+	//std::cout << "in_check_neighbors" << std::endl;
 
 	TransientLinearImplicitSystem * system;
 	system =
@@ -442,6 +408,8 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 			//std::cout << "i = " << i << std::endl;
 			double s;
 			// if does through side and neighbor in question has not been checked already
+
+			//std::cout << "goes through side = " << goes_through_side(new_position,i,element,old_s_param,s) << std::endl;
 			if(goes_through_side(new_position,i,element,old_s_param,s) && 
 				(neighbor == NULL || find(elements_checked.begin(),elements_checked.end(),neighbor->id()) == elements_checked.end()) )
 			{
@@ -449,7 +417,7 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 				//goes through a side of the element into the abyss.. and we are done.
 				if(neighbor == NULL)
 				{
-					//std::cout << "grrrreat" << std::endl;
+					std::cout << "grrrreat found element" << std::endl;
 					element_found = true;
 					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(element,i);
 
@@ -462,6 +430,7 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 						//std::cout << "s = " << s << std::endl;
 						if(boundary_id == -1)
 						{
+							std::cout << "particle " << particle_id << " on wall" << std::endl;
 							on_wall = true;
 							exit_surface = -1;
 							time_exited = system->time;
@@ -470,6 +439,7 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 						}
 						else
 						{
+							std::cout << "particle " << particle_id << " exited" << std::endl;
 							exited = true;
 							exit_surface = boundary_id;
 							time_exited = system->time;
@@ -502,9 +472,9 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 		//std::cout << "Next element not found, probably because on edge or corner, perturbing new position by " << perturbation << std::endl;
 		//new_position = new_position + perturbation;
 
-		std::cout << "Next element not found, probably because on edge or corner, assuming on the wall." << std::endl;
+		std::cout << "Next element not found, probably because on edge or corner, setting broken on surface -2." << std::endl;
 		on_wall = true;
-		exit_surface = -1;
+		exit_surface = -2;
 		time_exited = system->time;
 		element_found = true;
 		broken = true;
@@ -536,7 +506,7 @@ bool Particle::goes_through_side(Point new_position,int side_number,const Elem* 
 		Point direction = new_position - position;	
 
 		//now we calculate the intersection point
-		s_param = normal*(point_1 - position) / (normal * (new_position - position));
+		s_param = normal*(point_2 - position) / (normal * (new_position - position));
 
 		//we want to ignore if it is going along an edge
 		if(fabs(normal * (new_position - position)) < 1e-10)
@@ -551,12 +521,16 @@ bool Particle::goes_through_side(Point new_position,int side_number,const Elem* 
 		// as the previous s_param then we are just going back through the same element side,
 		// unless it is approximately zero then we are not sure 
 		if(s_param < -1e-10 || (old_s_param > 1e-10 && s_param < old_s_param + 1e-5))
+		{
+			//std::cout << "goddamn" << std::endl;
 			return false;
+		}
 		else
 		{
 			// now we check if a point just a bit back from the intersection point is in the element
 			// if this is true then we do intersect this side, note there is a tolerance on contains point that we have to beat somehow
-			if(element->contains_point(position + (s_param - 1e-4)*(new_position - position)))
+			// old tolerance of 1e-5 didn't work so well
+			if(element->contains_point(position + (s_param - 1e-8)*(new_position - position)))
 			{
 				//std::cout << "in the element " << element->id() << std::endl;
 				return true;
@@ -564,6 +538,7 @@ bool Particle::goes_through_side(Point new_position,int side_number,const Elem* 
 			else
 			{
 				//std::cout << "not in the element " << element->id() << std::endl;
+				//std::cout << "goddamn 2" << std::endl;
 				return false;
 			}
 		}
@@ -602,7 +577,7 @@ bool Particle::goes_through_side(Point new_position,int side_number,const Elem* 
 				//std::cout << "kei" << std::endl;
 			// now we check if a point just a bit back from the intersection point is in the element
 			// if this is true then we do intersect this side
-			if(element->contains_point(position + (s_param - 1e-4)*(new_position - position)))
+			if(element->contains_point(position + (s_param - 1e-8)*(new_position - position)))
 			{
 				//std::cout << "what" << std::endl;
 				return true;

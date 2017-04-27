@@ -45,15 +45,21 @@ int main (int argc, char** argv)
 	}
 	else
 	{
-		std::cout << "Using default input file: " << input_file.str() << std::endl;
 		input_file << "navier.in";
+		std::cout << "Using default input file: " << input_file.str() << std::endl;
 	}
 
 
-	if(command_line.search("-particle_deposition"))	
+	if(command_line.search("-particle_deposition_input_file"))
+	{	
 		input_file_particle << command_line.next("particle_deposition.in");
+		std::cout << "Using user specified particle deposition input file: " << input_file_particle.str() << std::endl;
+	}
 	else
+	{
 		input_file_particle << "particle_deposition.in";	
+		std::cout << "Using default particle deposition input file: " << input_file_particle.str() << std::endl;
+	}
 
   //GetPot infile(input_file.str());
 	NavierStokesCoupled navier_stokes_coupled(init,input_file.str(),input_file_particle.str(),command_line);
@@ -157,9 +163,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	//************* READ AND OUTPUT GENERAL PARAMETERS *************//
 	infile = GetPot(_input_file);
 	read_parameters();
-	std::cout << "neumann_stabilised = " << es->parameters.get<bool>("neumann_stabilised") << std::endl;
-	output_parameters();
-	output_command_line_options();
+
+	std::cout << "input file = " << _input_file << std::endl;
+	std::cout << "input file particle = " << _input_file_particle << std::endl;
 
 	//************* READ AND OUTPUT PARTICLE DEPOSITION PARAMETERS **********//
 	if(es->parameters.get<unsigned int>("particle_deposition"))
@@ -169,11 +175,16 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		output_particle_parameters();
 	}
 
+	output_parameters();
+	output_command_line_options();
+	print_parameters();
 
+	std::cout << "hello" << std::endl;
 	// if 3D particle deposition then read in the velocity timesteps
 	if(particle_deposition == 1)
 		read_timesteps();
 
+	std::cout << "hello" << std::endl;
 	//Airway new_airway;
 	//new_airway.set_generation(5);
 	//std::cout << "generation of new airway = " << new_airway.get_generation() << std::endl;
@@ -378,8 +389,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		//file_name << output_folder.str() << "out_3D";
 		file_name << restart_folder.str() << "out_3D";
  
-		file_name_es << file_name.str() << "_es_" << std::setw(4) 
+		// if reading from a steady simulation then need to rad timestep 1 no matter what
+		if(es->parameters.get<bool> ("unsteady_from_steady"))
+			file_name_es << file_name.str() << "_es_" << std::setw(4) 
+			<< std::setfill('0') << 1 << ".xda";
+		else
+			file_name_es << file_name.str() << "_es_" << std::setw(4) 
 			<< std::setfill('0') << es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
+		
 
 		std::cout << "Reading in data for restart from file:" << std::endl;
 		std::cout << "\t" << file_name_es.str() << std::endl;
@@ -543,17 +560,10 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 			{
 				
 				std::cout << "lday" << es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << std::endl;
-				//particle deposition file
-				std::ostringstream particle_output_data_file_name;
-
-				particle_output_data_file_name << output_folder.str() << "particle.dat";
-				//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
-				particle_output_file.open(particle_output_data_file_name.str().c_str());
-
 				if(es->parameters.get<unsigned int> ("particle_deposition_start_time_step") == 0)
 				{
-					std::cout << "yeah file = " << particle_output_data_file_name.str().c_str() <<  std::endl;
-					output_particle_data(true);
+					output_particle_data();
+					print_particle_data();
 				}
 			}
 
@@ -729,11 +739,13 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					move_particles();
 
 					perf_log.push("output");
-					output_particle_data(false);
+					output_particle_data();
+					print_particle_data();
 					write_particles();
 					perf_log.pop("output");
 					
 					//intialise new particles for next time step
+					// must be 
 					if(particle_deposition && fabs(time - es->parameters.get<Real> ("end_time")) > 1e-10
 						&& es->parameters.get<unsigned int> ("particle_deposition_type") == 1)
 						init_particles();
@@ -1061,7 +1073,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 		// petsc clean up if we have actually done some simulation, i.e. time > 0
-		if(time > 1e-10)
+		if(time > 1e-10 && es->parameters.get<unsigned int> ("particle_deposition") == 0)
 			petsc_clean_up();
 
 		output_logging();
@@ -1717,7 +1729,8 @@ int NavierStokesCoupled::read_parameters()
 
 	es->parameters.set<double> ("last_nonlinear_iterate") = 1.0;
 	
-	set_int_parameter(infile,"inflow_bdy_id",-1);	
+	set_int_parameter(infile,"inflow_bdy_id",-1);
+	set_int_parameter(infile,"wall_bdy_id",12);		
 
 
   set_string_parameter(infile,"input_1d_node_file_2","");
@@ -1852,6 +1865,8 @@ int NavierStokesCoupled::read_parameters()
 	set_bool_parameter(infile,"multiple_output_files",true);
 
 	set_bool_parameter(infile,"efficient_monolithic",true);
+
+	set_bool_parameter(infile,"output_system_matrix",false);
 
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
@@ -2803,13 +2818,18 @@ int NavierStokesCoupled::read_parameters()
 
 
 
-
 // output parameters to screen and to file.
-void NavierStokesCoupled::output_parameters()
+void NavierStokesCoupled::print_parameters()
 {
 
 	// ***************** PRINT OUT THE PARAMETERS AS THEY CURRENTLY ARE ******** //
 	es->parameters.print(std::cout);
+
+}
+
+// output parameters to screen and to file.
+void NavierStokesCoupled::output_parameters()
+{
 
 	// **************** COPY THE INPUT FILE TO THE OUTPUT FOLDER **************** //
 	if(!es->parameters.get<bool>("compare_results"))
@@ -2910,10 +2930,14 @@ void NavierStokesCoupled::read_particle_parameters()
 	}
 
 
-	set_unsigned_int_parameter(infileparticle,"particle_deposition_type",0);
+	set_unsigned_int_parameter(infileparticle,"particle_deposition_type",1);
+	set_unsigned_int_parameter(infileparticle,"particle_deposition_location",0);
 	set_double_parameter(infileparticle,"particle_deposition_rate",10);
 	set_unsigned_int_parameter(infileparticle,"particle_deposition_surface",0);
+	set_double_parameter(infileparticle,"distance_deposited_inside",1.0);
+	set_unsigned_int_parameter(infileparticle,"deposition_pattern",0);
 	set_double_parameter(infileparticle,"brownian_motion_magnitude",0.);
+	set_unsigned_int(infileparticle,"deposit_within_radius",0.);
 
 	//some parameters
 	set_double_parameter(infileparticle,"particle_diameter",10.e-6);
@@ -3032,6 +3056,7 @@ void NavierStokesCoupled::read_timesteps()
 	{
 
 		std::ifstream timestep_file((es->parameters.get<std::string>("output_folder") + "out.dat").c_str());
+		std::cout << "input file = " << (es->parameters.get<std::string>("output_folder") + "out.dat").c_str() << std::endl;
 		std::string line;
 		double begin_timestep_time = 0.;
 		double end_timestep_time = 0;
@@ -3689,7 +3714,9 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 	}
 }
 
-void NavierStokesCoupled::output_particle_data(bool header)
+
+// write the particle data for the timestep (old)
+void NavierStokesCoupled::output_particle_data_old(bool header)
 {
 
 	std::cout << "yeah" << std::endl;
@@ -3735,6 +3762,112 @@ void NavierStokesCoupled::output_particle_data(bool header)
 		particle_output_file << std::endl;
 	}
 }
+
+
+// write the particle data for the timestep
+void NavierStokesCoupled::output_particle_data()
+{
+
+
+	//particle deposition file
+	std::ostringstream particle_output_data_file_name;
+
+	particle_output_data_file_name << output_folder.str() << "particles";
+	particle_output_data_file_name << std::setw(4) << std::setfill('0') << t_step;
+	particle_output_data_file_name << ".dat";
+	//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
+	particle_output_file.open(particle_output_data_file_name.str().c_str());
+
+
+
+
+	// write geometry variables later when reading meta data file
+	// write boundary conditions later with Picard class
+	particle_output_file << "# Particle results" << std::endl;
+	particle_output_file << "# pid\ttimestep\tcurrent_time\tx\ty\t";
+	if(threed)
+		particle_output_file << "z\t";
+	particle_output_file << "exit_surface\texit_time\tentrance_time\n";
+
+
+	for(unsigned int i=0; i < particles_3D.size(); i++)
+	{
+		unsigned int pid = particles_3D[i].get_particle_id();
+		Point particle_position = particles_3D[i].get_position();
+		double x = particle_position(0);
+		double y = particle_position(1);
+		double z = 0.;
+		if(threed)
+			z = particle_position(2);
+		int exit_surface = particles_3D[i].get_exit_surface();
+		double exit_time = particles_3D[i].get_exit_time();
+		double entrance_time = particles_3D[i].get_entrance_time();
+
+		
+		particle_output_file << pid << "\t";
+		particle_output_file << t_step << "\t";
+		particle_output_file << time << "\t";
+		particle_output_file << x << "\t";
+		particle_output_file << y << "\t";
+		if(threed)
+			particle_output_file << z << "\t";
+		particle_output_file << exit_surface << "\t";
+		particle_output_file << exit_time << "\t";
+		particle_output_file << entrance_time << "\n";
+	}
+
+	particle_output_file.close();
+}
+
+
+// print some particle data for the timestep
+void NavierStokesCoupled::print_particle_data()
+{
+
+	unsigned int num_valid_particles = 0;
+	unsigned int num_particles_on_wall = 0;
+	unsigned int num_particles_exited = 0;
+	unsigned int num_lost_particles = 0;
+	unsigned int num_particles_in_motion = 0;
+
+	for(unsigned int i=0; i < particles_3D.size(); i++)
+	{
+		int exit_surface = particles_3D[i].get_exit_surface();
+		double exit_time = particles_3D[i].get_exit_time();
+
+		if(exit_time > 0.)
+		{
+			if(exit_surface == -1)
+			{
+				num_particles_on_wall++;
+				num_valid_particles++;
+			}
+			else if(exit_surface == -2)
+			{
+				// none
+				num_lost_particles++;
+			}
+			else
+			{
+				num_particles_exited++;
+				num_valid_particles++;
+			}
+		}
+		else
+		{
+			num_particles_in_motion++;
+		}
+		
+	}
+
+	std::cout << "num_valid_particles = " << num_valid_particles << std::endl;
+	std::cout << "num_particles_on_wall = " << num_particles_on_wall << std::endl;
+	std::cout << "num_particles_exited = " << num_particles_exited << std::endl;
+	std::cout << "num_lost_particles = " << num_lost_particles << std::endl;
+	std::cout << "num_particles_in_motion = " << num_particles_in_motion << std::endl;
+	std::cout << "deposition_fraction = " << (double)num_particles_on_wall/(double)num_valid_particles << std::endl;
+}
+
 
 
 void NavierStokesCoupled::output_logging()
@@ -3984,8 +4117,19 @@ void NavierStokesCoupled::init_particles()
 	//check the particle is indeed in the mesh
 	const PointLocatorBase & pl = mesh.point_locator();
 
+	// figure out number of particles to deposit
+	// particle_deposition_type 
+	// 0 - all at once
+	// 1 - at a rate
+	unsigned int num_new_particles = 0;
+	if(es->parameters.get<unsigned int>("particle_deposition_type") == 0) 
+		num_new_particles = (unsigned int) es->parameters.get<double>("particle_deposition_rate");
+	else if(es->parameters.get<unsigned int>("particle_deposition_type") == 1)
+		num_new_particles = (unsigned int) es->parameters.get<double>("particle_deposition_rate") * dt;
+	
 
-	if(es->parameters.get<unsigned int>("particle_deposition_type") == 0)
+
+	if(es->parameters.get<unsigned int>("particle_deposition_location") == 0)
 	{
 		if(!threed)
 		{
@@ -4040,14 +4184,14 @@ void NavierStokesCoupled::init_particles()
 			particles_3D.push_back(new_particle_2);
 		}
 	}
-	else if(es->parameters.get<unsigned int>("particle_deposition_type") == 1)
+	else if(es->parameters.get<unsigned int>("particle_deposition_location") == 1)
 	{
 
 		SurfaceBoundary* deposition_boundary = surface_boundaries[es->parameters.get<unsigned int>("particle_deposition_surface")];
 		double max_radius = deposition_boundary->get_max_radius();
 		Point normal = deposition_boundary->get_normal();
 		Point centroid = deposition_boundary->get_centroid();
-		double distance_deposited_inside = 1.;
+		double distance_deposited_inside = es->parameters.get<double>("distance_deposited_inside");
 
 		std::cout << "centroid = " << centroid << std::endl;
 		std::cout << "normal = " << normal << std::endl;
@@ -4055,7 +4199,6 @@ void NavierStokesCoupled::init_particles()
 
 		max_radius *= 1.0;
 
-		unsigned int num_new_particles = (unsigned int) es->parameters.get<double>("particle_deposition_rate") * dt;
 
 		std::cout << "depositing " << num_new_particles << " particles." << std::endl;
 		
@@ -4100,24 +4243,44 @@ void NavierStokesCoupled::init_particles()
 				bool particle_deposited = false;
 				while(!particle_deposited)
 				{
+					Point new_point;				
 
-					// random number between -1 and 1 multiplied by the radius to get -r to r
-					double x = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
-					double y = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
+					// square deposition pattern
+					if(es->parameters.get<unsigned int>("deposition_pattern") == 0)
+					{
+						// random number between -1 and 1 multiplied by the radius to get -r to r
+						double x = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
+						double y = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
 
-					//make parabolic distribution? i.e. more at the centre?
-					x *= x;
-					y *= y;
+						//make parabolic distribution? i.e. more at the centre?
+						x *= x;
+						y *= y;
 
-					// make negative maybe
-					if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
-						x *= -1;
+						// make negative maybe
+						if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
+							x *= -1;
 
-					if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
-						y *= -1;					
+						if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
+							y *= -1;					
 
-					Point new_point = centroid + x*vector_1 + y*vector_2;
+						new_point = centroid + x*vector_1 + y*vector_2;
 
+
+					}
+					// uniform circular pattern
+					else if(es->parameters.get<unsigned int>("deposition_pattern") == 1)
+					{
+						// according to wolfram, needs to be distributed as sqrt(r)cos(theta) to be uniform
+						double theta = (static_cast<double>(rand())/static_cast<double>(RAND_MAX)) * 2 * M_PI;
+						double radius_scale = (static_cast<double>(rand())/static_cast<double>(RAND_MAX));
+
+						// figure out what the radius is
+						double radius_at_angle = deposition_boundary->get_radius_from_angle(theta);
+						double x = sqrt(radius_scale) * radius_at_angle * cos(theta);
+						double y = sqrt(radius_scale) * radius_at_angle * sin(theta);
+
+						new_point = centroid + x*vector_1 + y*vector_2;
+					}
 					std::cout << "new_point = " << new_point << std::endl;
 
 					if(deposition_boundary->is_on_surface(new_point))
@@ -4196,6 +4359,7 @@ void NavierStokesCoupled::move_particles()
 }
 
 
+// write particle data file for this time step
 void NavierStokesCoupled::write_particles()
 {
 
