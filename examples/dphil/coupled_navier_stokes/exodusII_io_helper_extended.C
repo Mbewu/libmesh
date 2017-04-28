@@ -1158,7 +1158,7 @@ void ExodusII_IO_Helper_Extended::initialize(std::string str_title, const MeshBa
 
 
 
-void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh, bool use_discontinuous)
+void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh, double length_scale, bool use_discontinuous)
 {
   if ((_run_only_on_proc0) && (this->processor_id() != 0))
     return;
@@ -1178,6 +1178,7 @@ void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh,
 
 	std::cout << "use_discontinuous = " << use_discontinuous << std::endl;
 
+  // JAMES EDIT: added in scaling of the nodal coordinates
   if (!use_discontinuous)
   {
     MeshBase::const_node_iterator it = mesh.nodes_begin();
@@ -1186,15 +1187,15 @@ void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh,
       {
 	const Node* node = *it;
 
-	x[i] = (*node)(0) + _coordinate_offset(0);
+	x[i] = ((*node)(0) + _coordinate_offset(0))*length_scale;
 
 #if LIBMESH_DIM > 1
-	y[i]=(*node)(1) + _coordinate_offset(1);
+	y[i]=((*node)(1) + _coordinate_offset(1))*length_scale;
 #else
 	y[i]=0.;
 #endif
 #if LIBMESH_DIM > 2
-	z[i]=(*node)(2) + _coordinate_offset(2);
+	z[i]=((*node)(2) + _coordinate_offset(2))*length_scale;
 #else
 	z[i]=0.;
 #endif
@@ -1212,14 +1213,14 @@ void ExodusII_IO_Helper_Extended::write_nodal_coordinates(const MeshBase & mesh,
       for (; it!=end; ++it)
         for (unsigned int n=0; n<(*it)->n_nodes(); n++)
           {
-            x[i]=(*it)->point(n)(0);
+            x[i]=((*it)->point(n)(0))*length_scale;
 #if LIBMESH_DIM > 1
-            y[i]=(*it)->point(n)(1);
+            y[i]=((*it)->point(n)(1))*length_scale;
 #else
             y[i]=0.;
 #endif
 #if LIBMESH_DIM > 2
-            z[i]=(*it)->point(n)(2);
+            z[i]=((*it)->point(n)(2))*length_scale;
 #else
             z[i]=0.;
 #endif

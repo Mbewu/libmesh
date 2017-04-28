@@ -1786,6 +1786,12 @@ void NavierStokesCoupled::write_1d_solution()
 
 	exo.set_var_scalings(var_scalings_1D);
 
+	if(!es->parameters.get<bool>("reynolds_number_calculation"))
+	{
+		if(!es->parameters.get<bool>("output_nondim"))
+			exo.set_length_scale(es->parameters.get<double>("length_scale"));
+	}
+
 	std::vector<std::string> variables_1d;
 	variables_1d.push_back("P");
 	variables_1d.push_back("Q");

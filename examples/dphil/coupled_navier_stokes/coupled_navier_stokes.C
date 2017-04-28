@@ -404,6 +404,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
 		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
 		std::cout << "Done reading in data." << std::endl;
+
 		
 	}
 
@@ -4281,7 +4282,9 @@ void NavierStokesCoupled::init_particles()
 
 						new_point = centroid + x*vector_1 + y*vector_2;
 					}
+
 					std::cout << "new_point = " << new_point << std::endl;
+					//distance_deposited_inside = 1.e-3;
 
 					if(deposition_boundary->is_on_surface(new_point))
 					{
@@ -4299,6 +4302,10 @@ void NavierStokesCoupled::init_particles()
 						}
 						else
 							std::cout << "particle should have been found but wasn't" << std::endl;
+					}
+					else
+					{
+						std::cout << "particle is not on surface." << std::endl;
 					}
 				}
 			}

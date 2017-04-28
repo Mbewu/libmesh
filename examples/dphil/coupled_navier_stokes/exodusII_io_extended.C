@@ -55,7 +55,8 @@ ExodusII_IO_Extended::ExodusII_IO_Extended (MeshBase& mesh,
   _timestep(1),
   _verbose(false),
   _append(false),
-  _allow_empty_variables(false)
+  _allow_empty_variables(false),
+  length_scale(1.0)
 {
 }
 
@@ -109,6 +110,12 @@ void ExodusII_IO_Extended::set_var_scalings(std::vector<double> scalings)
 {
 	var_scalings = scalings;
 }
+
+void ExodusII_IO_Extended::set_length_scale(double _length_scale)
+{
+	length_scale = _length_scale;
+}
+
 
 
 
@@ -883,7 +890,7 @@ void ExodusII_IO_Extended::write (const std::string& fname)
 
   exio_helper->create(fname);
   exio_helper->initialize(fname,mesh);
-  exio_helper->write_nodal_coordinates(mesh);
+  exio_helper->write_nodal_coordinates(mesh,length_scale);
   exio_helper->write_elements(mesh);
   exio_helper->write_sidesets(mesh);
   exio_helper->write_nodesets(mesh);
@@ -1049,7 +1056,7 @@ void ExodusII_IO_Extended::write_nodal_data_common(std::string fname,
           exio_helper->create(fname);
 
           exio_helper->initialize(fname, mesh, !continuous);
-          exio_helper->write_nodal_coordinates(mesh, !continuous);
+          exio_helper->write_nodal_coordinates(mesh, length_scale, !continuous);
           exio_helper->write_elements(mesh, !continuous);
 
 

@@ -221,6 +221,8 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
 
   void set_var_scalings(std::vector<double> scaling);
 
+  void set_length_scale(double _length_scale);
+
  private:
   /**
    * Only attempt to instantiate an ExodusII helper class
@@ -273,6 +275,8 @@ class ExodusII_IO_Extended : public MeshInput<MeshBase>,
    * This function stores the scaling that we want to use for each variable
    */
 	std::vector<double> var_scalings;
+
+	double length_scale;
   
 };
 

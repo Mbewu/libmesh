@@ -256,7 +256,7 @@ public:
   /**
    * Writes the nodal coordinates contained in "mesh"
    */
-  virtual void write_nodal_coordinates(const MeshBase & mesh, bool use_discontinuous=false);
+  virtual void write_nodal_coordinates(const MeshBase & mesh, double length_scale, bool use_discontinuous=false);
 
   /**
    * Writes the nodal coordinates contained in "mesh"

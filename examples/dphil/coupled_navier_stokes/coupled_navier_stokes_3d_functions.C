@@ -1494,6 +1494,14 @@ void NavierStokesCoupled::write_3d_solution()
 	ExodusII_IO_Extended exo = ExodusII_IO_Extended(mesh);
 
 	exo.set_var_scalings(var_scalings_3D);
+	if(!es->parameters.get<bool>("reynolds_number_calculation"))
+	{
+		if(!es->parameters.get<bool>("output_nondim"))
+		{
+			std::cout << "setting length scale" << std::endl;
+			exo.set_length_scale(es->parameters.get<double>("length_scale"));
+		}
+	}
 
 	std::vector<std::string> variables_3d;
 	variables_3d.push_back("u");
@@ -1553,6 +1561,7 @@ void NavierStokesCoupled::write_3d_solution()
 			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 	}		
+
 
 	//system->update();
 	
@@ -1680,6 +1689,8 @@ void NavierStokesCoupled::write_3d_solution()
 			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 	}		
+
+
 	
 
 }
