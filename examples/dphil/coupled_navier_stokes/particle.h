@@ -107,6 +107,14 @@ class Particle
 			else
 				return 0;
 		};
+
+		bool was_deposited_close_to_wall()
+		{
+			if(deposited_close_to_wall)
+				return true;
+			else
+				return false;
+		};
 	
 	private:
 
@@ -118,11 +126,15 @@ class Particle
 
 		void check_neighbors(const Elem* element,Point& new_position, double old_s_param, std::vector<unsigned int>& elements_checked, bool& element_found);
 
+		void check_neighbors_simple(const Elem* element,Point& new_position, std::vector<unsigned int>& elements_checked, bool& element_found);
+
 		void move();
 
 		double particle_reynolds_number ();
 
 		double drag_coeff (double reynolds_number);
+
+		void close_to_wall ();
 
 		
 		
@@ -130,6 +142,7 @@ class Particle
 		Point position;
 		const Elem* current_elem;		//-1 if outside of domain.
 		bool on_wall;		//true if on a wall
+		bool deposited_close_to_wall;	// true if on wall because was close to wall
 		bool exited;		//true if exited domain
 		int exit_surface;		//surface through which particle passed
 		double maximum_timestep;		//this is the maximum timestep allowed. (equiv to moving an element length)
@@ -140,9 +153,9 @@ class Particle
 		unsigned int particle_id;
 		double entrance_time;
 		bool broken;
-
-
+		double failure_perturbation_magnitude;
 		double perturbation_magnitude;
+
 		double constant_drag_force;
 		double cunningham_correction_factor;
 

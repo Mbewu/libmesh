@@ -18,6 +18,10 @@ NUM_PROCS=$4
 #$BASE_DIR/example-opt $LIBMESH_OPTIONS | tee $OUTPUT_DIR/output.log
 
 # parallel (bash sucks with spaces...)
-RUN_COMMAND="mpirun -np "$NUM_PROCS" "$BASE_DIR"/example-opt "$LIBMESH_OPTIONS""
+if [ NUM_PROCS = 1 ] ; then
+	RUN_COMMAND=""$BASE_DIR"/example-opt "$LIBMESH_OPTIONS""
+else
+	RUN_COMMAND="mpirun -np "$NUM_PROCS" "$BASE_DIR"/example-opt "$LIBMESH_OPTIONS""
+fi
 $RUN_COMMAND | tee "$OUTPUT_DIR"/output.log
 

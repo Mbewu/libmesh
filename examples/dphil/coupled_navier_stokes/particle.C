@@ -6,7 +6,7 @@
 using namespace libMesh;
 
 Particle::Particle (EquationSystems& es_in,Point& p, const Elem* element, unsigned int _particle_id, double _perturbation_magnitude): 
-		es (&es_in),on_wall(false),exited(false),exit_surface(0),perturbation_magnitude(_perturbation_magnitude)
+		es (&es_in),on_wall(false),exited(false),exit_surface(0),perturbation_magnitude(_perturbation_magnitude),failure_perturbation_magnitude(1e-1)
 
 {
 
@@ -158,7 +158,7 @@ NumberVectorValue Particle::compute_velocity ()
 void Particle::try_and_move () 
 {
 
-	if(!on_wall || !exited)
+	if(!on_wall || !exited || !broken)
 	{
 		//std::cout << "moving particle " << particle_id << std::endl;
 		move();
@@ -259,11 +259,14 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 void Particle::move () 
 {
 
+	if(es->parameters.get<bool>("deposition_verbose"))
+		std::cout << "MOVING" << std::endl;
+
 	TransientLinearImplicitSystem * system;
 	system =
   	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
 
-	//const MeshBase& mesh = es->get_mesh();	// unused
+	const MeshBase& mesh = es->get_mesh();
 
 	current_velocity = compute_velocity(); //calculate velocity for the current timestep
 	current_particle_velocity = compute_particle_velocity(current_velocity); //calculate velocity for the current timestep
@@ -275,9 +278,8 @@ void Particle::move ()
 
 	unsigned int count = 0;
 
-
 	// move particle in sub time steps
-	while(local_time < local_end_time - 1e-10 && !on_wall && !exited)
+	while(local_time < local_end_time - 1e-10 && !on_wall && !exited && !broken)
 	{
 		count++;
 		// if there are too many sub time steps
@@ -338,6 +340,13 @@ void Particle::move ()
 		//now find what element we are in, search neighbours
 
 		
+		if(es->parameters.get<bool>("deposition_verbose"))
+		{
+			std::cout << "position = " << position << std::endl;
+			std::cout << "new position = " << new_position << std::endl;
+		}
+
+		
 		while(!element_found)
 		{
 			//find new position - perturbed if we are doing this again
@@ -356,18 +365,162 @@ void Particle::move ()
 			else	//check neighbors
 			{
 				double old_s_param = 0.;
-				check_neighbors(current_elem,new_position,old_s_param,elements_checked,element_found);				
+
+
+				bool simple = true;
+
+				// complex check neighbors
+				if(!simple)
+				{
+					
+					//check_neighbors(current_elem,new_position,old_s_param,elements_checked,element_found);				
+				}
+				else
+				{
+
+					const PointLocatorBase & pl = mesh.point_locator();
+				
+					if(es->parameters.get<bool>("deposition_verbose"))
+						std::cout << "doing point locator" << std::endl;
+
+					const Elem * element_found_pl = pl(new_position);
+
+					
+					if(es->parameters.get<bool>("deposition_verbose"))
+						std::cout << "done" << std::endl;
+
+					if(element_found_pl == NULL)
+					{
+						std::cout << "element not found using point_locator..................................." << std::endl;
+						check_neighbors(current_elem,new_position,old_s_param,elements_checked,element_found);	
+					}
+					else
+					{
+						current_elem = element_found_pl;
+						position = new_position;
+						element_found = true;
+					}
+
+
+					// simple check neighbors
+					//check_neighbors_simple(current_elem,new_position,elements_checked,element_found);
+
+					if(!element_found)
+					{
+						std::cout << "element not found using simple..................................." << std::endl;
+						std::cout << elements_checked.size() << " elements checked" << std::endl;
+					
+						check_neighbors(current_elem,new_position,old_s_param,elements_checked,element_found);	
+
+					}
+					
+				}
+			}
+
+			// check if particle is close to the wall
+			if(element_found)
+			{
+				close_to_wall();
 			}
 		}
 	}
 }
 
 
+// check if the particle is close enough to the wall to be deposited
+// 1 - check if particle is in motion
+// 2 - check if particle is in an element that has a wall bdy
+// 3 - check how far particle is from the wall bdy
+void Particle::close_to_wall()
+{
+	
+
+  	// Get a reference to the Stokes system object.
+	TransientLinearImplicitSystem * system;
+	system =
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	const MeshBase& mesh = es->get_mesh();
+
+	// 1 - check is particle is in motion, i.e. not on wall, exited or broken
+	if(!on_wall || !exited || !broken)
+	{
+		// 2 - check if particle is in an element that has a wall bdy
+
+		unsigned int n_neighbors =	current_elem->n_neighbors();
+		for(unsigned int i=0; i<n_neighbors; i++)
+		{
+			std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(current_elem,i);
+			
+			if(boundary_ids.size() > 0) 
+			{ 
+				int boundary_id = boundary_ids[0];	// should only have one
+				if(boundary_id == -1)
+				{
+					//element has a side that is on the wall bdy
+					// 3 - calculate the distance from the particle to this side
+
+					// distance from point to a plane is v . n 
+					// where n is the unit normal of the plane 
+					// and v is a vector from the point to a point on the plane
+					
+					AutoPtr<Elem> side = current_elem->build_side(i);
+
+					if(threed)
+					{
+						//construct normal
+						Point point_1 = side->point(0);
+						Point point_2 = side->point(1);
+						Point point_3 = side->point(2);
+
+						Point l_1 = point_1 - point_2;
+						Point l_2 = point_3 - point_2;
+
+						Point normal(l_1(1)*l_2(2)-l_1(2)*l_2(1),
+							l_1(2)*l_2(0)-l_1(0)*l_2(2),
+							l_1(0)*l_2(1)-l_1(1)*l_2(0));
+	
+						normal = normal.unit();
+
+						Point vector_to_plane = position - point_1;
+				
+						double distance = normal*vector_to_plane;
+						
+						
+						// if the distance is less than the radius then it is deposited
+						if(fabs(distance) < es->parameters.get<double>("particle_diameter")/2.0)
+						{
+							std::cout << "particle is within a radius of the wall and will be deposited." << std::endl;
+
+							// need to calculate where it will be deposited
+							// move it distance in the direction of the normal
+							// note: we are not sure if the normal is outward or inward but the sign of distance will sort that out.
+							position = position + distance*normal;
+							on_wall = true;
+							deposited_close_to_wall = true;
+							exit_surface = -1;
+							time_exited = system->time;
+						}
+					}
+					else
+					{
+						std::cout << "close to wall not implemented for 2D sims" << std::endl;
+					}	
+
+				}
+			}
+		}
+	}
+
+}
+
+
+
+
 // in order to avoid going back and forth between elements we pass in the previous s_param and make sure
 // that the new s_param is greater than the old one
 void Particle::check_neighbors(const Elem* element, Point& new_position, double old_s_param, std::vector<unsigned int>& elements_checked,  bool& element_found)
 {
-	//std::cout << "in_check_neighbors" << std::endl;
+	std::cout << "in_check_neighbors" << std::endl;
 
 	TransientLinearImplicitSystem * system;
 	system =
@@ -397,65 +550,105 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 		}
 	}
 
+	// if not in a neighbor
 	if(!element_found)
 	{
-		//std::cout << "n_neighbors = " << n_neighbors << std::endl;
-		//std::cout << "elem id = " << element->id() << std::endl;
-		for(unsigned int i=0; i<n_neighbors; i++)
+		
+		// look for where the particle went once from the current position and then again from a perturbation
+		unsigned int perturbation_no = 0;
+		unsigned int num_perturbations = 0;
+		while(perturbation_no <= num_perturbations && !element_found)
 		{
-			Elem* neighbor = element->neighbor(i);	//find_neighbors may have to be called
 
-			//std::cout << "i = " << i << std::endl;
-			double s;
-			// if does through side and neighbor in question has not been checked already
+			double x = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * 1.e-4;
+			double y = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * 1.e-4;
+			double z = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * 1.e-4;
+		
+			Point perturbation(x,y,z);
+			if(!threed)
+				perturbation(2) = 0.;
 
-			//std::cout << "goes through side = " << goes_through_side(new_position,i,element,old_s_param,s) << std::endl;
-			if(goes_through_side(new_position,i,element,old_s_param,s) && 
-				(neighbor == NULL || find(elements_checked.begin(),elements_checked.end(),neighbor->id()) == elements_checked.end()) )
+			std::cout << "perturbation number " << perturbation_no << std::endl;
+			Point centroid = element->centroid();
+			position = position + 0.1*perturbation_no*(centroid - position);
+			new_position = new_position + 0.1*perturbation_no*(centroid - position);
+			position = centroid;
+			std::cout << "looking from position " << position << std::endl;
+			std::cout << "looking to new_position " << new_position << std::endl;
+			//if(perturbation_no > 0)
+			//{
+			//	new_position = new_position - 0.5*(new_position-position);
+			//	std::cout << "looking to new_position " << new_position << std::endl;
+			//}
+			if(perturbation_no > 0)
+				std::cout << "ATTENTION PERTURBING>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+
+			//std::cout << "n_neighbors = " << n_neighbors << std::endl;
+			//std::cout << "elem id = " << element->id() << std::endl;
+			// loop over the sides (same as  neighbors in libmesh)
+			for(unsigned int i=0; i<n_neighbors; i++)
 			{
-				//std::cout << "hey" << std::endl;
-				//goes through a side of the element into the abyss.. and we are done.
-				if(neighbor == NULL)
-				{
-					std::cout << "grrrreat found element" << std::endl;
-					element_found = true;
-					std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(element,i);
+				Elem* neighbor = element->neighbor(i);	//find_neighbors may have to be called
 
-					if(boundary_ids.size() > 0) 
-					{ 
-						int boundary_id = boundary_ids[0];	// should only have one
-						//std::cout << "should be here b_id = " << boundary_id << std::endl;
-						//std::cout << "new_position = " << new_position << std::endl;
-						//std::cout << "position = " << position << std::endl;
-						//std::cout << "s = " << s << std::endl;
-						if(boundary_id == -1)
-						{
-							std::cout << "particle " << particle_id << " on wall" << std::endl;
-							on_wall = true;
-							exit_surface = -1;
-							time_exited = system->time;
-							position = position + s*(new_position - position);
-							break;
-						}
-						else
-						{
-							std::cout << "particle " << particle_id << " exited" << std::endl;
-							exited = true;
-							exit_surface = boundary_id;
-							time_exited = system->time;
-							position = position + s*(new_position - position);
-							break;
-						}
-					}		 
-				}
-				else
+				//std::cout << "i = " << i << std::endl;
+				double s;
+				// if goes through side and neighbor in question has not been checked already
+
+				//std::cout << "goes through side = " << goes_through_side(new_position,i,element,old_s_param,s) << std::endl;
+				if(goes_through_side(new_position,i,element,old_s_param,s))// && 
+					//(neighbor == NULL || find(elements_checked.begin(),elements_checked.end(),neighbor->id()) == elements_checked.end()) )
 				{
-					//std::cout << "hi" << std::endl;
-					check_neighbors(neighbor,new_position,s,elements_checked,element_found);
-					if(element_found)
-						break;
-				}
-			}				
+					std::cout << "hey, went through side" << std::endl;
+					//goes through a side of the element into the abyss.. and we are done.
+					if(neighbor == NULL)
+					{
+						std::cout << "grrrreat found element" << std::endl;
+						element_found = true;
+						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(element,i);
+
+						if(boundary_ids.size() > 0) 
+						{ 
+							int boundary_id = boundary_ids[0];	// should only have one
+							//std::cout << "should be here b_id = " << boundary_id << std::endl;
+							//std::cout << "new_position = " << new_position << std::endl;
+							//std::cout << "position = " << position << std::endl;
+							//std::cout << "s = " << s << std::endl;
+							if(boundary_id == -1)
+							{
+								std::cout << "particle " << particle_id << " on wall" << std::endl;
+								on_wall = true;
+								exit_surface = -1;
+								time_exited = system->time;
+								position = position + s*(new_position - position);
+								break;
+							}
+							else
+							{
+								std::cout << "particle " << particle_id << " exited" << std::endl;
+								exited = true;
+								exit_surface = boundary_id;
+								time_exited = system->time;
+								position = position + s*(new_position - position);
+								break;
+							}
+						}		 
+					}
+					else
+					{
+						std::cout << "hi" << std::endl;
+						// check that particle is inside this new element
+						std::cout << "neighbor->id() = " << neighbor->id() << std::endl;
+						if(neighbor->contains_point(position))
+							std::cout << "neighbor contains point" << std::endl;
+						else
+							std::cout << "oops neighbor doesn't contain point" << std::endl;
+						check_neighbors(neighbor,new_position,s,elements_checked,element_found);
+						if(element_found)
+							break;
+					}
+				}				
+			}
+			perturbation_no++;
 		}
 	}
 
@@ -473,17 +666,77 @@ void Particle::check_neighbors(const Elem* element, Point& new_position, double 
 		//new_position = new_position + perturbation;
 
 		std::cout << "Next element not found, probably because on edge or corner, setting broken on surface -2." << std::endl;
-		on_wall = true;
+		//on_wall = true;
 		exit_surface = -2;
 		time_exited = system->time;
+		position = new_position;
 		element_found = true;
 		broken = true;
+	}
+}
+
+
+
+
+// in order to avoid going back and forth between elements we pass in the previous s_param and make sure
+// that the new s_param is greater than the old one
+void Particle::check_neighbors_simple(const Elem* element, Point& new_position, std::vector<unsigned int>& elements_checked, bool& element_found)
+{
+	//std::cout << "in_check_neighbors_simple" << std::endl;
+
+	TransientLinearImplicitSystem * system;
+	system =
+  	&es->get_system<TransientLinearImplicitSystem> ("ns3d");
+
+	const MeshBase& mesh = es->get_mesh();
+	
+	elements_checked.push_back(element->id());
+
+	unsigned int n_neighbors =	element->n_neighbors();
+
+	// check if particle is in one of the neighbors then we are done
+	for(unsigned int i=0; i<n_neighbors; i++)
+	{
+		Elem* neighbor = element->neighbor(i);	//find_neighbors may have to be called
+		if(neighbor != NULL && find(elements_checked.begin(),elements_checked.end(),neighbor->id()) == elements_checked.end())
+		{
+			if(neighbor->contains_point(new_position))
+			{	
+				
+				current_elem = neighbor;
+				position = new_position;
+				element_found = true;
+				break;
+			}
+			// if not found in neighbors check neighbors 
+			// as long as centroid is less than 3x the distance from the original position
+			else
+			{
+				Point centroid = neighbor->centroid();
+				double distance_to_centroid = (centroid - position).size();
+				double particle_distance = (new_position - position).size();
+				//std::cout << "not found in centroid " << centroid << std::endl;
+				//std::cout << "distance_to_centroid/particle_distance " << distance_to_centroid/particle_distance << std::endl;
+				if(distance_to_centroid/particle_distance < 2.0)
+				{
+					check_neighbors_simple(neighbor,new_position,elements_checked,element_found);
+					if(element_found)
+						break;
+				}
+			}
+		}
+		
 	}
 }
 
 //returns true if goes through side side_number, also returns the parameter point at which it went through the wall
 bool Particle::goes_through_side(Point new_position,int side_number,const Elem* element, double old_s_param, double& s_param)
 {
+	unsigned int n_neighbors =	element->n_neighbors();
+	std::cout << "side_number = " << side_number << std::endl;
+	std::cout << "n_neighbors = " << n_neighbors << std::endl;
+
+	const MeshBase& mesh = es->get_mesh();
 
 	AutoPtr<Elem> side = element->build_side(side_number);
 
@@ -513,32 +766,61 @@ bool Particle::goes_through_side(Point new_position,int side_number,const Elem* 
 			s_param = -666.;
 		
 
-		//std::cout << "s_param = " << s_param << std::endl;
+		std::cout << "s_param = " << s_param << std::endl;
 		//std::cout << "normal = " << normal << std::endl;
 		//std::cout << "direction = " << direction << std::endl;
 
 		// if we need to go backwards it definitely doesn't intersect, if it is the same 
 		// as the previous s_param then we are just going back through the same element side,
 		// unless it is approximately zero then we are not sure 
-		if(s_param < -1e-10 || (old_s_param > 1e-10 && s_param < old_s_param + 1e-5))
+		//if(s_param < -1e-10 || (old_s_param > 1e-10 && s_param < old_s_param + 1e-5))
+		if(s_param < -1e-10 || fabs(s_param) < 1e-10)// || (old_s_param > 1e-10 && s_param < old_s_param + 1e-5))
 		{
-			//std::cout << "goddamn" << std::endl;
+			std::cout << "goddamn" << std::endl;
 			return false;
 		}
 		else
 		{
 			// now we check if a point just a bit back from the intersection point is in the element
 			// if this is true then we do intersect this side, note there is a tolerance on contains point that we have to beat somehow
+			Point intersection_point = position + s_param*(new_position - position);
+			std::cout << "intersection point " << intersection_point << std::endl;
+				
 			// old tolerance of 1e-5 didn't work so well
-			if(element->contains_point(position + (s_param - 1e-8)*(new_position - position)))
+			//if(element->contains_point(position + (s_param - 1e-8)*(new_position - position)))
+			if(element->contains_point(position))
+				std::cout << "contains position point" << std::endl;
+			else
+				std::cout << "doesn't contain position point" << std::endl;
+
+
+			std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(element,side_number);
+
+			if(boundary_ids.size() > 0) 
+			{ 
+
+			}
+
+			// check that the intersection point is on the side
+			
+			// if not on a boundary check if it's in a neighbor
+			if(boundary_ids.size() == 0 && element->neighbor(side_number)->contains_point(intersection_point))
 			{
-				//std::cout << "in the element " << element->id() << std::endl;
+				std::cout << "on the bdy and in the neighboring element " << element->neighbor(side_number)->id() << std::endl;
+				position = intersection_point;
+				return true;
+			}
+			// if it is on a boundary check that it's on the current element's boundary
+			else if(boundary_ids.size() > 0 && element->contains_point(intersection_point))
+			{
+				std::cout << "on the bdy and in the element " << element->id() << std::endl;
+				position = intersection_point;
 				return true;
 			}
 			else
 			{
-				//std::cout << "not in the element " << element->id() << std::endl;
-				//std::cout << "goddamn 2" << std::endl;
+				std::cout << "not in the element " << element->id() << std::endl;
+				std::cout << "goddamn 2" << std::endl;
 				return false;
 			}
 		}

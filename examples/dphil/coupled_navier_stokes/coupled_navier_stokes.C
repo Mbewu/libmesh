@@ -740,9 +740,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					move_particles();
 
 					perf_log.push("output");
-					output_particle_data();
 					print_particle_data();
-					write_particles();
+					
+					if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
+										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
+					{
+						output_particle_data();
+						write_particles();
+					}
 					perf_log.pop("output");
 					
 					//intialise new particles for next time step
@@ -2961,6 +2966,8 @@ void NavierStokesCoupled::read_particle_parameters()
 	set_double_parameter(infileparticle,"gravity_y",0.);
 	set_double_parameter(infileparticle,"gravity_z",1.);
 
+	set_bool_parameter(infileparticle,"deposition_verbose",false);
+
 
 }
 
@@ -3830,11 +3837,13 @@ void NavierStokesCoupled::print_particle_data()
 	unsigned int num_particles_exited = 0;
 	unsigned int num_lost_particles = 0;
 	unsigned int num_particles_in_motion = 0;
+	unsigned int num_particles_close_to_wall = 0;
 
 	for(unsigned int i=0; i < particles_3D.size(); i++)
 	{
 		int exit_surface = particles_3D[i].get_exit_surface();
 		double exit_time = particles_3D[i].get_exit_time();
+		bool close_to_wall = particles_3D[i].was_deposited_close_to_wall();
 
 		if(exit_time > 0.)
 		{
@@ -3853,6 +3862,11 @@ void NavierStokesCoupled::print_particle_data()
 				num_particles_exited++;
 				num_valid_particles++;
 			}
+
+			if(close_to_wall)
+			{
+				num_particles_close_to_wall++;
+			}
 		}
 		else
 		{
@@ -3866,6 +3880,7 @@ void NavierStokesCoupled::print_particle_data()
 	std::cout << "num_particles_exited = " << num_particles_exited << std::endl;
 	std::cout << "num_lost_particles = " << num_lost_particles << std::endl;
 	std::cout << "num_particles_in_motion = " << num_particles_in_motion << std::endl;
+	std::cout << "num_particles_close_to_wall = " << num_particles_close_to_wall << std::endl;
 	std::cout << "deposition_fraction = " << (double)num_particles_on_wall/(double)num_valid_particles << std::endl;
 }
 
@@ -4239,6 +4254,8 @@ void NavierStokesCoupled::init_particles()
 			std::cout << "vector_1 = " << vector_1 << std::endl;
 			std::cout << "vector_2 = " << vector_2 << std::endl;
 
+			unsigned int num_failed_particles = 0;
+
 			for(unsigned int i=0; i<num_new_particles; i++)
 			{
 				bool particle_deposited = false;
@@ -4301,14 +4318,19 @@ void NavierStokesCoupled::init_particles()
 							particle_deposited = true;
 						}
 						else
+						{
 							std::cout << "particle should have been found but wasn't" << std::endl;
+							num_failed_particles++;
+						}
 					}
 					else
 					{
 						std::cout << "particle is not on surface." << std::endl;
+						num_failed_particles++;
 					}
 				}
 			}
+			std::cout << "num_failed_particles = " << num_failed_particles << std::endl;
 				
 		}
 		else

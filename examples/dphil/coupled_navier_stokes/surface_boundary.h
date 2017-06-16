@@ -904,9 +904,11 @@ public:
 
 			std::cout << "area = " << area << std::endl;
 			std::cout << "new_area = " << new_area << std::endl;
+			std::cout << "fabs(1 - new_area/area) = " << fabs(1 - new_area/area) << std::endl;
 
 			// have to give a fair bit of leeway here... hmmm
-			if(new_area > area*1.005)
+			// changed from new_area > area*1.005 because surface not necessarily 100% flat
+			if(fabs(1 - new_area/area) > 1.e-3)
 				return false;
 			else
 				return true;
