@@ -141,6 +141,7 @@
 
 #include "particle.h"
 #include "hofmann_particle_deposition.h"
+#include "james_particle_deposition.h"
 
 
 // Needed for cast to petsc matrix
@@ -329,33 +330,38 @@ public:
 
 	void output_particle_parameters();
 
-	void read_timesteps();
+	void setup_read_timesteps();
 
-	void setup_3d_mesh(EquationSystems* _es, Mesh& _mesh);
+	// output_mesh true means we don't set up extra crap
+	void setup_3d_mesh(EquationSystems* _es, Mesh& _mesh, bool output_mesh=false);
 
-	void setup_3d_system(TransientLinearImplicitSystem * system);
+	void setup_3d_system(System * system, bool output_system=false);
 
 	void prerefine_3d_mesh();
 
 	void setup_1d_mesh ();
 
-	void read_1d_mesh ();
+	void read_1d_mesh (bool centerlines_mesh=false);
 
 	void generate_1d_mesh ();
 
-	void setup_1d_system(TransientLinearImplicitSystem * system);
+	void setup_1d_system(System * system, bool output_system=false, bool centrelines=false);
 
 	void output_sim_data(bool header=false);
 
 	void output_linear_iteration_count(bool header=false);
 
-	void output_particle_data();
+	void output_3d_particle_data();
 
 	void output_particle_data_old(bool header=false);
 
-	void print_particle_data();
+	void calculate_3d_particle_data();
+
+	void calculate_0d_particle_data();
 
 	void output_deposition_data(bool header=false);
+
+	bool no_particles_in_motion();
 
 	void print_flux_and_pressure();
 
@@ -363,7 +369,7 @@ public:
 	// backup=TRUE if backup is to be written
 	void write_3d_solution();
 
-	void write_particles();
+	void write_3d_particles();
 
 	void write_1d_solution();
 
@@ -375,7 +381,7 @@ public:
 
 	int solve_1d_system();
 
-	void set_radii();
+	void set_radii(System * system, bool centrelines=false);
 
 	void set_poiseuille();
 
@@ -394,17 +400,17 @@ public:
 
 	void end_timestep_admin();
 
-	void add_1d_tree_to_mesh(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices,unsigned int subdomain_id, unsigned int boundary_id);
+	unsigned int add_1d_tree_to_mesh(Mesh& _mesh, std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices,unsigned int subdomain_id, unsigned int boundary_id);
 
 	void create_1d_tree(std::vector<Point>& vertices, std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int num_generations);
 
 	void calculate_num_alveloar_generations_for_tree();
 
 	// convert the 1d part of a vector from monomial to nodal
-	void convert_1d_monomial_to_nodal(NumericVector<Number>& vector);
+	void convert_1d_solution_monomial_to_nodal();
 
 	// convert the 1d part of a vector from nodal to monomial
-	void convert_1d_nodal_to_monomial(NumericVector<Number>& vector);
+	void convert_1d_solution_nodal_to_monomial();
 
 	void plot_error(ExodusII_IO_Extended& io);
 
@@ -413,7 +419,7 @@ public:
 	void write_elem_pid_3d(ExodusII_IO_Extended& io);
 
 	void set_elem_proc_id_3d();
-	void set_elem_proc_id_1d();
+	void set_elem_proc_id_1d(System * system, bool centrelines=false);
 
 	double set_double_parameter(GetPot _infile, std::string name, double default_value);
 	unsigned int set_unsigned_int_parameter(GetPot _infile, std::string name, unsigned int default_value);
@@ -428,7 +434,7 @@ public:
 
 	void scale_1d_solution_vector(double flux_scaling,double pressure_scaling);
 
-	void init_dof_variable_vector(TransientLinearImplicitSystem * system, std::vector<int>& _dof_variable_type);
+	void init_dof_variable_vector(System * system, std::vector<int>& _dof_variable_type);
 
 	void init_dof_variable_vectors();
 
@@ -462,6 +468,11 @@ public:
 
 	int construct_schur_stokes_matrix(TransientLinearImplicitSystem * sys, KSP schur_ksp);
 
+	void set_reynolds_number();
+
+	void set_characteristic_length_0d();
+
+	void set_characteristic_length_3d();
 
 
 	int test_post_solve(TransientLinearImplicitSystem * sys);
@@ -477,6 +488,36 @@ public:
 
 	void output_logging();
 
+	void read_old_solution_from_file(EquationSystems* _es, std::ostringstream& file_name, unsigned int read_time_step);
+	
+	void copy_3d_solution_output_to_program();
+
+	void copy_3d_solution_program_to_output();
+
+	void copy_1d_solution_output_to_program();
+
+	void copy_1d_solution_program_to_output();
+
+	void read_old_solutions(unsigned int read_time_step, double read_time);
+
+	void copy_back_1d_solutions();
+
+	void calculate_local_particle_1d_flow_rate();
+
+	void copy_back_3d_solutions();
+
+	void calculate_local_particle_3d_flow_rate();
+
+	// set the deposition fraction in the 2D/3D airways.
+	void set_centrelines_deposition_data ();
+
+	void write_centrelines ();
+
+	void output_3d_airway_deposition_data ();
+
+	void output_0d_airway_deposition_data ();
+
+	void output_global_deposition_metrics (bool header=false);
 
 private:
 
@@ -486,16 +527,27 @@ private:
 	std::vector<std::vector<double> > centreline_element_data;	//element data of centrelines
 	std::vector<Airway> centreline_airway_data;
 	Mesh mesh;
+	Mesh mesh_3d;	// 3d only mesh for coupled output
+	Mesh mesh_1d;	// 0d only mesh for coupled output
+	Mesh mesh_centrelines;	// 0d only mesh for centrelines output
 	MeshData mesh_data;
 	MeshRefinement mesh_refinement;
+	MeshRefinement mesh_refinement_3d;
+	MeshRefinement mesh_refinement_1d;
 	AutoPtr<EquationSystems> es;
+	AutoPtr<EquationSystems> es_3d;	// eq for 3d output
+	AutoPtr<EquationSystems> es_1d; // eq for 0d output
+	AutoPtr<EquationSystems> es_centrelines; // eq for centrelines output
 	TransientLinearImplicitSystem * system_3d;
 	TransientLinearImplicitSystem * system_1d;
+	TransientExplicitSystem * system_3d_output;	// system for 3d output
+	TransientExplicitSystem * system_1d_output;	// system for 0d output
 	TransientLinearImplicitSystem * system_coupled;
 	TransientLinearImplicitSystem * system_neumann;
-	ExplicitSystem * extra_1d_data_system;
-	ExplicitSystem * extra_3d_data_system;
-	ExplicitSystem * particle_deposition_system_1d;
+	TransientExplicitSystem * extra_1d_data_system;
+	TransientExplicitSystem * extra_3d_data_system;
+	TransientExplicitSystem * particle_deposition_system_1d;
+	TransientExplicitSystem * system_centrelines;
 	unsigned int t_step;	
 	double time;
 	double dt;
@@ -513,6 +565,7 @@ private:
 	unsigned int unsteady;
 	bool restart;
 	PerfLog perf_log;
+	PerfLog perf_log_move;
 	AutoPtr<NumericVector<Number> > last_nonlinear_soln;	//could be pointer but too much admin
 	AutoPtr<NumericVector<Number> > old_global_solution;	//could be pointer but too much admin
 	Real previous_nonlinear_residual;
@@ -525,6 +578,7 @@ private:
 	std::ofstream particle_output_file;
 	std::ofstream deposition_output_file;
 	std::ofstream linear_iterations_output_file;
+	std::ofstream global_deposition_metrics_file;
 	std::vector<unsigned int> boundary_ids;
 	// these are not boundary conditions but values on the respective domains
 	// calculated after the fact.
@@ -587,6 +641,7 @@ private:
 	std::vector<double> var_scalings_1D;
 	std::vector<double> total_efficiency;
 
+
 	std::vector<int> subtree_starting_elements;	//ending elements of the 3d mesh and the subtree that they go to
 	std::vector<int> boundary_id_to_tree_id;
 	std::vector<int> tree_id_to_boundary_id;
@@ -596,6 +651,10 @@ private:
 	std::vector<int> centreline_terminal_id_to_tree_id;
 	std::vector<Point> centreline_points_1;
 	std::vector<Point> centreline_points_2;
+
+	unsigned int max_generations_3d;
+	unsigned int max_generations_0d;
+	unsigned int max_generations;
 
 	// this is a vector of the coupling points for each tree
 	std::vector<Point> coupling_points;
@@ -614,6 +673,45 @@ private:
 	std::vector<std::vector<double> > all_input_pressure_values_3d;
 	std::vector<std::vector<double> > all_input_flux_values_0d;
 	std::string input_boundary_conditions_filename;
+
+	// james particle deposition stuff
+	JamesParticleDeposition james_particle_deposition_object;
+	
+	std::vector<std::vector<unsigned int>> airway_elem_id_starts;
+	std::vector<double> total_fraction_exited_3d_surface;	// fraction exited over all time (for steady sims)
+	std::vector<double> fraction_exited_3d_surface;	// fraction exited this time step
+	std::vector<double> centrelines_deposition_fraction;	// deposition fraction in each 2D/3D airways
+
+
+	// some reading timesteps stuff
+	// tells you what time step and time the read solutions are from
+	unsigned int read_time_step_1;
+	unsigned int read_time_step_2;
+	double read_time_1;
+	double read_time_2;
+
+	bool no_motion_end_particle_sim;
+	unsigned int num_wall_bdy_ids;
+	double total_fraction_added;	// this is 0d only
+
+	double particle_fraction_added_so_far;
+	double particle_fraction_combined;
+	double particle_fraction_0d;
+	double particle_fraction_3d;
+	double deposition_fraction_combined;
+	double deposition_fraction_0d;
+	double deposition_fraction_3d;
+	double deposition_fraction_combined_max;
+	double deposition_fraction_0d_max;
+	double deposition_fraction_3d_max;
+	double deposition_fraction_sed_0d;
+	double deposition_fraction_sed_0d_max;
+	double deposition_fraction_imp_0d;
+	double deposition_fraction_imp_0d_max;
+	double deposition_fraction_dif_0d;
+	double deposition_fraction_dif_0d_max;
+	double terminal_exit_fraction;
+	double terminal_exit_fraction_max;
 
 	// preconditioner stuff
 	PetscMatrix<Number>* pressure_mass_matrix;

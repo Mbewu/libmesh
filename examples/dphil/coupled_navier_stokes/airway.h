@@ -78,6 +78,8 @@ class Airway
 		void set_radius(double _radius) { radius = _radius; };
 		double get_radius();
 
+		double get_area() { return M_PI*radius*radius; };
+
 		void set_order(int _order) { order = _order; };
 		int get_order();
 
@@ -85,6 +87,7 @@ class Airway
 		double get_flow_rate() { return flow_rate; };
 
 		void set_efficiency(double _efficiency) { efficiency = _efficiency; };
+		void add_efficiency(double _efficiency) { efficiency += _efficiency; };
 		double get_efficiency() { return efficiency; };
 
 		void set_num_alveolar_generations(unsigned int _num_alveolar_generations) 
@@ -122,12 +125,81 @@ class Airway
 		void set_pressure_diff(double _pressure_diff) { pressure_diff = _pressure_diff; };
 		double get_pressure_diff() { return pressure_diff; };		
 
+
+		void set_velocity(double _velocity) { velocity = _velocity; };
+		double get_velocity() { return velocity; };
+
+		void set_previous_flow_rate(double _previous_flow_rate) { previous_flow_rate = _previous_flow_rate; };
+		double get_previous_flow_rate() { return previous_flow_rate; };
+
+		void set_previous_velocity(double _previous_velocity) { previous_velocity = _previous_velocity; };
+		double get_previous_velocity() { return previous_velocity; };
+
+
+		void set_velocity_2d(double _velocity_2d) { velocity_2d = _velocity_2d; };
+		double get_velocity_2d() { return velocity_2d; };
+
+		void set_previous_velocity_2d(double _previous_velocity_2d) { previous_velocity_2d = _previous_velocity_2d; };
+		double get_previous_velocity_2d() { return previous_velocity_2d; };
+
 		//move all element numbers by an amount
 		void move_element_numbers(unsigned int amount);	
 
 		void print();
 		void print_concise();
 
+		void add_particle_fraction(double amount, double entry_time);
+
+		void remove_particle_fraction(unsigned int particle_fraction_number);
+
+		unsigned int num_particle_fractions();
+
+		double get_distance(unsigned int particle_fraction_number) { return particle_fraction_distance[particle_fraction_number]; };
+
+		void set_distance(unsigned int particle_fraction_number, double distance) { particle_fraction_distance[particle_fraction_number] = distance; };
+
+		double get_entry_time(unsigned int particle_fraction_number) { return particle_fraction_entry_time[particle_fraction_number]; };
+
+		double get_particle_fraction(unsigned int particle_fraction_number) { return particle_fraction_amount[particle_fraction_number]; };
+
+		double get_total_particle_fraction();
+		void set_total_particle_fraction(double _particle_fraction);
+
+		void set_deposition_probability_total(double _deposition_probability_total) { deposition_probability_total = _deposition_probability_total; };
+		double get_deposition_probability_total() { return deposition_probability_total; };
+
+		void set_deposition_probability_sed(double _deposition_probability_sed) { deposition_probability_sed = _deposition_probability_sed; };
+		double get_deposition_probability_sed() { return deposition_probability_sed; };
+
+		void set_deposition_probability_imp(double _deposition_probability_imp) { deposition_probability_imp = _deposition_probability_imp; };
+		double get_deposition_probability_imp() { return deposition_probability_imp; };
+
+		void set_deposition_probability_dif(double _deposition_probability_dif) { deposition_probability_dif = _deposition_probability_dif; };
+		double get_deposition_probability_dif() { return deposition_probability_dif; };
+
+		void set_stokes_number(double _stokes_number) { stokes_number = _stokes_number; };
+		double get_stokes_number() { return stokes_number; };
+
+
+		void set_deposition_fraction_total(double _deposition_fraction_total) { deposition_fraction_total = _deposition_fraction_total; };
+		void add_deposition_fraction_total(double _deposition_fraction_total) { deposition_fraction_total += _deposition_fraction_total; };
+		double get_deposition_fraction_total() { return deposition_fraction_total; };
+
+		void set_deposition_fraction_sed(double _deposition_fraction_sed) { deposition_fraction_sed = _deposition_fraction_sed; };
+		void add_deposition_fraction_sed(double _deposition_fraction_sed) { deposition_fraction_sed += _deposition_fraction_sed; };
+		double get_deposition_fraction_sed() { return deposition_fraction_sed; };
+
+		void set_deposition_fraction_imp(double _deposition_fraction_imp) { deposition_fraction_imp = _deposition_fraction_imp; };
+		void add_deposition_fraction_imp(double _deposition_fraction_imp) { deposition_fraction_imp += _deposition_fraction_imp; };
+		double get_deposition_fraction_imp() { return deposition_fraction_imp; };
+
+		void set_deposition_fraction_dif(double _deposition_fraction_dif) { deposition_fraction_dif = _deposition_fraction_dif; };
+		void add_deposition_fraction_dif(double _deposition_fraction_dif) { deposition_fraction_dif += _deposition_fraction_dif; };
+		double get_deposition_fraction_dif() { return deposition_fraction_dif; };
+
+		void set_terminal_exit_fraction(double _terminal_exit_fraction) { terminal_exit_fraction = _terminal_exit_fraction; };
+		void add_terminal_exit_fraction(double _terminal_exit_fraction) { terminal_exit_fraction += _terminal_exit_fraction; };
+		double get_terminal_exit_fraction() { return terminal_exit_fraction; };
 
 	private:
 		
@@ -150,6 +222,32 @@ class Airway
 		unsigned int tree_number;
 		double flow;
 		double pressure_diff;
+
+		double previous_flow_rate;
+		double velocity;
+		double previous_velocity;
+		double velocity_2d;
+		double previous_velocity_2d;
+
+		double deposition_probability_total;
+		double deposition_probability_sed;
+		double deposition_probability_imp;
+		double deposition_probability_dif;
+
+		double deposition_fraction_total;
+		double deposition_fraction_sed;
+		double deposition_fraction_imp;
+		double deposition_fraction_dif;
+
+		double particle_fraction;
+
+		double stokes_number;
+
+		double terminal_exit_fraction;
+
+		std::vector<double> particle_fraction_amount;
+		std::vector<double> particle_fraction_entry_time;
+		std::vector<double> particle_fraction_distance;
 
 };
 #endif //__branch_h__

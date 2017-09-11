@@ -1,18 +1,28 @@
 # File for inputting particle deposition parameters so don't need command line!
 
-particle_deposition_start_time = 0.
-particle_deposition_start_time_step = 0
-unsteady_from_steady = true
-particle_dt = 0.1
-particle_end_time = 4.0		#need 200
+# particle deposition types
+# for 1 - only 3d unsteady/steady, 2 - hofmann(deprec), 3 - 0d steady (untested in a while) 4 - 3d-0d steady, 5 - unsteady 0d, 6 - 3d-0d unsteady
 
-# 0 - particle deposition all at once, 1 - particle deposition at a specified rate on a surface
+particle_deposition_start_time = 0.				# not in use, or kept at 0
+particle_deposition_start_time_step = 0		# not in use or kept at 0
+unsteady_from_steady = true								# run particle sim from steady velocity, file must be 0001
+particle_dt = 0.01												# dt to use for 3d and 0d particle sims
+particle_end_time = 4.0										# end time of particle sim
+read_end_time = 1.0												# end of time from which airflow sim is read (greater than end_time)
+read_time_steps = true										# read in the time step size from airflow out.dat, else use contsant step
+read_time_step_size = 0.1									# constant dt to use when reading airflow sims
+particle_write_interval = 0.1							# interval to write out solution for vis, other data output each timestep
+particle_backup_write_interval = 0.1			# interval to write out backup solution
+
+
+# 0 - particle deposition all at once, 1 - particle deposition at a specified rate on a surface (defunct), 2 - particle deposition all at once and end sim when all particles deposited or exited or end time, 3 - particle deposition at a constant rate until total number have entered system , 4 -particle deposition at a constant rate until total number have entered system at particle_entry_end_time then end sim when all have deposited or exited, 5 - particle deposition at rate dependent on inflow rate, so like the sine wave, until total number have entered the system at particle_entry_end_time 
 particle_deposition_type = 1
+particle_entry_end_time = 1.0							# time when to stop entering particles
 # 0 - test particle deposition just in the middle of a domain, 1 - particle deposition at a specified rate on a surface
 particle_deposition_location = 1
-particle_deposition_rate = 10 	#rate at which particles are deposited per second or right at the beginning
+particle_deposition_rate = 1000 	#rate at which particles are deposited per second or right at the beginning
 particle_deposition_surface = 0		#surface on which particles are deposited
-deposition_pattern = 0	# 0 is just a square, 1 is circular uniform
+deposition_pattern = 0	# 0 is just a square (untested), 1 is circular uniform, 2 evenly distributed (only implemented for 2D so far), 3 is parabolic random, 4 is parabolic deterministic (2D only)
 distance_deposited_inside = 0.1
 brownian_motion_magnitude = 0.;	#adds random vector of sqrt(3)*mag to the velocity at each time step
 
@@ -35,3 +45,6 @@ particle_drag = true
 
 particle_velocity_units = 1.0	#way to convert input velocity e.g. cm/s to SI
 initial_particle_velocity_scaling = 0.98
+particle_velocity_2d = true	# assume flow is 2d to calc velocity in pipes
+exit_on_lost_particle = false	# exit after output if particle is lost
+particle_tracking_method = # 0 is using point locator, 1 is my algorithm, 2 is my algorithm but efficient

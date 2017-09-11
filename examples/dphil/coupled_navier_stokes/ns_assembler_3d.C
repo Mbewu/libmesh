@@ -206,6 +206,7 @@ void NSAssembler3D::init_bc (std::vector<unsigned int> boundary_ids,
 
 	if(pressure_coupled)
 	{
+		std::cout << "Setting up coupling dofs for monolithic." << std::endl;
 		find_1d_boundary_nodes();
 	}
 
@@ -252,6 +253,12 @@ void NSAssembler3D::find_1d_boundary_nodes()
   MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
 
+	/*
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		std::cout << "airway " << i << " daughter 1 status = " << airway_data[i].get_is_daughter_1() << std::endl;
+	}	
+	*/
 
   for ( ; el != end_el; ++el)
   {
@@ -275,6 +282,8 @@ void NSAssembler3D::find_1d_boundary_nodes()
 			const int current_el_idx = elem->id();
 			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
 			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
+			//std::cout << "elem id " << current_1d_el_idx << " daughter 1 status = " << is_daughter_1 << std::endl;
+			
 
       //const unsigned int n_dofs   = 4;
       //const unsigned int n_p_dofs = 2;
@@ -289,7 +298,7 @@ void NSAssembler3D::find_1d_boundary_nodes()
 					primary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[0];
 					secondary_flux_boundary_nodes_1d[boundary_ids[0]] = dof_indices_q[1];
 
-					//std::cout << "primary_pressure_boundary_nodes_1d" << boundary_ids[0] << "  = " << primary_pressure_boundary_nodes_1d[boundary_ids[0]] << std::endl;
+					//std::cout << "primary_flux_boundary_nodes_1d " << boundary_ids[0] << "  = " << primary_flux_boundary_nodes_1d[boundary_ids[0]] << std::endl;
 				}
 			}		
 		}	

@@ -35,6 +35,8 @@ data          = lid_driven_cavity_boundary_function.h  \
 								coupled_navier_stokes_1d_functions.C \
 								coupled_navier_stokes_3d_functions.C \
 								coupled_navier_stokes_petsc_solver_routines.C \
+								coupled_navier_stokes_particle_deposition_functions.C \
+								james_particle_deposition.C \
 								run.sh
 sources       = $(data) run.sh
 

@@ -25,7 +25,7 @@
 
 // ******************** SETUP THE 3D MESH ************************** //
 // # 0 is cylindrical pipe, 1 is single bifurcating pipe, 2 is cuboid, 3 is closed cuboid
-void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
+void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool output_mesh)
 {
 	//PerfLog perf_log_setup("Setup 3D");
 
@@ -34,63 +34,70 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	
 	// always reread in the mesh. forget about mesh refinement for now.
 	// if we are doing a 2D simulation we need to change mesh back to having dimension 2
-	if(!_es->parameters.get<bool> ("threed"))
+	if(!es->parameters.get<bool> ("threed"))
 		_mesh.set_mesh_dimension(2);
 
 	// both the cylindrical pipe and bifurcating pipe require input mesh as well as bifurcating pipe
-	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<unsigned int> ("geometry_type") == 1 
-			|| _es->parameters.get<unsigned int> ("geometry_type") == 4  || _es->parameters.get<bool> ("expanding_pipe"))
+	if(es->parameters.get<unsigned int> ("geometry_type") == 0 || es->parameters.get<unsigned int> ("geometry_type") == 1 
+			|| es->parameters.get<unsigned int> ("geometry_type") == 4  || es->parameters.get<bool> ("expanding_pipe"))
 	{
 		std::cout << "Reading mesh." << std::endl;
-		_mesh.read(_es->parameters.get<std::string> ("mesh_file"));
+		_mesh.read(es->parameters.get<std::string> ("mesh_file"));
 
 		
 	
 		//scale the mesh to make SI units
-		if(!_es->parameters.get<bool>("linear_shape_functions"))
+		if(!es->parameters.get<bool>("linear_shape_functions"))
 				_mesh.all_second_order();
 
 		std::cout << "Refining mesh." << std::endl;
 		//perf_log_setup.push("refine");
-		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
+		if(output_mesh)
+			mesh_refinement_3d.uniformly_refine (es->parameters.get<unsigned int> ("no_refinement"));
+		else
+			mesh_refinement.uniformly_refine (es->parameters.get<unsigned int> ("no_refinement"));
 		//perf_log_setup.pop("refine");
 
 
 		std::cout << "Scaling mesh." << std::endl;
-		double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
+		double mesh_input_scaling_3d = es->parameters.get<double>("mesh_input_scaling_3d");
 		MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
 
 	}
 	// the cubioids can be auto generated
 	else if(es->parameters.get<unsigned int> ("geometry_type") == 2 || es->parameters.get<unsigned int> ("geometry_type") == 3
-					|| _es->parameters.get<unsigned int> ("geometry_type") == 5)
+					|| es->parameters.get<unsigned int> ("geometry_type") == 5)
 	{
 
 		if(threed){
-			if(_es->parameters.get<bool>("quads"))
-				MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),HEX8);
+			if(es->parameters.get<bool>("quads"))
+				MeshTools::Generation::build_cube (_mesh,es->parameters.get<unsigned int>("cube_length_N"),es->parameters.get<unsigned int>("cube_width_N"),es->parameters.get<unsigned int>("cube_height_N"),0., es->parameters.get<double>("cube_length"),0., es->parameters.get<double>("cube_width"),0., es->parameters.get<double>("cube_height"),HEX8);
 			else
-				MeshTools::Generation::build_cube (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),_es->parameters.get<unsigned int>("cube_height_N"),0., _es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),0., _es->parameters.get<double>("cube_height"),TET4);					
+				MeshTools::Generation::build_cube (_mesh,es->parameters.get<unsigned int>("cube_length_N"),es->parameters.get<unsigned int>("cube_width_N"),es->parameters.get<unsigned int>("cube_height_N"),0., es->parameters.get<double>("cube_length"),0., es->parameters.get<double>("cube_width"),0., es->parameters.get<double>("cube_height"),TET4);					
 		}
 		else
 		{
-			if(_es->parameters.get<bool>("quads"))
-				MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
-																							0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),QUAD4);
+			if(es->parameters.get<bool>("quads"))
+				MeshTools::Generation::build_square (_mesh,es->parameters.get<unsigned int>("cube_length_N"),es->parameters.get<unsigned int>("cube_width_N"),
+																							0.,es->parameters.get<double>("cube_length"),0., es->parameters.get<double>("cube_width"),QUAD4);
 			else
-				MeshTools::Generation::build_square (_mesh,_es->parameters.get<unsigned int>("cube_length_N"),_es->parameters.get<unsigned int>("cube_width_N"),
-																							0.,_es->parameters.get<double>("cube_length"),0., _es->parameters.get<double>("cube_width"),TRI3);
+				MeshTools::Generation::build_square (_mesh,es->parameters.get<unsigned int>("cube_length_N"),es->parameters.get<unsigned int>("cube_width_N"),
+																							0.,es->parameters.get<double>("cube_length"),0., es->parameters.get<double>("cube_width"),TRI3);
 		}
 
 
 
-		double mesh_input_scaling_3d = _es->parameters.get<double>("mesh_input_scaling_3d");
+		double mesh_input_scaling_3d = es->parameters.get<double>("mesh_input_scaling_3d");
 		MeshTools::Modification::scale(_mesh,mesh_input_scaling_3d,mesh_input_scaling_3d,mesh_input_scaling_3d);
 
-		if(!_es->parameters.get<bool>("linear_shape_functions"))
+		if(!es->parameters.get<bool>("linear_shape_functions"))
 			_mesh.all_second_order();
 
-		mesh_refinement.uniformly_refine (_es->parameters.get<unsigned int> ("no_refinement"));
+		if(output_mesh)
+			mesh_refinement_3d.uniformly_refine (es->parameters.get<unsigned int> ("no_refinement"));
+		else
+			mesh_refinement.uniformly_refine (es->parameters.get<unsigned int> ("no_refinement"));
+
 
 	}
 
@@ -98,9 +105,15 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 	//scale the mesh to make length scale
 
-	double length_scale = _es->parameters.get<double>("length_scale");
+	double length_scale = es->parameters.get<double>("length_scale");
 	MeshTools::Modification::scale(_mesh,1./length_scale,1./length_scale,1./length_scale);
 	
+
+
+
+
+
+
 
 	//********* RENAME THE BOUNDARIES AND SUBDOMAINS FOR ALL DIFF PROBLEMS *****//
   //
@@ -116,9 +129,15 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 	// set node ids from side ids so that surface_boundary can identify shared boundaries.
 	_mesh.boundary_info->build_node_list_from_side_list();
+	
+	// need a variable counting the number of inflow and outflow boundaries 
+	//  for the new gmsh diff wall bdy id format
+	//	also the number of wall bdy ids
+	unsigned int num_inflow_outflow_bdys = 0;
+	num_wall_bdy_ids = 0;	//  zero this
 
 	// the pipe geometry or the expanding_pipe geometry
-	if(_es->parameters.get<unsigned int> ("geometry_type") == 0 || _es->parameters.get<bool> ("expanding_pipe"))
+	if(es->parameters.get<unsigned int> ("geometry_type") == 0 || es->parameters.get<bool> ("expanding_pipe"))
 	{
 		MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
 
@@ -134,50 +153,8 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
 		}
 		
-		// minus 1 because of the wall bc
-		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);	//hmmmm not sure why but hey
+		_mesh.print_info();
 
-
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-			boundary_ids[i] = i;
-		
-		//set surfaceboundary stuff - for all boundaries (we will at least some of the info at output time)
-		//inflow_surface_boundary_object.init(_mesh,0);
-
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-		{
-
-			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-			surface_boundaries.push_back(surface_boundary);
-			if(!es->parameters.get<bool> ("expanding_pipe"))
-				surface_boundaries[i]->init(_mesh,i,false);
-			else
-				surface_boundaries[i]->init(_mesh,i,true);
-
-			std::cout << "surface " << i << ":" << std::endl;
-			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
-			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-			std::cout << std::endl;
-		}
-
-		//hard coded
-		// not important to preset these 3d values because they will be reset 
-		// after the first iteration
-		pressure_values_3d.push_back(1.0);	//inflow
-		pressure_values_3d.push_back(0.0);	//outflow
-
-		// post processed values
-		flux_values_3d.push_back(1.0);	//inflow
-		flux_values_3d.push_back(0.0);	//outflow
-
-
-		previous_flux_values_3d = flux_values_3d;
-		previous_previous_flux_values_3d = flux_values_3d;
-
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("parent_pressure_mag"));
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
 	}
 	else if(es->parameters.get<unsigned int> ("geometry_type") == 1 || es->parameters.get<unsigned int> ("geometry_type") == 4)	// bifurcating pipe
 	{
@@ -189,7 +166,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		std::cout << "bdyids.size = " << bdyids.size() << std::endl;
 
 		// we wanna do this relabelling automagically, and yes sets are ordered in a particular way
-		if(true)//_es->parameters.get<std::string> ("mesh_file").compare("meshes/coarse_mesh_truncated_labelled.msh") == 0)
+		if(!es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))//es->parameters.get<std::string> ("mesh_file").compare("meshes/coarse_mesh_truncated_labelled.msh") == 0)
 		{
 			int count = 0;
 			for (std::set<boundary_id_type>::iterator it=bdyids.begin(); it!=bdyids.end(); ++it)
@@ -262,8 +239,58 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 				MeshTools::Modification::change_boundary_id(_mesh,3,2);			//outflows
 			}
 		}
-		else
+		else if (es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
 		{
+			std::cout << "Processing mesh in new gmsh diff wall bdy id format." << std::endl;
+			int count = 0;
+			for (std::set<boundary_id_type>::iterator it=bdyids.begin(); it!=bdyids.end(); ++it)
+			{
+				// for this type of mesh:
+				//  - wall bdy ids are labelled as 2000 + i
+				//  	where i is the airway number.
+				//		*	subtract 2000 and multiply by negative to get it in libmesh format
+				//	-	inflow bdy ids are labelled as 1000 for inflow
+				//		and 1000 + j,
+				//		where j is the outflow id, starting at 1
+				//		(and doesn't correspond to the airway number)
+				//		* subtract 1000 to get it in libmesh format
+
+				// inflow and outflow ids
+				if(*it > 999 && *it < 2000)
+				{
+					int old_bdy_id = *it;
+					int new_bdy_id = *it - 1000;
+					MeshTools::Modification::change_boundary_id(_mesh,old_bdy_id,new_bdy_id);
+					std::cout << "old bdy id = " << old_bdy_id << std::endl;
+					std::cout << "new bdy id = " << new_bdy_id << std::endl;
+
+					// count the number of inflow and outflow bdy ids
+					num_inflow_outflow_bdys++;
+				}
+				else if(*it > 2000)	// wall ids
+				{
+					int old_bdy_id = *it;
+					int new_bdy_id = -1*(*it - 2000);
+					MeshTools::Modification::change_boundary_id(_mesh,old_bdy_id,new_bdy_id);
+					std::cout << "old bdy id = " << old_bdy_id << std::endl;
+					std::cout << "new bdy id = " << new_bdy_id << std::endl;
+					
+					// count the number of wall bdy ids so can add them later
+					num_wall_bdy_ids++;
+				}
+
+				
+
+
+			}
+
+			// should only be one i hope...
+			MeshTools::Modification::change_subdomain_id(_mesh,*subids.begin(),0);		//volume
+
+		}
+		else	// not sure what this is, but it isn't used anymore
+		{
+			/*
 			MeshTools::Modification::change_boundary_id(_mesh,1010,-1);		//walls
 
 			MeshTools::Modification::change_boundary_id(_mesh,1011,0);			//inflow
@@ -277,76 +304,15 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 				MeshTools::Modification::change_boundary_id(_mesh,1,0);			//outflows
 				MeshTools::Modification::change_boundary_id(_mesh,500,1);			//outflows
 			}
+			*/
 		}
-
-
-
-
 
 		_mesh.print_info();
 
-		// so this has the boundary ids of the inflows and outflows, not the walls
-		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
-		
-		// all 3d outlets not inlet
-		_es->parameters.set<unsigned int> ("num_1d_trees") = boundary_ids.size() - 1;
-		
-
-
-
-		
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-			boundary_ids[i] = i;
-
-		//set surfaceboundary stuff
-		//inflow_surface_boundary_object.init(_mesh,0);
-
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-		{
-
-			// don't wanna do the possible 1d boundary at 1000
-			if(boundary_ids[i] < 100)
-			{
-				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-				surface_boundaries.push_back(surface_boundary);
-				surface_boundaries[i]->init(_mesh,i,0);
-
-				std::cout << "surface " << i << ":" << std::endl;
-				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
-				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
-				std::cout << std::endl;
-			}
-		}
-
-
-		//hard coded
-		// not important to preset these 3d values because they will be reset 
-		// after the first iteration
-		pressure_values_3d.push_back(1.0);	//inflow
-		for(unsigned int i=1; i <  boundary_ids.size(); i++)
-			pressure_values_3d.push_back(0.0);	//outflow
-
-		// post processed values
-		flux_values_3d.push_back(1.0);	//inflow
-		for(unsigned int i=1; i <  boundary_ids.size(); i++)
-			flux_values_3d.push_back(0.0);	//outflow
-
-
-		previous_flux_values_3d = flux_values_3d;
-		previous_previous_flux_values_3d = flux_values_3d;
-
-		// inputting the pressure magnitude can come in later
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("parent_pressure_mag"));
-		for(unsigned int i=1; i <  boundary_ids.size(); i++)
-			input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
-//		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_2_pressure_mag"));
 
 	}
 	// the cuboid geometry
-	else if(_es->parameters.get<unsigned int> ("geometry_type") == 2)
+	else if(es->parameters.get<unsigned int> ("geometry_type") == 2)
 	{
 
 	
@@ -371,62 +337,18 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			MeshTools::Modification::change_boundary_id(_mesh,5,1);			//outflows
 		}
 	
+		_mesh.print_info();
 		// subdomain id 0 by default
 		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
 
-
-		// hmmm how many fn boundary ids do we actually have??
-		// haven't added the 
-			
-
-		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
-
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-			boundary_ids[i] = i;
-		
-
-		//set surfaceboundary stuff
-		//inflow_surface_boundary_object.init(_mesh,0);
-
-		// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
-		
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-		{
-			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-			surface_boundaries.push_back(surface_boundary);
-			surface_boundaries[i]->init(_mesh,i,true);
-
-			std::cout << "surface " << i << ":" << std::endl;
-			std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-			std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
-			std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-			std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
-			std::cout << std::endl;
-		}
-		
-
-
-		//hard coded
-		// after the first iteration
-		pressure_values_3d.push_back(1.0);	//inflow
-		pressure_values_3d.push_back(0.0);	//outflow
-
-		// post processed values
-		flux_values_3d.push_back(1.0);	//inflow
-		flux_values_3d.push_back(0.0);	//outflow
-
-		previous_flux_values_3d = flux_values_3d;
-		previous_previous_flux_values_3d = flux_values_3d;
-	
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("parent_pressure_mag"));
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
-
 		// scale so that corresponds to the correct generation
 		//MeshTools::Modification::scale(mesh,5.6);
+
+
+
 	}
 	// the axisymmetric cuboid geometry
-	else if(_es->parameters.get<unsigned int> ("geometry_type") == 5)
+	else if(es->parameters.get<unsigned int> ("geometry_type") == 5)
 	{
 
 	
@@ -445,58 +367,18 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 			std::exit(0);
 		}
 	
+		_mesh.print_info();
 		// subdomain id 0 by default
 		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
 
 
-		// hmmm how many fn boundary ids do we actually have??
-		// haven't added the 
-
-		// now we have two wall boundaries we need to get rid of two of them
-		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 2);
-
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-			boundary_ids[i] = i;
-		
-
-		//set surfaceboundary stuff
-		//inflow_surface_boundary_object.init(_mesh,0);
-
-		// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
-		
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-		{
-			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-			surface_boundaries.push_back(surface_boundary);
-			surface_boundaries[i]->init(_mesh,i,true);
-
-			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
-		}
-		
-
-
-		//hard coded
-		// after the first iteration
-		pressure_values_3d.push_back(1.0);	//inflow
-		pressure_values_3d.push_back(0.0);	//outflow
-
-		// post processed values
-		flux_values_3d.push_back(1.0);	//inflow
-		flux_values_3d.push_back(0.0);	//outflow
-
-		previous_flux_values_3d = flux_values_3d;
-		previous_previous_flux_values_3d = flux_values_3d;
-	
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("parent_pressure_mag"));
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
-
 		// scale so that corresponds to the correct generation
 		//MeshTools::Modification::scale(mesh,5.6);
+
 	}
 
 	// the cuboid geometry
-	else if(_es->parameters.get<unsigned int> ("geometry_type") == 3)
+	else if(es->parameters.get<unsigned int> ("geometry_type") == 3)
 	{
 
 		if(!threed)
@@ -520,51 +402,7 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 		// subdomain id 0 by default
 		//MeshTools::Modification::change_subdomain_id(_mesh,1020,0);		//volume
 
-
-
-		// hmmm how many fn boundary ids do we actually have??
-		// haven't added the 
-		boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);	//hmmm not workin
-		//boundary_ids.resize(_mesh.boundary_info->n_boundary_ids());	//hmmm not workin
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-			boundary_ids[i] = i;
-		
-
-		//set surfaceboundary stuff
-		//inflow_surface_boundary_object.init(_mesh,0);
-
-		// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
-		
-		for(unsigned int i=0; i < boundary_ids.size(); i++)
-		{
-			SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
-			surface_boundaries.push_back(surface_boundary);
-			surface_boundaries[i]->init(_mesh,i,true);
-
-			std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
-			std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
-		}
-		
-
-		//hard coded
-		// not important to preset these 3d values because they will be reset 
-		// after the first iteration
-		pressure_values_3d.push_back(1.0);	//inflow
-		pressure_values_3d.push_back(0.0);	//outflow
-
-		// post processed values
-		flux_values_3d.push_back(1.0);	//inflow
-		flux_values_3d.push_back(0.0);	//outflow
-
-		previous_flux_values_3d = flux_values_3d;
-		previous_previous_flux_values_3d = flux_values_3d;
-
-	
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("parent_pressure_mag"));
-		input_pressure_values_3d.push_back(_es->parameters.get<double>("daughter_1_pressure_mag"));
-
-		// scale so that corresponds to the correct generation
-		//MeshTools::Modification::scale(_mesh,5.6);
+		_mesh.print_info();
 	}
 
 	// *************** SET UP SUBDOMAINS IN 3D **************** //
@@ -577,11 +415,10 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	// Loop over all elements.
 
 	std::cout << "num subdomains before = " <<	_mesh.n_subdomains () << std::endl;
-	std::cout << "num subdomains before = " <<	mesh.n_subdomains () << std::endl;
 	
 	std::vector<libMesh::ElemType> elem_types;	// temporary variable storing the types of elements encountered
-	MeshBase::element_iterator       elem_it  = mesh.elements_begin();
-	const MeshBase::element_iterator elem_end = mesh.elements_end();
+	MeshBase::element_iterator       elem_it  = _mesh.elements_begin();
+	const MeshBase::element_iterator elem_end = _mesh.elements_end();
 	
 	std::vector<libMesh::ElemType>::iterator it;
 
@@ -609,22 +446,330 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 	
 	
 
-	std::cout << std::endl;
-	std::cout << "Subdomain identification summary:" << std::endl;
-	std::cout << " " << elem_types.size() << " element types found." << std::endl;
-	std::cout << " Given subdomain ids:" << std::endl;
-	for(unsigned int i=0; i<elem_types.size(); i++)
+
+
+
+
+
+
+
+
+	// ************* setup extra boundary and subdomain information for code to use ****************** //
+	// only do this if the primary mesh
+	if(!output_mesh)
 	{
-		std::cout << " subdomain " << i << ": " << Utility::enum_to_string(elem_types[i]) << " elements." << std::endl;
+
+
+		// *** subdomain stuff ****** //
+
+		std::cout << std::endl;
+		std::cout << "Subdomain identification summary:" << std::endl;
+		std::cout << " " << elem_types.size() << " element types found." << std::endl;
+		std::cout << " Given subdomain ids:" << std::endl;
+		for(unsigned int i=0; i<elem_types.size(); i++)
+		{
+			std::cout << " subdomain " << i << ": " << Utility::enum_to_string(elem_types[i]) << " elements." << std::endl;
+		}
+	
+		//populate subdomains_3d
+		for(unsigned int i=0; i<elem_types.size(); i++)
+			subdomains_3d.push_back(i);
+
+
+
+
+
+		// ****** boundary stuff ******* //
+
+		// the pipe geometry or the expanding_pipe geometry
+		if(es->parameters.get<unsigned int> ("geometry_type") == 0 || es->parameters.get<bool> ("expanding_pipe"))
+		{
+
+			// minus 1 because of the wall bc
+			boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);	//hmmmm not sure why but hey
+
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+				boundary_ids[i] = i;
+		
+			//set surfaceboundary stuff - for all boundaries (we will at least some of the info at output time)
+			//inflow_surface_boundary_object.init(_mesh,0);
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+			{
+
+				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+				surface_boundaries.push_back(surface_boundary);
+				if(!es->parameters.get<bool> ("expanding_pipe"))
+					surface_boundaries[i]->init(_mesh,i,false);
+				else
+					surface_boundaries[i]->init(_mesh,i,true);
+
+				std::cout << "surface " << i << ":" << std::endl;
+				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+				std::cout << std::endl;
+			}
+
+			//hard coded
+			// not important to preset these 3d values because they will be reset 
+			// after the first iteration
+			pressure_values_3d.push_back(1.0);	//inflow
+			pressure_values_3d.push_back(0.0);	//outflow
+
+			// post processed values
+			flux_values_3d.push_back(1.0);	//inflow
+			flux_values_3d.push_back(0.0);	//outflow
+
+
+			previous_flux_values_3d = flux_values_3d;
+			previous_previous_flux_values_3d = flux_values_3d;
+
+			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
+			input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+
+		}
+		else if(es->parameters.get<unsigned int> ("geometry_type") == 1 || es->parameters.get<unsigned int> ("geometry_type") == 4)	// bifurcating pipe
+		{
+
+
+			// count the number of inflow and outflow ids
+			if(!es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
+			{
+				// so this has the boundary ids of the inflows and outflows, not the walls
+				boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
+			}
+			else if(es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
+			{
+				// so this has the boundary ids of the inflows and outflows and the walls
+				// want to calculate how many of them are inflows and outflows
+				boundary_ids.resize(num_inflow_outflow_bdys);
+			}
+		
+
+			// all 3d outlets not inlet
+			es->parameters.set<unsigned int> ("num_1d_trees") = boundary_ids.size() - 1;
+
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+				boundary_ids[i] = i;
+
+			//set surfaceboundary stuff
+			//inflow_surface_boundary_object.init(_mesh,0);
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+			{
+
+				// don't wanna do the possible 1d boundary at 1000
+				if(boundary_ids[i] < 100)
+				{
+					SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+					surface_boundaries.push_back(surface_boundary);
+					surface_boundaries[i]->init(_mesh,i,0);
+
+					std::cout << "surface " << i << ":" << std::endl;
+					std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+					std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+					std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+					std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+					std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+					std::cout << std::endl;
+				}
+			}
+
+
+			//hard coded
+			// not important to preset these 3d values because they will be reset 
+			// after the first iteration
+			pressure_values_3d.push_back(1.0);	//inflow
+			for(unsigned int i=1; i <  boundary_ids.size(); i++)
+				pressure_values_3d.push_back(0.0);	//outflow
+
+			// post processed values
+			flux_values_3d.push_back(1.0);	//inflow
+			for(unsigned int i=1; i <  boundary_ids.size(); i++)
+				flux_values_3d.push_back(0.0);	//outflow
+
+
+			previous_flux_values_3d = flux_values_3d;
+			previous_previous_flux_values_3d = flux_values_3d;
+
+			// inputting the pressure magnitude can come in later
+			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
+			for(unsigned int i=1; i <  boundary_ids.size(); i++)
+				input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+	//		input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_2_pressure_mag"));
+			
+
+		}
+		// the cuboid geometry
+		else if(es->parameters.get<unsigned int> ("geometry_type") == 2)
+		{
+
+
+			boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+				boundary_ids[i] = i;
+		
+
+			//set surfaceboundary stuff
+			//inflow_surface_boundary_object.init(_mesh,0);
+
+			// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
+		
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+			{
+				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+				surface_boundaries.push_back(surface_boundary);
+				surface_boundaries[i]->init(_mesh,i,true);
+
+				std::cout << "surface " << i << ":" << std::endl;
+				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
+				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
+				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+				std::cout << std::endl;
+			}
+		
+
+
+			//hard coded
+			// after the first iteration
+			pressure_values_3d.push_back(1.0);	//inflow
+			pressure_values_3d.push_back(0.0);	//outflow
+
+			// post processed values
+			flux_values_3d.push_back(1.0);	//inflow
+			flux_values_3d.push_back(0.0);	//outflow
+
+			previous_flux_values_3d = flux_values_3d;
+			previous_previous_flux_values_3d = flux_values_3d;
+	
+			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
+			input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+
+			// scale so that corresponds to the correct generation
+			//MeshTools::Modification::scale(mesh,5.6);
+
+		}
+		// the axisymmetric cuboid geometry
+		else if(es->parameters.get<unsigned int> ("geometry_type") == 5)
+		{
+
+			// now we have two wall boundaries we need to get rid of two of them
+			boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 2);
+
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+				boundary_ids[i] = i;
+		
+
+			//set surfaceboundary stuff
+			//inflow_surface_boundary_object.init(_mesh,0);
+
+			// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
+		
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+			{
+				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+				surface_boundaries.push_back(surface_boundary);
+				surface_boundaries[i]->init(_mesh,i,true);
+
+				std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
+				std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
+			}
+		
+
+
+			//hard coded
+			// after the first iteration
+			pressure_values_3d.push_back(1.0);	//inflow
+			pressure_values_3d.push_back(0.0);	//outflow
+
+			// post processed values
+			flux_values_3d.push_back(1.0);	//inflow
+			flux_values_3d.push_back(0.0);	//outflow
+
+			previous_flux_values_3d = flux_values_3d;
+			previous_previous_flux_values_3d = flux_values_3d;
+	
+			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
+			input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+
+			// scale so that corresponds to the correct generation
+			//MeshTools::Modification::scale(mesh,5.6);
+
+		}
+
+		// the cuboid geometry
+		else if(es->parameters.get<unsigned int> ("geometry_type") == 3)
+		{
+
+
+			// hmmm how many fn boundary ids do we actually have??
+			// haven't added the 
+			boundary_ids.resize(_mesh.boundary_info->n_boundary_ids() - 1);	//hmmm not workin
+			//boundary_ids.resize(_mesh.boundary_info->n_boundary_ids());	//hmmm not workin
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+				boundary_ids[i] = i;
+		
+
+			//set surfaceboundary stuff
+			//inflow_surface_boundary_object.init(_mesh,0);
+
+			// unfortunately this does not work for libmesh created geoms because ids not propagated to nodes
+		
+			for(unsigned int i=0; i < boundary_ids.size(); i++)
+			{
+				SurfaceBoundary* surface_boundary = new SurfaceBoundary(*_es);
+				surface_boundaries.push_back(surface_boundary);
+				surface_boundaries[i]->init(_mesh,i,true);
+
+				std::cout << "surface " << i << ": normal is " << surface_boundaries[i]->get_normal() << std::endl;
+				std::cout << "  and centroid is " << surface_boundaries[i]->get_centroid() << std::endl << std::endl;;
+			}
+		
+
+			//hard coded
+			// not important to preset these 3d values because they will be reset 
+			// after the first iteration
+			pressure_values_3d.push_back(1.0);	//inflow
+			pressure_values_3d.push_back(0.0);	//outflow
+
+			// post processed values
+			flux_values_3d.push_back(1.0);	//inflow
+			flux_values_3d.push_back(0.0);	//outflow
+
+			previous_flux_values_3d = flux_values_3d;
+			previous_previous_flux_values_3d = flux_values_3d;
+
+	
+			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
+			input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+
+			// scale so that corresponds to the correct generation
+			//MeshTools::Modification::scale(_mesh,5.6);
+
+		}
+
+
+		set_characteristic_length_3d();
+
 	}
 	
 
-	//populate subdomains_3d
-	for(unsigned int i=0; i<elem_types.size(); i++)
-		subdomains_3d.push_back(i);
+}
 
-	
 
+// set the characteristic length of the sim
+void NavierStokesCoupled::set_characteristic_length_3d()
+{
+	// need to find the first element and get its diameter
+	es->parameters.set<double> ("characteristic_length") = 2*surface_boundaries[0]->get_max_radius();
+	std::cout << "characteristic length = " << es->parameters.get<double> ("characteristic_length") << std::endl;
 }
 
 // ************************************************************************** //
@@ -648,9 +793,12 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh)
 
 
 
+
+
+
 // ************************** SETUP 3D SYSTEM ******************************* //
 
-void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
+void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 {
 	std::cout << "Setting up 2D/3D system." << std::endl;
 
@@ -673,6 +821,9 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
   // Add the variables "u" & "v" to "Navier-Stokes".  They
   // will be approximated using second-order approximation.
 
+
+	std::cout << "hello" << std::endl;
+
 	if(!linear_shape_functions)
 	{
 	  	u_var = system->add_variable ("u", SECOND,LAGRANGE,&active_subdomains);
@@ -687,6 +838,8 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 			if(threed)
 	  		w_var = system->add_variable ("w", FIRST,LAGRANGE,&active_subdomains);
 	}
+
+	std::cout << "hmm" << std::endl;
 
 	if(!es->parameters.get<bool> ("constant_pressure"))
   	system->add_variable ("p", FIRST,LAGRANGE,&active_subdomains);
@@ -729,62 +882,112 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 			system->add_variable ("p_adj", CONSTANT,MONOMIAL,&active_subdomains);
 	}
 
-	// add variable for proc id
-	int proc_id_var = extra_3d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
 
-
-	// ******** WE NEED TO ADD THE PRECONDITIONER MATRIX POSSIBLY ********** //
-
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<bool>("assemble_pressure_laplacian_matrix")))
-		system->add_matrix("Pressure Laplacian Matrix");
-
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<bool>("assemble_pressure_mass_matrix")
-		|| es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix")))
-		system->add_matrix("Pressure Mass Matrix");
-
-
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix")))
-		system->add_matrix("Pressure Convection Diffusion Matrix");
-
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<bool>("assemble_velocity_mass_matrix")))
-		system->add_matrix("Velocity Mass Matrix");
-
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d")))
+	// only add matrices and vector for assembly to the actual system
+	if(!output_system)
 	{
-		system->add_matrix("Preconditioner");
-	}
 
-	if(!es->parameters.get<bool>("efficient_assembly")
-		|| (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
-		|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
-	{
-		system->add_matrix("Velocity Matrix");	// a full matrix with only the velocity block
-	}
+		// only want to do this once because only for output
+		// add variable for proc id
+		int proc_id_var = extra_3d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
+
+		// need to cast to an implicit system to be able to add matrices
+		TransientLinearImplicitSystem* system_implicit = (TransientLinearImplicitSystem*)system;
+		
+
+		// ******** WE NEED TO ADD THE PRECONDITIONER MATRIX POSSIBLY ********** //
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<bool>("assemble_pressure_laplacian_matrix")))
+			system_implicit->add_matrix("Pressure Laplacian Matrix");
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<bool>("assemble_pressure_mass_matrix")
+			|| es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix")))
+			system_implicit->add_matrix("Pressure Mass Matrix");
+
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix")))
+			system_implicit->add_matrix("Pressure Convection Diffusion Matrix");
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<bool>("assemble_velocity_mass_matrix")))
+			system_implicit->add_matrix("Velocity Mass Matrix");
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d")))
+		{
+			system_implicit->add_matrix("Preconditioner");
+		}
+
+		if(!es->parameters.get<bool>("efficient_assembly")
+			|| (es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 8
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 10
+			|| es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 11))
+		{
+			system_implicit->add_matrix("Velocity Matrix");	// a full matrix with only the velocity block
+		}
 	
 
-	if(es->parameters.get<bool>("moghadam_coupling"))
-	{
-		// need false flag to zero the vector
-		system->add_vector("Moghadam Vector",false);
-		system->add_vector("Moghadam Vector BC",false);
-	}
+		if(es->parameters.get<bool>("moghadam_coupling"))
+		{
+			// need false flag to zero the vector
+			system_implicit->add_vector("Moghadam Vector",false);
+			system_implicit->add_vector("Moghadam Vector BC",false);
+		}
 	
-	// need vectors for calculating the flux and pressure on the boundaries
-	for(unsigned int i=0 ; i<=es->parameters.set<unsigned int> ("num_1d_trees"); i++)
-	{
-		// need false flag to zero the vector
+		// need vectors for calculating the flux and pressure on the boundaries
+		for(unsigned int i=0 ; i<=es->parameters.set<unsigned int> ("num_1d_trees"); i++)
+		{
+			// need false flag to zero the vector
 
-		std::ostringstream number;
-		number << i;
-		system->add_vector("Flow Rate Vector " + number.str(),false);
-		system->add_vector("Mean Pressure Vector " + number.str(),false);
+			std::ostringstream number;
+			number << i;
+			system_implicit->add_vector("Flow Rate Vector " + number.str(),false);
+			system_implicit->add_vector("Mean Pressure Vector " + number.str(),false);
+		}
 	}
+
+	// want some extra variables when doing particle deposition
+
+	unsigned int u_1_var = 0, v_1_var = 0, w_1_var = 0;
+	unsigned int u_2_var = 0, v_2_var = 0, w_2_var = 0;
+	if(particle_deposition)
+	{
+		if(!linear_shape_functions)
+		{
+			u_1_var = system->add_variable ("u_1", SECOND,LAGRANGE,&active_subdomains);
+			v_1_var = system->add_variable ("v_1", SECOND,LAGRANGE,&active_subdomains);
+			if(threed)
+				w_1_var = system->add_variable ("w_1", SECOND,LAGRANGE,&active_subdomains);
+
+			u_2_var = system->add_variable ("u_2", SECOND,LAGRANGE,&active_subdomains);
+			v_2_var = system->add_variable ("v_2", SECOND,LAGRANGE,&active_subdomains);
+			if(threed)
+				w_2_var = system->add_variable ("w_2", SECOND,LAGRANGE,&active_subdomains);
+	}
+		else
+		{
+			u_1_var = system->add_variable ("u_1", FIRST,LAGRANGE,&active_subdomains);
+			v_1_var = system->add_variable ("v_1", FIRST,LAGRANGE,&active_subdomains);
+			if(threed)
+				w_1_var = system->add_variable ("w_1", FIRST,LAGRANGE,&active_subdomains);
+
+			u_2_var = system->add_variable ("u_2", FIRST,LAGRANGE,&active_subdomains);
+			v_2_var = system->add_variable ("v_2", FIRST,LAGRANGE,&active_subdomains);
+			if(threed)
+				w_2_var = system->add_variable ("w_2", FIRST,LAGRANGE,&active_subdomains);
+		}
+
+
+	}
+
+
+
+
+
+
 
 	//******* NOW WE NEED TO TAKE CARE OF THE BOUNDARY CONDITION STUFF *****//
 
@@ -819,6 +1022,16 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 		std::set<boundary_id_type> boundary_id_wall;
 			boundary_id_wall.insert(-1);
 
+		// if the number of wall bdy ids is > 0 then we are obviously doing this kind of sim 
+		// and add them as wall bdys.
+		// note that they are numbered -1, -2, -3
+		if(es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
+		{
+			for(int i=2; i<=num_wall_bdy_ids; i++)
+			{
+				boundary_id_wall.insert(-1*i);
+			}
+		}
 
 		DirichletBoundary dirichlet_bc_wall(boundary_id_wall,
 			                       variables,
@@ -828,7 +1041,12 @@ void NavierStokesCoupled::setup_3d_system(TransientLinearImplicitSystem* system)
 
 		std::set<boundary_id_type> boundary_id_inflow;
 				boundary_id_inflow.insert(0);
-				boundary_id_inflow.insert(-2);
+
+		// not sure why this is here, but it won't work for different wall bdy ids
+		if(!es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
+		{
+			boundary_id_inflow.insert(-2);
+		}
 
 
 		if(threed)
@@ -1230,14 +1448,17 @@ std::cout << "lakka" << std::endl;
 
 
 
+
+
 	// Renumbering
 	if (es->parameters.get<bool> ("renumber_nodes_and_elements"))
 	{
 		std::cout << "\n\n\n\n\n\n\n\n\n" << std::endl;
 		std::cout << "RENUMBERING" << std::endl;
-		
-	  mesh.allow_renumbering(true);
-	  mesh.renumber_nodes_and_elements();
+
+		//  get mesh
+	  system->get_mesh().allow_renumbering(true);
+	  system->get_mesh().renumber_nodes_and_elements();
 	}
 
 
@@ -1490,8 +1711,15 @@ void NavierStokesCoupled::write_3d_solution()
 		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
 	}
 
-	// exodus file writer
-	ExodusII_IO_Extended exo = ExodusII_IO_Extended(mesh);
+
+
+	// copy the program solution to the output system
+	copy_3d_solution_program_to_output();
+
+
+
+	// exodus file writer - to output mesh
+	ExodusII_IO_Extended exo = ExodusII_IO_Extended(mesh_3d);
 
 	exo.set_var_scalings(var_scalings_3D);
 	if(!es->parameters.get<bool>("reynolds_number_calculation"))
@@ -1544,8 +1772,8 @@ void NavierStokesCoupled::write_3d_solution()
 		std::cout << "Refining mesh for output." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)refinement_level_difference; i++)
 		{
-			mesh_refinement.uniformly_refine(1);
-			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
+			mesh_refinement_3d.uniformly_refine(1);
+			es_3d->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 
 		//std::cout << "cannot output solution at a more refined state (need to fix dirichlet condition stuff)" << std::endl;
@@ -1557,8 +1785,8 @@ void NavierStokesCoupled::write_3d_solution()
 		std::cout << "Coarsening mesh for output." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)(-refinement_level_difference); i++)
 		{
-			mesh_refinement.uniformly_coarsen(1);
-			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
+			mesh_refinement_3d.uniformly_coarsen(1);
+			es_3d->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 	}		
 
@@ -1595,9 +1823,9 @@ void NavierStokesCoupled::write_3d_solution()
 			first_3d_write = false;
 
 		//exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
-		exo.write_timestep(file_name_soln.str(), *es,t_step+1,time*time_scale_factor);
+		exo.write_timestep(file_name_soln.str(), *es_3d,t_step+1,time*time_scale_factor);
 		std::cout << "hello" << std::endl;
-		exo.write_element_data(*es);	// write the proc_id
+		exo.write_element_data(*es_3d);	// write the proc_id
 	}
 	else
 	{
@@ -1616,9 +1844,9 @@ void NavierStokesCoupled::write_3d_solution()
 		file_name_soln << std::setw(4) << std::setfill('0') << t_step;
 
 		//exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
-		exo.write_timestep(file_name_soln.str(), *es,1,time*time_scale_factor);
+		exo.write_timestep(file_name_soln.str(), *es_3d,1,time*time_scale_factor);
 		std::cout << "hello" << std::endl;
-		exo.write_element_data(*es);	// write the proc_id
+		exo.write_element_data(*es_3d);	// write the proc_id
 	}
 
 
@@ -1647,21 +1875,21 @@ void NavierStokesCoupled::write_3d_solution()
 	std::cout << "EXODUSII output for timestep " << t_step
 		<< " written to " << file_name_soln.str() << std::endl;
 
-	if(es->parameters.get<bool>("output_backup_files") && 
-		(time - ((int)((time + 1e-10) /es->parameters.get<Real>("backup_write_interval")))*es->parameters.get<Real>("backup_write_interval") < dt - 1e-10))
+	if(es->parameters.get<bool>("output_backup_files") && (!unsteady ||
+		(time - ((int)((time + 1e-10) /es->parameters.get<Real>("backup_write_interval")))*es->parameters.get<Real>("backup_write_interval") < dt - 1e-10)))
 	{
 		std::cout << "Writing backup files." << std::endl;
 		file_name_es << file_name.str();
 		file_name_es << "_es_";
 		file_name_es << std::setw(4) << std::setfill('0') << t_step;
 		file_name_es << ".xda";
-		es->write(file_name_es.str(), libMeshEnums::WRITE);
+		es_3d->write(file_name_es.str(), libMeshEnums::WRITE);
 
 		file_name_mesh << file_name.str();
 		file_name_mesh << "_mesh_";
 		file_name_mesh << std::setw(4) << std::setfill('0') << t_step;
 		file_name_mesh << ".xda";
-		mesh.write(file_name_mesh.str());
+		mesh_3d.write(file_name_mesh.str());
 
 		std::cout << "Backup files written to " << file_name_mesh.str()
 			<< " and " << file_name_es.str() << std::endl;
@@ -1675,8 +1903,8 @@ void NavierStokesCoupled::write_3d_solution()
 		std::cout << "Coarsening mesh to return to simulation." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)refinement_level_difference; i++)
 		{
-			mesh_refinement.uniformly_coarsen(1);
-			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
+			mesh_refinement_3d.uniformly_coarsen(1);
+			es_3d->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 	}
 	else if(refinement_level_difference < 0 )
@@ -1685,8 +1913,8 @@ void NavierStokesCoupled::write_3d_solution()
 		std::cout << "Refining mesh to return to simulation." << std::endl;
 		for(unsigned int i=0; i<(unsigned int)(-refinement_level_difference); i++)
 		{
-			mesh_refinement.uniformly_refine(1);
-			es->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
+			mesh_refinement_3d.uniformly_refine(1);
+			es_3d->reinit();	//NEEDED: so that correct xda file is written, of course we lose the accuracy... should actually do a temp copy
 		}
 	}		
 
@@ -4644,8 +4872,8 @@ void NavierStokesCoupled::plot_error(ExodusII_IO_Extended& io)
   MeshBase &temp_mesh = *meshptr;
   temp_mesh.all_first_order();
   EquationSystems temp_es (temp_mesh);
-  ExplicitSystem& error_system
-    = temp_es.add_system<ExplicitSystem> ("Error");
+  TransientExplicitSystem& error_system
+    = temp_es.add_system<TransientExplicitSystem> ("Error");
   error_system.add_variable("error", CONSTANT, MONOMIAL);
   temp_es.init();
 
@@ -4713,8 +4941,8 @@ void NavierStokesCoupled::write_elem_pid_3d(ExodusII_IO_Extended& io)
 	std::cout << "hi" << std::endl;
 	std::cout << "hi" << std::endl;
   EquationSystems temp_es (temp_mesh);
-  ExplicitSystem& processor_system
-    = temp_es.add_system<ExplicitSystem> ("Processor");
+  TransientExplicitSystem& processor_system
+    = temp_es.add_system<TransientExplicitSystem> ("Processor");
   processor_system.add_variable("proc_id", CONSTANT, MONOMIAL);
   temp_es.init();
 
@@ -4784,9 +5012,9 @@ void NavierStokesCoupled::set_elem_proc_id_3d()
 	const DofMap& dof_map = extra_3d_data_system->get_dof_map();
 
 	MeshBase::const_element_iterator       el     =
-		mesh.active_local_elements_begin();
+		extra_3d_data_system->get_mesh().active_local_elements_begin();
 	const MeshBase::const_element_iterator end_el =
-		mesh.active_local_elements_end();
+		extra_3d_data_system->get_mesh().active_local_elements_end();
 
 	std::vector<dof_id_type> dof_indices;
 	const unsigned int proc_id_var = extra_3d_data_system->variable_number ("proc_id");
@@ -4898,9 +5126,7 @@ void NavierStokesCoupled::scale_3d_solution_vector(double velocity_scaling=1.0,d
 }
 
 
-// ********************** SCALE THE SOLUTION APPROPRIATELY *************************** //
-
-// convert the 1d part of a vector from nodal to monomial
+// update the dirichlet boundary conditions, like in time dependent sim
 void NavierStokesCoupled::update_3d_dirichlet_boundary_conditions()
 {
 	TransientLinearImplicitSystem * system;
@@ -4920,6 +5146,273 @@ void NavierStokesCoupled::update_3d_dirichlet_boundary_conditions()
 	// not a problem now that we don't have separate linear and nonlinear matrices i don't think
 	system->reinit_constraints();
 	//es->reinit();
+
+}
+
+
+
+
+// ************ COPY SOLUTIONS FOR OUTPUT AND RESTART ******************** //
+
+// copy the 1d solution from the output format to program format
+void NavierStokesCoupled::copy_3d_solution_output_to_program()
+{
+
+	TransientLinearImplicitSystem * system_program;
+  // Get a reference to the Program Stokes system object.
+	if(sim_type == 5)
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+
+  // Numeric ids corresponding to each variable in the program system
+  const int u_var_program = system_program->variable_number ("u");
+  const int v_var_program = system_program->variable_number ("v");
+	int w_var_program = 0;
+	if(threed)
+  	w_var_program = system_program->variable_number ("w");
+  const int p_var_program = system_program->variable_number ("p");
+		
+
+  // Numeric ids corresponding to each variable in the program system
+  const int u_var_output = system_3d_output->variable_number ("u");
+  const int v_var_output = system_3d_output->variable_number ("v");
+	int w_var_output = 0;
+	if(threed)
+  	w_var_output = system_3d_output->variable_number ("w");
+  const int p_var_output = system_3d_output->variable_number ("p");
+
+
+
+	// need to make the output solution vector global and get its values
+  std::vector<Number> output_soln;
+  system_3d_output->update_global_solution (output_soln);
+
+	std::vector<int> dof_variable_vector_output = dof_variable_type_3d;
+
+	std::vector<int> dof_variable_vector_program;
+	if(sim_type == 5)
+		dof_variable_vector_program = dof_variable_type_coupled;
+	else
+		dof_variable_vector_program = dof_variable_type_3d;
+		
+
+
+	// now we need to copy the values from the output solution to the program solution
+	// need to find a correspondence between these vectors even though they are on different meshes
+	// should be in the same order, so have two iterators, the outer iterator 
+	// and an inner iterator that goes until it hits a variable of the same type.
+
+	// dof_variable_type_1d is only 1d variables - easy for 
+	unsigned int output_i = 0;
+	for(unsigned int i=0; i<dof_variable_vector_program.size(); i++)
+	{
+		
+		if(dof_variable_vector_program[i] == u_var_program)
+		{
+			// iterate until we find the u variable in the output vector
+			while(dof_variable_vector_output[output_i] != u_var_output)
+				output_i++;
+
+			// get the u soln from the output soln
+			double value = output_soln[output_i];
+			// set the u value to the program
+			system_program->solution->set(i,value);
+			output_i++;
+		}
+
+		
+		if(dof_variable_vector_program[i] == v_var_program)
+		{
+			// iterate until we find the v variable in the output vector
+			while(dof_variable_vector_output[output_i] != v_var_output)
+				output_i++;
+
+			// get the v soln from the output soln
+			double value = output_soln[output_i];
+			// set the v value to the program
+			system_program->solution->set(i,value);
+			output_i++;
+		}
+
+
+		if(threed)
+		{
+			if(dof_variable_vector_program[i] == w_var_program)
+			{
+				// iterate until we find the w variable in the output vector
+				while(dof_variable_vector_output[output_i] != w_var_output)
+					output_i++;
+
+				// get the w soln from the output soln
+				double value = output_soln[output_i];
+				// set the w value to the program
+				system_program->solution->set(i,value);
+				output_i++;
+			}
+		}
+
+
+		
+		if(dof_variable_vector_program[i] == p_var_program)
+		{
+			// iterate until we find the p variable in the output vector
+			while(dof_variable_vector_output[output_i] != p_var_output)
+				output_i++;
+
+			// get the p soln from the output soln
+			double value = output_soln[output_i];
+			// set the p value to the program
+			system_program->solution->set(i,value);
+			output_i++;
+		}
+
+
+
+	}
+
+	// close the program solution vector, 
+	system_program->solution->close();
+
+}
+
+
+
+
+// copy the 1d solution from the program format to output format
+void NavierStokesCoupled::copy_3d_solution_program_to_output()
+{
+
+	TransientLinearImplicitSystem * system_program;
+  // Get a reference to the Program Stokes system object.
+	if(sim_type == 5)
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+
+  // Numeric ids corresponding to each variable in the program system
+  const int u_var_program = system_program->variable_number ("u");
+  const int v_var_program = system_program->variable_number ("v");
+	int w_var_program = 0;
+	if(threed)
+  	w_var_program = system_program->variable_number ("w");
+  const int p_var_program = system_program->variable_number ("p");
+		
+
+  // Numeric ids corresponding to each variable in the program system
+  const int u_var_output = system_3d_output->variable_number ("u");
+  const int v_var_output = system_3d_output->variable_number ("v");
+	int w_var_output = 0;
+	if(threed)
+  	w_var_output = system_3d_output->variable_number ("w");
+  const int p_var_output = system_3d_output->variable_number ("p");
+
+
+
+	// need to make the output solution vector global and get its values
+  std::vector<Number> program_soln;
+  system_program->update_global_solution (program_soln);
+
+	std::vector<int> dof_variable_vector_output = dof_variable_type_3d;
+
+	std::vector<int> dof_variable_vector_program;
+	if(sim_type == 5)
+		dof_variable_vector_program = dof_variable_type_coupled;
+	else
+		dof_variable_vector_program = dof_variable_type_3d;
+		
+
+
+
+	// now we need to copy the values from the output solution to the program solution
+	// need to find a correspondence between these vectors even though they are on different meshes
+	// should be in the same order, so have two iterators, the outer iterator 
+	// and an inner iterator that goes until it hits a variable of the same type.
+
+	// dof_variable_type_1d is only 1d variables - easy for 
+	unsigned int output_i = 0;
+	for(unsigned int i=0; i<dof_variable_vector_program.size(); i++)
+	{
+
+
+		if(dof_variable_vector_program[i] == u_var_program)
+		{
+			// iterate until we find the u variable in the output vector
+			while(dof_variable_vector_output[output_i] != u_var_output)
+				output_i++;
+
+			// get the u soln from the program soln
+			double value = program_soln[i];
+			// set the u value to the output
+			system_3d_output->solution->set(output_i,value);
+			output_i++;
+		}
+
+		
+		if(dof_variable_vector_program[i] == v_var_program)
+		{
+			// iterate until we find the v variable in the output vector
+			while(dof_variable_vector_output[output_i] != v_var_output)
+				output_i++;
+
+			// get the v soln from the program soln
+			double value = program_soln[i];
+			// set the v value to the output
+			system_3d_output->solution->set(output_i,value);
+			output_i++;
+		}
+
+
+		if(threed)
+		{
+			if(dof_variable_vector_program[i] == w_var_program)
+			{
+				// iterate until we find the w variable in the output vector
+				while(dof_variable_vector_output[output_i] != w_var_output)
+					output_i++;
+
+				// get the w soln from the program soln
+				double value = program_soln[i];
+				// set the w value to the output
+				system_3d_output->solution->set(output_i,value);
+				output_i++;
+			}
+		}
+
+
+		
+		if(dof_variable_vector_program[i] == p_var_program)
+		{
+			// iterate until we find the p variable in the output vector
+			while(dof_variable_vector_output[output_i] != p_var_output)
+				output_i++;
+
+			// get the p soln from the program soln
+			double value = program_soln[i];
+			// set the p value to the output
+			system_3d_output->solution->set(output_i,value);
+			output_i++;
+		}
+
+
+
+
+	}
+
+	// close the output solution vector, 
+	system_3d_output->solution->close();
 
 }
 

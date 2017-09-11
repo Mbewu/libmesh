@@ -123,16 +123,25 @@ int main (int argc, char** argv)
 // run through the simulations in main.
 NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_file, std::string _input_file_particle, GetPot& command_line):
 		mesh(init.comm(),3),
+		mesh_3d(init.comm(),3),
+		mesh_1d(init.comm(),3),
+		mesh_centrelines(init.comm(),3),
 		mesh_data(mesh),
 		mesh_refinement (mesh),
+		mesh_refinement_3d (mesh_3d),
+		mesh_refinement_1d (mesh_1d),
 		es(AutoPtr<EquationSystems>(new EquationSystems(mesh))),
+		es_3d(AutoPtr<EquationSystems>(new EquationSystems(mesh_3d))),
+		es_1d(AutoPtr<EquationSystems>(new EquationSystems(mesh_1d))),
+		es_centrelines(AutoPtr<EquationSystems>(new EquationSystems(mesh_centrelines))),
 		time(0.),
-	  	reduce_dt(false),
-	  	increase_dt(false),
-	  	refine_mesh(false),
+  	reduce_dt(false),
+  	increase_dt(false),
+  	refine_mesh(false),
 		steps_since_last_dt_change(0),
 		restart(false),
 		perf_log("Main Program"),
+		perf_log_move("move_particles"),
 		sim_3d(false),
 		sim_1d(false),
 		input_file(_input_file),
@@ -144,21 +153,23 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		local_linear_iterations(0),
 		total_linear_iterations(0),
 		total_max_iterations(0),
-
-		particle_deposition(false),
+		particle_deposition(0),
 		shell_pc_created(false),
 		mono_shell_pc_created(false),
 		first_3d_write(true),
 		first_1d_write(true),
 		init_names_done(false),
-		ic_set(true)
+		ic_set(true),
+		no_motion_end_particle_sim(false),
+		total_fraction_added(0.),
+		max_generations_3d(0)
 {
 
 	perf_log.push("misc");
 	perf_log.push("setup");
 	PerfLog perf_log_setup("Setup");
 
-	std::cout << "Starting simulation." << std::endl;
+	std::cout << "\n*** STARTING SIMULATION ***\n" << std::endl;
 
 	//************* READ AND OUTPUT GENERAL PARAMETERS *************//
 	infile = GetPot(_input_file);
@@ -179,10 +190,12 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	output_command_line_options();
 	print_parameters();
 
-	std::cout << "hello" << std::endl;
-	// if 3D particle deposition then read in the velocity timesteps
-	if(particle_deposition == 1)
-		read_timesteps();
+
+
+
+
+
+
 
 	std::cout << "hello" << std::endl;
 	//Airway new_airway;
@@ -192,7 +205,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
-/*
+/* some crap
 	//set from input
 	if(_viscosity != 0.0)
 	{
@@ -231,55 +244,109 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	
 
 
-	// ************ SETUP SYSTEM CRAP ************ //
+	// ************ SETUP SYSTEM TYPES ************ //
 
+	// 3d systems
 	if(sim_3d && sim_type != 5)
 	{
 	  system_3d = &es->add_system<TransientLinearImplicitSystem>("ns3d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		extra_3d_data_system = &es->add_system<ExplicitSystem> ("extra_3d_data");
+		extra_3d_data_system = &es_3d->add_system<TransientExplicitSystem> ("extra_3d_data");
+		system_3d_output = &es_3d->add_system<TransientExplicitSystem> ("ns3d_output");
+		// setup 1d centrelines mesh
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+			system_centrelines = &es_centrelines->add_system<TransientExplicitSystem> ("centrelines");
+			
 	}
 
+	// 0d systems
 	if(sim_1d && sim_type != 5)
 	{
 		system_1d = &es->add_system<TransientLinearImplicitSystem> ("ns1d");
-		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
+		extra_1d_data_system = &es_1d->add_system<TransientExplicitSystem> ("extra_1d_data");
+		system_1d_output = &es_1d->add_system<TransientExplicitSystem> ("ns1d_output");
 
-		if(particle_deposition == 2)
-			particle_deposition_system_1d = &es->add_system<ExplicitSystem> ("Particle-Deposition-1D");
+		if(particle_deposition == 2 || particle_deposition == 3 || particle_deposition == 4 || particle_deposition == 5 || particle_deposition == 6)
+			particle_deposition_system_1d = &es_1d->add_system<TransientExplicitSystem> ("Particle-Deposition-1D");
 
 	}
 
+	// monolithic systems
 	if(sim_type == 5)
 	{
 		system_coupled = &es->add_system<TransientLinearImplicitSystem> ("ns3d1d");
 	  system_neumann = &es->add_system<TransientLinearImplicitSystem>("Neumann-Variable");
-		extra_1d_data_system = &es->add_system<ExplicitSystem> ("extra_1d_data");
-		extra_3d_data_system = &es->add_system<ExplicitSystem> ("extra_3d_data");
+		extra_1d_data_system = &es_1d->add_system<TransientExplicitSystem> ("extra_1d_data");
+		extra_3d_data_system = &es_3d->add_system<TransientExplicitSystem> ("extra_3d_data");
+		system_3d_output = &es_3d->add_system<TransientExplicitSystem> ("ns3d_output");
+		system_1d_output = &es_1d->add_system<TransientExplicitSystem> ("ns1d_output");
+
+		// setup 1d centrelines mesh
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+			system_centrelines = &es_centrelines->add_system<TransientExplicitSystem> ("centrelines");
 	}
+	// end setup system types
+
+
+
+
+
+
+
+
+
+	// ************** SET UP MESHES **************** //
 
 	mesh.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
+	mesh_3d.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
+	mesh_1d.partitioner()->set_custom_partitioning(es->parameters.set<unsigned int>("custom_partitioning"));
+
+
 
 	// ************** SET UP 3D MESH **************** //
 	if(sim_3d)
 	{
 		perf_log_setup.push("setup_3d_mesh");
 		setup_3d_mesh(&*es,mesh);
-		perf_log_setup.pop("setup_3d_mesh");
-	// in case not set already
-	es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
 
-	}
+		std::cout << "Setting up output 3D mesh." << std::endl;
+		setup_3d_mesh(&*es_3d,mesh_3d,true);
+
+		perf_log_setup.pop("setup_3d_mesh");
+		// in case not set already
+		es->parameters.set<unsigned int>("n_initial_3d_elem") = mesh.n_elem();
+
+		// setup 1d centrelines mesh
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+			read_1d_mesh(true);
+
+
+	}// setup 3d mesh
+
+
+
 
 
 	// ******************** SETUP 1D MESH ********************* //
 	if(sim_1d)
 	{
 		perf_log_setup.push("setup_1d_mesh");
+		// the output mesh is handled within this function, 
+		// so that we don't have to generate the 1d mesh and all its data twice
 		setup_1d_mesh();
+		// setup centrelines mesh
 		perf_log_setup.pop("setup_1d_mesh");
 
-	}
+
+	}// end setup 0d mesh
+
+	// end setup meshes
+
+
+
+
+
+
 
 	// ************* SET UP 3D SYSTEM **************** //
 	if(sim_3d)
@@ -298,15 +365,27 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		else
 		{
 			setup_3d_system(system_3d);
-
-
 			system_3d->attach_assemble_object (*picard);
 		}
 
+		std::cout << "Setting up output 3D system." << std::endl;
+		setup_3d_system(system_3d_output,true);
+
+
+		// setup 1d centrelines system
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+			setup_1d_system(system_centrelines,true,true);
+			
 
 		perf_log_setup.pop("setup_3d_system");
 
-	}
+	}// end setup 3d system
+
+
+
+
+
+
 
 
 
@@ -329,6 +408,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		{
 			setup_1d_system(system_1d);
 
+			// setup output system
+
 			system_1d->attach_assemble_object (*ns_assembler);
 
 			//get the extra couplings sorted for the matrix, maybe don't need this?
@@ -336,10 +417,29 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 										(new AugmentSparsityOnInterface(*es,airway_data,subdomains_3d,subdomains_1d,es->parameters.get<unsigned int>("n_initial_3d_elem")));
 			system_1d->get_dof_map().attach_extra_sparsity_object(*augment_sparsity);
 		}
+
+
+		setup_1d_system(system_1d_output,true);
+
+		if(particle_deposition == 3 ||  particle_deposition == 4 || particle_deposition == 5 ||  particle_deposition == 6)
+		{		
+			std::cout << "hullo" << std::endl;
+			// i assume surface boundaries is just a 0 length vector by default...
+			james_particle_deposition_object.setup(*es,*es_1d,airway_data,subdomains_1d,surface_boundaries);
+		}
+
+
 		
 		perf_log_setup.pop("setup_1d_system");
-	}
+	}// end setup 0d system
 
+
+
+
+
+
+
+	// ******************* SETUP MONOLITHIC SYSTEM ******************** //
 	if(sim_type == 5)
 	{
 		ns_assembler->set_coupled(true);
@@ -357,67 +457,46 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 	}
 
-	// after things have been setup let us set up the variable scalings for output
-	if(sim_3d)
-		setup_variable_scalings_3D();
 
-	if(sim_1d)
-		setup_variable_scalings_1D();
-	std::cout << std::endl;
+
+
+
+
+
+
+
 	
-	//init the equation systems
+
+
+	// ******* INIT EQ SYSTEMS TO GET THEM READY FOR USE **************** //
 
 	std::cout << "Init equation systems." << std::endl;
 	es->init ();
+
+	std::cout << "initing 3d eq system for output" << std::endl;
+	if(sim_3d)
+		es_3d->init();
+
+	std::cout << "initing 0d eq system for output" << std::endl;
+	if(sim_1d)
+		es_1d->init();
+
+	// setup 1d centrelines mesh
+	if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+	{
+		std::cout << "initing centrelines eq system for output" << std::endl;
+		es_centrelines->init();
+	}
+
 	std::cout << "done initing equation systems" << std::endl;
 
-	init_dof_variable_vectors();
-	
-	perf_log_setup.push("boundary vectors compute");
-	if(sim_3d)
-		picard->setup_flow_rate_and_mean_pressure_vectors();
-	perf_log_setup.pop("boundary vectors compute");
 
-	if(restart)
-	{
-		std::ostringstream file_name;
-		std::ostringstream file_name_es;
-		std::ostringstream file_name_mesh;
 
-		std::cout << "restart_folder = " << restart_folder.str() << std::endl;
 
-		//file_name << output_folder.str() << "out_3D";
-		file_name << restart_folder.str() << "out_3D";
- 
-		// if reading from a steady simulation then need to rad timestep 1 no matter what
-		if(es->parameters.get<bool> ("unsteady_from_steady"))
-			file_name_es << file_name.str() << "_es_" << std::setw(4) 
-			<< std::setfill('0') << 1 << ".xda";
-		else
-			file_name_es << file_name.str() << "_es_" << std::setw(4) 
-			<< std::setfill('0') << es->parameters.get<unsigned int> ("restart_time_step") << ".xda";
-		
 
-		std::cout << "Reading in data for restart from file:" << std::endl;
-		std::cout << "\t" << file_name_es.str() << std::endl;
 
-		unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
-		es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
-		std::cout << "Done reading in data." << std::endl;
 
-		
-	}
 
-	std::cout << "HEY BAE" << std::endl;
-
-	// ************* READ IN BOUNDARY CONDITIONS FOR PROBLEM ****** //
-	if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))
-	{
-		std::cout << "you suck" << std::endl;
-		// read the input boundary conditions for an uncoupled simulation
-		read_input_boundary_conditions();
-
-	}
 
 
 	// *************	INITIALISE SOME STUFF BEFORE THE LOOP ******* //
@@ -425,6 +504,7 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	{
 		perf_log_setup.push("update_eq_systems");
 		es->update();
+		es_3d->update();
 		perf_log_setup.pop("update_eq_systems");
 		
 		if(sim_type == 5)
@@ -442,8 +522,26 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		}
 	}
 
+	// need to update for 0D restart (particle deposition) {not sure what this is supposed to do}
+	/*
+	if(false)//sim_1d && particle_deposition == 3)
+	{
+		perf_log_setup.push("update_eq_systems");
+		es->update();
+		perf_log_setup.pop("update_eq_systems");
+	}
+	*/
+	// end initialise some stuff
 
-	if(es->parameters.get<unsigned int>("prerefine"))
+
+
+
+
+
+
+	// **************************** PREFINE (DEPRECATED) *********************** //
+
+	if(false)//es->parameters.get<unsigned int>("prerefine"))
 	{
 			
 		if(sim_3d)
@@ -462,18 +560,182 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		else
 			std::cout << "WE DO NOT REFINE 1D MESHES" << std::endl;
 	}
-
-
-	if(sim_1d)
+	else
 	{
-		set_radii();
+		std::cout << "not doing prerefine anymore" << std::endl;
 	}
 
-	// **************************** SET THE ELEM PIDs *********************** //
-	if(sim_3d)
-		set_elem_proc_id_3d();
+
+
+
+
+
+
+
+	// **************************** SET SOME DATA WE USE *********************** //
+
+	// set the 0d radii
 	if(sim_1d)
-		set_elem_proc_id_1d();
+	{
+		std::cout << "Setting 1d mesh radii" << std::endl;
+		set_radii(extra_1d_data_system);
+	}
+
+	if(sim_3d)
+	{
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+		{
+			std::cout << "Setting centreline radii" << std::endl;
+			set_radii(system_centrelines,true);			
+		}
+	}
+
+	// set the proc ids
+	if(sim_3d)
+	{
+		set_elem_proc_id_3d();
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+		{
+			set_elem_proc_id_1d(system_centrelines,true);
+		}
+	}
+
+
+	if(sim_1d)
+		set_elem_proc_id_1d(extra_1d_data_system);
+
+
+
+
+
+
+
+
+
+
+	// init dof variable vectors (first used when reading in solutions)
+	init_dof_variable_vectors();
+	
+	// after things have been setup let us set up the variable scalings for output
+	if(sim_3d)
+		setup_variable_scalings_3D();
+
+	if(sim_1d)
+		setup_variable_scalings_1D();
+	std::cout << std::endl;
+
+	// can't remember what this is, 
+	// but i think it makes calculating fluxes and pressures on boundaries more efficient
+	perf_log_setup.push("boundary vectors compute");
+	if(sim_3d)
+		picard->setup_flow_rate_and_mean_pressure_vectors();
+	perf_log_setup.pop("boundary vectors compute");
+
+
+
+
+
+
+	// *********** RESET TIME STUFF ************** //
+	time = es->parameters.get<Real>("restart_time");
+
+	t_step = es->parameters.get<unsigned int> ("t_step");
+	
+
+	double beforebefore_norm = 0.;
+	if(!particle_deposition)
+	{
+		if(sim_3d)
+		{
+
+
+			if(sim_type != 5)
+				beforebefore_norm = system_3d->solution->l2_norm();
+			else
+				beforebefore_norm = system_coupled->solution->l2_norm();					
+		}
+	}
+	dt = es->parameters.get<Real> ("dt");
+
+	std::cout << "dt = " << dt << std::endl;
+
+
+
+
+
+
+
+
+
+
+	// ********* READ IN OLD FLUID SIMULATIONS FOR RESTART AND PARTICLE DEPOSITION ************ //
+
+
+	std::cout << "hello" << std::endl;
+	// **** READ IN TIMESTEPS FOR UNSTEADY RESTART ******** //
+	if(particle_deposition == 1 || particle_deposition == 3 || particle_deposition == 4 || particle_deposition == 5 || particle_deposition == 6)
+		setup_read_timesteps();
+
+
+	// **** ACTUALLY READ IN OLD SOLUTIONS **** //
+	if(restart)
+	{
+
+
+		// if reading from a steady simulation then need to read timestep 1 no matter what
+
+		unsigned int read_time_step = 0;
+		double read_time = 0;
+
+		if(es->parameters.get<bool> ("unsteady_from_steady"))
+			read_time_step = 1;
+		else	// normal unsteady restart of particle deposition
+		{
+			read_time_step = es->parameters.get<unsigned int> ("restart_time_step");
+			read_time = es->parameters.get<double> ("restart_time");
+		}
+
+
+		// read in the solution/s at read_time_step
+		read_old_solutions(read_time_step, read_time);
+
+		// first time step, so copy the initial to the previous as well
+		// should really read in two time steps, but hey
+		if(sim_1d)
+			copy_back_1d_solutions();
+		if(sim_3d)
+			copy_back_3d_solutions();
+
+		// tell the program where these solutions came from
+		read_time_1 = read_time;
+		read_time_step_1 = read_time_step;
+		read_time_2 = read_time;
+		read_time_step_2 = read_time_step;
+		
+	}// end reading in old solutions
+
+	std::cout << "HEY BAE" << std::endl;
+
+
+
+
+
+
+
+	// ************* READ IN BOUNDARY CONDITIONS FOR PROBLEM ****** //
+	// for example if you want to run and uncoupled simulation 
+	// based on the coupled simulation's boundary conditions
+	if(sim_type == 2 && es->parameters.get<bool>("known_boundary_conditions"))
+	{
+		std::cout << "you suck" << std::endl;
+		// read the input boundary conditions for an uncoupled simulation
+		read_input_boundary_conditions();
+
+	}
+
+
+
+
 
 
 	// ************** CALCULATE THE RESISTANCE OF THE 1D TREES ************** //
@@ -481,14 +743,76 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		calculate_1d_linear_resistance_values();
 
 
+	// set reynolds number (could be based on the solution that was read in, but not currently)
+	set_reynolds_number();
+
+
+
+
+
+
+
+
+
+
+
+
+
 	// ************* OUTPUT INFO TO SCREEN AND TO FILE ********** //
+
+	std::cout << "\n\n\n---------- Program Mesh info ----------" << std::endl;
 	mesh.print_info();
 	mesh.boundary_info->print_summary();
+
+	if(sim_3d)
+	{
+		std::cout << "\n\n\n---------- 3D Output Mesh info ----------" << std::endl;
+		mesh_3d.print_info();
+		mesh_3d.boundary_info->print_summary();
+
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+		{
+			std::cout << "\n\n\n---------- Centrelines Mesh info ----------" << std::endl;
+			mesh_centrelines.print_info();
+			mesh_centrelines.boundary_info->print_summary();
+		}
+	}
+
+	if(sim_1d)
+	{
+		std::cout << "\n\n\n---------- 1D Output Mesh info ----------" << std::endl;
+		mesh_1d.print_info();
+		mesh_1d.boundary_info->print_summary();
+	}
+	std::cout << "\n\n\n---------- Program Equation System ----------" << std::endl;
 	es->print_info();
+	if(sim_3d)
+	{
+		std::cout << "\n\n\n---------- 3D Output Equation System ----------" << std::endl;
+		es_3d->print_info();
+
+		if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+		{
+			std::cout << "\n\n\n---------- 3D Centrelines Equation System ----------" << std::endl;
+			es_centrelines->print_info();
+		}
+	}
+
+	if(sim_1d)
+	{
+		std::cout << "\n\n\n---------- 1D Output Equation System ----------" << std::endl;
+		es_1d->print_info();
+	}
+
 
 
 	perf_log_setup.disable_logging();
 	perf_log.pop("setup");
+
+
+
+
+
 
 	PerfLog perf_log_misc("Miscellaneous");
 
@@ -497,7 +821,8 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 	es->parameters.set<unsigned int> ("t_step") = 
 		es->parameters.get<unsigned int>("restart_time_step");
 
-	if(!es->parameters.get<bool>("compare_results") && !(particle_deposition == 2))
+
+	if(!es->parameters.get<bool>("compare_results") && !(particle_deposition == 2 || particle_deposition == 3))
 	{
 
 		//loop over viscositys for steady state solution num continuation
@@ -507,15 +832,111 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		 	es->parameters.set<Real> ("reynolds_number")   = re_vec[k];
 		 	es->parameters.set<unsigned int> ("num_continuation_iteration")   = k;
 
-			// *************** WRITE OUTPUT ******************** //
 			std::cout << "CALCULATING FOR Re = " <<
 				es->parameters.get<Real> ("reynolds_number") << std::endl;
 
 
-			//intialise the particles
-			if(particle_deposition)
+
+
+
+			// *************** INITIALISE PARTICLES AT t=0 **************************
+
+			// for 1 - only 3d unsteady/steady, 4 - 3d-0d steady, 6 - 3d-0d unsteady
+
+			if(particle_deposition == 1 || particle_deposition == 4 || particle_deposition == 6)
 				init_particles();
 
+			// for 0d unsteady james particle deposition, we need to initialise particles at t=0
+			if(particle_deposition == 5)
+			{
+
+				// initialise the flow rates
+				james_particle_deposition_object.calculate_airway_flow_rates_and_velocities();
+				// calculate the deposition efficiencies and stokes number and stuff, mostly for output
+				james_particle_deposition_object.calculate_airway_deposition_probability();
+
+				// if we are doing a 0d only calculation we need to send it a fraction each time steps
+				// remember this is actually time step 1, some particles could have been deposited at time step 0
+				// 0 - particle deposition all at once, 1 - particle deposition at a specified rate on a surface, 2 - particle deposition all at once until all particles deposited or exited, 3 - particle deposition at a constant rate until total number have entered system, 4 -particle deposition at a constant rate until total number have entered system then wait until all have deposited or exited
+				double fraction_added = 0;
+				if(es->parameters.get<unsigned int>("particle_deposition_type") == 0) 
+					fraction_added = 1.;
+				else if(es->parameters.get<unsigned int>("particle_deposition_type") == 1)
+				{
+					// we don't want to add any more particles in thelast time step
+					if(fabs(time - es->parameters.get<double>("particle_end_time")) < 1e-10)
+						fraction_added = 0.;
+					else
+						fraction_added = dt / es->parameters.get<double>("particle_end_time");
+				}
+				else if(es->parameters.get<unsigned int>("particle_deposition_type") == 2)
+					fraction_added = 1.;
+				else if(es->parameters.get<unsigned int>("particle_deposition_type") == 3
+								|| es->parameters.get<unsigned int>("particle_deposition_type") == 4)
+				{
+					// we need to make sure we know a priori the number of particles that will enter in total
+					// we just add extra particles in the last entry step, cheating, but shouldn't be too much of a difference
+
+					if(time < (es->parameters.get<double>("particle_entry_end_time") - dt + 1e-10) )
+						fraction_added = dt / es->parameters.get<double>("particle_entry_end_time");
+
+				}
+				else if(es->parameters.get<unsigned int>("particle_deposition_type") == 5)
+				{
+
+					// we want the particles to enter based sine wave
+					// calculate the desired number of particles up until now
+					// then subtract from particles entered so far to get how many we need this time step
+		
+					std::cout << "fraction added so far = " << total_fraction_added << std::endl;
+					double desired_fraction_so_far = 1./2
+																	* ( - cos(2*M_PI/(2*es->parameters.get<double>("particle_entry_end_time")) * time) + 1);
+					std::cout << "desired_fraction_so_far = " << desired_fraction_so_far << std::endl;
+					fraction_added = desired_fraction_so_far - total_fraction_added;
+					std::cout << "fraction to be added = " << fraction_added << std::endl;
+
+					// if we are at the end time then we need to check that we are getting everything in and there aren't any rounding errors
+					if(time > es->parameters.get<double>("particle_entry_end_time") - 1e-10)
+					{
+						fraction_added = 1. - total_fraction_added;
+						std::cout << "at end so fraction_added = " << fraction_added << std::endl;
+					}
+
+					// need to double check that we haven't deposited too many particles
+					if(fraction_added + total_fraction_added > 1. + 1e-10)
+					{
+						fraction_added = 1. - total_fraction_added;
+						std::cout << "tried to put too many so fraction_added = " << fraction_added << std::endl;
+					}
+
+					std::cout << "total fraction after this time step = " << total_fraction_added + fraction_added << std::endl;
+					std::cout << "target fraction = " << 1. << std::endl;
+		
+
+
+
+
+
+				}
+				std::cout << "fraction added = " << fraction_added << std::endl;
+
+				total_fraction_added += fraction_added;
+				particle_fraction_added_so_far = total_fraction_added;
+
+				james_particle_deposition_object.init_particle_fraction(0,fraction_added);
+			}
+			// end initialising particles
+
+
+
+
+
+
+
+
+			// *************** WRITE OUTPUT ******************** //
+
+			// *************** SETTING UP STUFF TO WRITE ******************** //
 			if(!particle_deposition)
 			{
 				// output the parameters used to file and the header of the out.dat file
@@ -540,35 +961,6 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}
 
-			perf_log.push("output");
-			if(!restart)
-			{
-				output_sim_data(true);
-			}
-
-
-			//parameters
-			std::ostringstream parameter_output_data_file_name;
-
-			parameter_output_data_file_name << output_folder.str() << "parameters" << t_step << ".dat";
-			//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
-			parameter_output_file.open(parameter_output_data_file_name.str().c_str());
-			parameter_output_file << "# Parameters" << std::endl;
-			es->parameters.print(parameter_output_file);
-			parameter_output_file.close();
-
-			if(particle_deposition == 1)
-			{
-				
-				std::cout << "lday" << es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << std::endl;
-				if(es->parameters.get<unsigned int> ("particle_deposition_start_time_step") == 0)
-				{
-					output_particle_data();
-					print_particle_data();
-				}
-			}
-
-
 			if(es->parameters.get<bool> ("output_linear_iteration_count") && !particle_deposition)
 			{
 				std::ostringstream linear_iterations_data_file_name;
@@ -582,7 +974,59 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}
 
+			if(!restart)
+			{
+				output_sim_data(true);
+			}
+
+			perf_log.push("output");
+			// end setting up output files
+
+
+
+			// *************** WRITE PARAMETERS ******************** //
+			//parameters
+			std::ostringstream parameter_output_data_file_name;
+
+			parameter_output_data_file_name << output_folder.str() << "parameters" << t_step << ".dat";
+			//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
+			parameter_output_file.open(parameter_output_data_file_name.str().c_str());
+			parameter_output_file << "# Parameters" << std::endl;
+			es->parameters.print(parameter_output_file);
+			parameter_output_file.close();
+
+
+
+
+
+
+
+
+			// *********** WRITE PARTICLES AT t=0 ************* //
+			if(particle_deposition)
+			{
+				
+				std::cout << "lday" << es->parameters.get<unsigned int> ("particle_deposition_start_time_step") << std::endl;
+				if(es->parameters.get<unsigned int> ("particle_deposition_start_time_step") == 0 && particle_deposition != 5)
+				{
+					output_3d_particle_data();
+					calculate_3d_particle_data();
+				}
+
+				if(particle_deposition == 5)
+					write_1d_solution();
+			}
+
+
 			perf_log.pop("output");
+
+			std::cout << "boo" << std::endl;
+
+
+
+
+
+			// ************* ZEROING STUFF FOR THE BEGINNING IF NECESSARY ************** //
 
 			// only do this when on the first step of num continuation
 			if(k==0)
@@ -623,8 +1067,15 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 					}
 
 				}
-			}
+			}// end zeroing stuff
 
+
+
+
+
+
+
+			// ***************** INITING PREVIOUS TIME SOLUTION ***************** //
 
 			if(sim_3d && sim_type != 5)
 			{
@@ -633,37 +1084,85 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				//system_3d->update();
 			}
 
+
+
+
+
+
+			std::cout << "hi" << std::endl;
+			// ***************** OUTPUTTING ZEROTH TIME STEP ********************* //	
+
 			perf_log.push("output");
+			// fluid output
 			if(unsteady && !restart)
 			{
-				if(sim_3d) {write_3d_solution();}
-				if(sim_1d) {write_1d_solution();}
+				if(sim_3d) 
+				{
+					write_3d_solution();	// only fluid
+					if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))	
+						write_centrelines();
+				}
+				if(sim_1d) 
+				{
+					write_1d_solution();
+				}	// only fluid
 			}
 
-			if(particle_deposition)
-				write_particles();
-			perf_log.pop("output");
-
-			//******* reset all the time stuff
-			time = es->parameters.get<Real>("restart_time");
-
-			t_step = es->parameters.get<unsigned int> ("t_step");
-			
-
-			double beforebefore_norm = 0.;
-			if(!particle_deposition)
+			std::cout << "hi" << std::endl;
+			// particle output
+			// do this 3d output for all  except 0d unsteady (5)
+			if(particle_deposition && particle_deposition != 5)
 			{
 				if(sim_3d)
+					calculate_3d_particle_data();
+
+				if(sim_1d)
+					calculate_0d_particle_data();
+
+				// if 1 - unsteady 3d, 4 - steady 3d0d, 6 - unsteady 3d0d the output
+				if(particle_deposition == 1 || particle_deposition == 4 || particle_deposition == 6)
 				{
 
-		
-					if(sim_type != 5)
-						beforebefore_norm = system_3d->solution->l2_norm();
-					else
-						beforebefore_norm = system_coupled->solution->l2_norm();					
+			std::cout << "hi" << std::endl;
+					write_3d_particles();
+
+			std::cout << "hi" << std::endl;
+					if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))	
+						write_centrelines();
+
+			std::cout << "hi" << std::endl;
 				}
+		
+				// if unsteady from steady then it would be nice to output the fluid output
+
+				// if 5 - unsteady 0d, 6 unsteady 3d0d
+				if(particle_deposition == 5 || particle_deposition == 6)
+					write_1d_solution();
+
+				// output airway data
+				if(sim_1d)
+					output_0d_airway_deposition_data();
+
+				if(sim_3d && es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id") )
+					output_3d_airway_deposition_data();
+
+				//header
+				output_global_deposition_metrics(true);
+				// first time step
+				output_global_deposition_metrics(false);
 			}
-			dt = es->parameters.get<Real> ("dt");
+
+			std::cout << "hi" << std::endl;
+			perf_log.pop("output");
+			// end outputting stuff
+
+
+
+
+
+
+
+
 
 
 			// ************* TIME LOOP ******************** //
@@ -674,15 +1173,20 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
+
+			
+				// ************** INCREMENT TIME ************** //s
+
 				perf_log_misc.push("update times");
-				// INCREMENT TIME
 				++t_step;
 
 
 				// choose dt
+				/* don't do this, we want the possibility of a smaller timestep
 				if(particle_deposition && !es->parameters.get<bool> ("unsteady_from_steady"))
 					dt = timestep_sizes[t_step - 1];	//set timestep based on file
-
+				*/
+	
 				if(time + dt > es->parameters.get<Real> ("end_time"))
 				{
 					dt = es->parameters.get<Real> ("end_time") - time;
@@ -705,6 +1209,94 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				//shell_pc_created = false;
 				//mono_shell_pc_created = false;
 
+
+
+
+
+
+
+				std::cout << "\n\n*** Solving time step " << t_step <<
+				             ", time = " << time << " (" << time*time_scale_factor <<
+										 "s) ***" << std::endl;
+
+
+
+
+
+
+
+				// ************ READ IN OLD SOLUTION HERE AND CALCULATE THE FLOW RATE AT THIS TIME STEP ************ //
+				// we want to read in the solution at the beginning of the time step and not 
+				//  in end_timestep_admin is previously
+
+				std::cout << "read_time_2 = " << read_time_2 << std::endl;
+				if(particle_deposition)
+				{
+
+					if(es->parameters.get<bool>("unsteady_from_steady"))
+					{
+						//do nothing
+					}
+					else
+					{
+						// we need to figure out is we have passed the next time step 
+						// and need to read in another solution
+						
+						// the last time step we read in was read_time_step_2
+						double next_dt = 0.;
+						if(read_time_step_2 + 1 < timestep_sizes.size())
+							next_dt = timestep_sizes[read_time_step_2 + 1];
+						
+						// so the next time we need to read in some is
+						double next_read_time = read_time_2 + next_dt;
+
+						std::cout << "next_dt = " << next_dt << std::endl;
+						std::cout << "next_read_time = " << next_read_time << std::endl;
+						std::cout << "read_time_2 = " << read_time_2 << std::endl;
+
+
+						// if we've passed this time, we need to read in a new solution
+						if(time > (read_time_2 + 1e-10))
+						{
+			
+							// now let's read in the solution
+							// it's going to copy over only the velocity and fluxes hopefully
+							
+							// read in the solution/s into Q
+							read_old_solutions(read_time_step_2 + 1, next_read_time);
+
+							// copy back solutions Q_2 -> Q_1, Q -> Q_1
+							if(sim_1d)
+								copy_back_1d_solutions();
+							if(sim_3d)
+								copy_back_3d_solutions();
+
+							// tell the program where these solutions came from
+							read_time_1 = read_time_2;
+							read_time_step_1++;
+							read_time_2 = next_read_time;
+							read_time_step_2++;
+						}
+						else
+						{
+							// do nothing
+						}
+
+						// once we have read in or not, calculate the local particle flow rate
+						if(sim_1d)
+							calculate_local_particle_1d_flow_rate();
+						if(sim_3d)
+							calculate_local_particle_3d_flow_rate();
+					}
+
+		
+				}// end reading in old solutions
+
+				// ************ UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS *********** //
+
+				std::cout << "read_time_2 = " << read_time_2 << std::endl;
+
+
 				if(!particle_deposition)
 				{
 					if(sim_3d)
@@ -726,38 +1318,244 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 				
 				//write_3d_solution(true);
 
-				std::cout << "\n\n*** Solving time step " << t_step <<
-				             ", time = " << time << " (" << time*time_scale_factor <<
-										 "s) ***" << std::endl;
 
 
 
 
-
-				// **************** DO PARTICLE DEPOSITION ******************** //
-				if(particle_deposition)
+				// **************** DO 3D PARTICLE DEPOSITION ******************** //
+				// 1 is 3d unsteady only, 4 is 3d-0d steady, 6 is coupled 3d-0d unsteady
+				if(particle_deposition == 1 || particle_deposition == 4 || particle_deposition == 6)
 				{
+
+					// intialise new particles for this time step (not the first time step though) XXXX yes the first time step
+					if(//t_step != 1 && 
+							(es->parameters.get<unsigned int> ("particle_deposition_type") == 1
+								|| es->parameters.get<unsigned int> ("particle_deposition_type") == 3
+								|| es->parameters.get<unsigned int> ("particle_deposition_type") == 4
+								|| es->parameters.get<unsigned int> ("particle_deposition_type") == 5))
+					{
+						init_particles();
+					}
+
+
+					perf_log.push("move_particles");
 					move_particles();
+					perf_log.pop("move_particles");
 
 					perf_log.push("output");
-					print_particle_data();
-					
+
+
+
+					// output particles for visualisation
+					std::cout << "write interval in particle = " << es->parameters.get<Real>("write_interval") << std::endl;
 					if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
 										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
 					{
-						output_particle_data();
-						write_particles();
+						std::cout << "writing particles babe" << std::endl;	
+						write_3d_particles();
+						if(es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))
+							write_centrelines();
 					}
+
+
+					std::cout << "fraction_a = " << total_fraction_exited_3d_surface.size() << std::endl;
+					calculate_3d_particle_data();
+					std::cout << "fraction_b = " << total_fraction_exited_3d_surface.size() << std::endl;
+
 					perf_log.pop("output");
 					
-					//intialise new particles for next time step
-					// must be 
-					if(particle_deposition && fabs(time - es->parameters.get<Real> ("end_time")) > 1e-10
-						&& es->parameters.get<unsigned int> ("particle_deposition_type") == 1)
-						init_particles();
-
 				}
-				else
+
+				std::cout << "time = " << time << std::endl;
+
+
+
+
+
+
+				// ************ UNSTEADY JAMES PARTICLE DEPOSITION ******************* //
+				if(particle_deposition == 5 || particle_deposition == 6)
+				{
+
+					std::cout << "\nCALCULATING 0D UNSTEADY PARTICLE DEPOSITION FOR Re = " <<
+						es->parameters.get<Real> ("reynolds_number") << std::endl;
+
+					// intialise the flow rates into the Airway objects for this time step
+					// don't need the particle fraction here
+					james_particle_deposition_object.calculate_airway_flow_rates_and_velocities();
+					std::cout << "oh and hey again babe" << std::endl;
+
+					std::cout << "time = " << time << std::endl;
+					// set the airway deposition probability, it isn't used, but useful to see
+					james_particle_deposition_object.calculate_airway_deposition_probability();
+
+					// setup the coupling between 3D and 0D
+					if(particle_deposition == 6)
+					{
+
+						std::cout << "Calculating coupling terms for coupling 3D to 0D" << std::endl;
+						std::cout << "using " << fraction_exited_3d_surface.size() << " 3D exit fractions for this time step:" << std::endl;
+						for(unsigned int i=0; i<fraction_exited_3d_surface.size(); i++)
+							std::cout << " " << fraction_exited_3d_surface[i] << std::endl;
+
+
+						std::cout << "hello" << std::endl;
+						// okay now we need to figure out where they go..
+						// pass in the deposition fraction for the different airways
+						james_particle_deposition_object.calculate_time_step_deposition_fraction(fraction_exited_3d_surface,airway_elem_id_starts,time,dt);
+
+					}
+					else if(particle_deposition == 5)	// just 0D unsteady
+					{
+						// if we are doing a 0d only calculation we need to send it a fraction each time steps
+						// remember this is actually time step 1, some particles could have been deposited at time step 0
+						double fraction_added = 0;
+						if(es->parameters.get<unsigned int>("particle_deposition_type") == 0) 
+							fraction_added = 0.;
+						else if(es->parameters.get<unsigned int>("particle_deposition_type") == 1)
+						{
+							// we don't want to add any more particles in thelast time step
+							if(fabs(time - es->parameters.get<double>("particle_end_time")) < 1e-10)
+								fraction_added = 0.;
+							else
+								fraction_added = dt / es->parameters.get<double>("particle_end_time");
+						}
+						else if(es->parameters.get<unsigned int>("particle_deposition_type") == 2)
+							fraction_added = 0.;
+						else if(es->parameters.get<unsigned int>("particle_deposition_type") == 3
+										|| es->parameters.get<unsigned int>("particle_deposition_type") == 4)
+						{
+							// we need to make sure we know a priori the number of particles that will enter in total
+							// we just add extra particles in the last entry step, cheating, but shouldn't be too much of a difference
+
+							if(time < (es->parameters.get<double>("particle_entry_end_time") - dt + 1e-10))
+								fraction_added = dt / es->parameters.get<double>("particle_entry_end_time");
+	
+						}
+						else if(es->parameters.get<unsigned int>("particle_deposition_type") == 5)
+						{
+
+							// we want the particles to enter based sine wave
+							// calculate the desired number of particles up until now
+							// then subtract from particles entered so far to get how many we need this time step
+		
+							std::cout << "fraction added so far = " << total_fraction_added << std::endl;
+							double desired_fraction_so_far = 1./2
+																			* ( - cos(2*M_PI/(2*es->parameters.get<double>("particle_entry_end_time")) * time) + 1);
+							std::cout << "desired_fraction_so_far = " << desired_fraction_so_far << std::endl;
+							fraction_added = desired_fraction_so_far - total_fraction_added;
+							std::cout << "fraction to be added = " << fraction_added << std::endl;
+
+							// if we are at the end time then we need to check that we are getting everything in and there aren't any rounding errors
+							if(time > es->parameters.get<double>("particle_entry_end_time") - 1e-10)
+							{
+								fraction_added = 1. - total_fraction_added;
+								std::cout << "at end so fraction_added = " << fraction_added << std::endl;
+							}
+
+							// need to double check that we haven't deposited too many particles
+							if(fraction_added + total_fraction_added > 1. + 1e-10)
+							{
+								fraction_added = 1. - total_fraction_added;
+								std::cout << "tried to put too many so fraction_added = " << fraction_added << std::endl;
+							}
+
+							std::cout << "total fraction after this time step = " << total_fraction_added + fraction_added << std::endl;
+							std::cout << "target fraction = " << 1. << std::endl;
+		
+
+
+
+
+
+						}
+						std::cout << "fraction added = " << fraction_added << std::endl;
+
+						total_fraction_added += fraction_added;
+
+						
+						std::vector<double> input_particle_density;
+						input_particle_density.push_back(0.);	// first element corresponds to the 3D
+						input_particle_density.push_back(fraction_added);	// should only be one really, unless you're dumb
+						
+
+						std::cout << "calculating deposition fraction in this time step" << std::endl;
+						// need to pass in the deposition fraction for the different airways
+						james_particle_deposition_object.calculate_time_step_deposition_fraction(input_particle_density,airway_elem_id_starts,time,dt);
+
+					}
+
+					std::cout << "you suck" << std::endl;
+					calculate_0d_particle_data();
+
+
+					std::cout << "before writing 0d soln" << std::endl;
+					if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
+										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
+					{
+						std::cout << "writin it" << std::endl;
+						write_1d_solution();
+					}
+					std::cout << "fuck off" << std::endl;
+				}
+
+				std::cout << "time = " << time << std::endl;
+
+
+				// once we have all the information from coupled sims, we can output global metrics and airway stuff to file
+				if(particle_deposition)
+				{
+					if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
+										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
+					{
+						if(sim_1d)
+							output_0d_airway_deposition_data();
+	
+ 						if(sim_3d && es->parameters.get<bool>("use_centreline_data") && es->parameters.set<bool>("gmsh_diff_wall_bdy_id") )
+							output_3d_airway_deposition_data();
+
+						output_global_deposition_metrics(false);						
+					}
+				}
+
+
+
+
+
+
+				// **** CHECK THERE ARE NO PARTICLES IN MOTION ********** //
+				if(particle_deposition)
+				{
+
+					// - don't actually have to run this everytime, only when we have just written output 
+					// and are actually allowed to end the sim
+					// - if we are doing a deposition limited simulation, 
+					// - need to check if all particles have been deposited
+					// - and if we have passed the time at which new particles enter the system
+					if((time - ((int)((time + 1e-10) /es->parameters.get<Real>("backup_write_interval")))
+										*es->parameters.get<Real>("backup_write_interval") < dt - 1e-10)
+						&& (es->parameters.get<unsigned int> ("particle_deposition_type") == 2
+							|| ( (es->parameters.get<unsigned int> ("particle_deposition_type") == 4 
+										|| es->parameters.get<unsigned int> ("particle_deposition_type") == 5)
+							&& time > es->parameters.get<double> ("particle_entry_end_time") + 1e-10)) )
+					{
+						std::cout << "Checking if any particles are still in motion." << std::endl;
+						if(no_particles_in_motion())
+							break;	// end sim after next output
+					}
+				}
+
+
+
+
+
+
+
+
+
+				// ************** FLUID SOLVING AND OUTPUTTING ***************//
+
+				if(!particle_deposition)
 				{
 
 
@@ -913,6 +1711,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 												(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
 
 							//input_flux_values[0] = 0.0;
+						
+							std::cout << "time_scaling = " << es->parameters.get<double>("time_scaling")  << std::endl;
+							std::cout << "flow_mag_1d = " << es->parameters.get<double>("flow_mag_1d")  << std::endl;
 							std::cout << "velocity_scale = " << es->parameters.get<double>("velocity_scale")  << std::endl;
 							std::cout << "length_scale = " << es->parameters.get<double>("length_scale")  << std::endl;
 							std::cout << "inflow = " << inflow  << std::endl;
@@ -1032,11 +1833,23 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 						output_sim_data(false);
 						std::cout << "yeah" << std::endl;
 
-						if (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
-										*es->parameters.get<Real>("write_interval") < dt - 1e-10)// (t_step)%write_interval == 0)
+						if (!unsteady || (time - ((int)((time + 1e-10) /es->parameters.get<Real>("write_interval")))
+										*es->parameters.get<Real>("write_interval") < dt - 1e-10) )// (t_step)%write_interval == 0)
 						{
-							if(sim_3d) {write_3d_solution();}
-							if(sim_1d) {write_1d_solution();}
+							if(sim_3d) 
+							{
+								write_3d_solution();
+
+								if(es->parameters.get<bool>("use_centreline_data") 
+										&& es->parameters.set<bool>("gmsh_diff_wall_bdy_id"))	
+								{
+									write_centrelines();
+								}
+							}
+							if(sim_1d) 
+							{
+								write_1d_solution();
+							}
 						}
 					std::cout << "yeah" << std::endl;
 					}
@@ -1045,8 +1858,17 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 					//exit(0);
 		
-				}
+				}// end fluid section
 
+
+
+
+
+
+
+				// ************** ADMIN AT END OF TIME STEP
+
+				std::cout << "time = " << time << std::endl;
 				std::cout << "kk" << std::endl;
 
 				perf_log_misc.push("end time step admin");
@@ -1067,10 +1889,30 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 			}// end timestep loop.
 
+
+
+
+
+			// ****** OUTPUT STUFF AT END OF FLUID SIM ************ //
+			std::cout << "AVERAGE LINEAR ITERATION COUNT = " << (double)total_linear_iterations / (double)total_nonlinear_iterations;
+			std::cout << "tot lin iterations = " << total_linear_iterations << std::endl;
+			std::cout << "tot nonlin iterations = " << total_nonlinear_iterations << std::endl;
+
+
+
+
+
+
+
+			// ****** CLOSE OUTPUT FILES ******** //
+
 			output_file.close();
 			eigenvalues_file.close();
 			if(particle_deposition)
+			{
 				particle_output_file.close();
+				global_deposition_metrics_file.close();
+			}
 
 			if(es->parameters.get<bool> ("output_linear_iteration_count"))
  				linear_iterations_output_file.close();
@@ -1078,6 +1920,9 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		} //end viscosity loop
 
 
+
+
+		// ********* CLEAN UP STUFF *********** //
 		// petsc clean up if we have actually done some simulation, i.e. time > 0
 		if(time > 1e-10 && es->parameters.get<unsigned int> ("particle_deposition") == 0)
 			petsc_clean_up();
@@ -1085,7 +1930,14 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		output_logging();
 
 
-		//now compare to exact solution if we want to
+
+
+
+
+
+
+
+		// ************* COMPARE EXACT SOLUTION (NOT TESTED FOR AGES) *************** //
 		if(es->parameters.get<unsigned int> ("problem_type") == 5)
 		{
 
@@ -1144,10 +1996,19 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 
 
-		}
+		}// end compare exact solution
 
-	}
-	else if (es->parameters.get<bool>("compare_results"))	//do the compare results stuff
+	}// end fluid sims and particle deposition that needs time steps
+
+
+
+
+
+
+
+
+	// *********************** COMPARE RESULTS OF TWO PREVIOUSLY RUN SIMS (NOT TESTED IN AGES) ************************** //
+	if (es->parameters.get<bool>("compare_results"))	//do the compare results stuff
 	{
 
 		/*
@@ -1372,8 +2233,18 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 		norm_file.close();
 
 		*/
-	}
-	else if (particle_deposition == 2)
+	}// end compare two previously run sims
+
+
+
+
+
+
+
+
+
+	// ****************************  HOFMANN PARTICLE DEPOSITION (INCORRECT FORMULATION) ********************** //
+	if (particle_deposition == 2)
 	{
 
 		HofmannParticleDeposition particle_deposition_object(*es,airway_data,num_generations[0],subdomains_1d);
@@ -1458,20 +2329,92 @@ NavierStokesCoupled::NavierStokesCoupled(LibMeshInit & init, std::string _input_
 
 		//output_file.close();
 
-	}
-	else
+	}// end hofmann particle deposition
+
+
+
+
+
+
+
+
+
+
+
+
+	// ************************** JAMES PARTICLE DEPOSITION STEADY ********************* //
+	if(particle_deposition == 3 ||  particle_deposition == 4)
 	{
-		std::cout << "error program type not specified correctly" << std::endl;
-		std::cout << "not compare results, or particle deposition 2 or none of the above (IMPOSSIBLE) .. exiting" << std::endl;
-		std::exit(0);
-		
-	}
+		std::cout << "oh and hey babe" << std::endl;
+
+		std::cout << "CALCULATING 0D STEADY PARTICLE DEPOSITION FOR Re = " <<
+			es->parameters.get<Real> ("reynolds_number") << std::endl;
 
 
-	
-	std::cout << "AVERAGE LINEAR ITERATION COUNT = " << (double)total_linear_iterations / (double)total_nonlinear_iterations;
-	std::cout << "tot lin iterations = " << total_linear_iterations << std::endl;
-	std::cout << "tot nonlin iterations = " << total_nonlinear_iterations << std::endl;
+		james_particle_deposition_object.calculate_airway_flow_rates_and_velocities();
+		//intialise the flow and associated airway deposition probability
+		// don't need the particle fraction here
+		james_particle_deposition_object.calculate_airway_deposition_probability();
+
+		std::cout << "oh and hey again babe" << std::endl;
+
+		// setup the coupling between 3D and 0D
+		if(particle_deposition == 4)
+		{
+			std::cout << "Calculating coupling terms for coupling 3D to 0D" << std::endl;
+			std::cout << "using " << total_fraction_exited_3d_surface.size() << " 3D exit fractions:" << std::endl;
+			for(unsigned int i=0; i<total_fraction_exited_3d_surface.size(); i++)
+				std::cout << " " << total_fraction_exited_3d_surface[i] << std::endl;
+
+
+			std::cout << "hello" << std::endl;
+			// okay now we need to figure out where they go..
+			// pass in the deposition fraction for the different airways
+			james_particle_deposition_object.calculate_total_deposition_fraction(total_fraction_exited_3d_surface,airway_elem_id_starts);
+
+		}
+		else
+		{
+			// need to pass in the deposition fraction for the different airways
+			james_particle_deposition_object.calculate_total_deposition_fraction();
+
+		}
+
+
+
+
+
+
+
+		std::cout << "you suck" << std::endl;
+
+		double total_deposition_fraction = james_particle_deposition_object.get_total_deposition_fraction();
+		double total_exit_fraction = james_particle_deposition_object.get_total_exit_fraction();
+
+		std::cout << "total_deposition_fraction = " << total_deposition_fraction << std::endl;
+		std::cout << "total_exit_fraction = " << total_exit_fraction << std::endl;
+		std::cout << "total (exit+deposition) = " << total_deposition_fraction + total_exit_fraction << std::endl;
+
+
+		// set time step to zero for output
+		t_step = 0;
+		time = 0;
+		update_times();
+
+
+		write_1d_solution();
+		std::cout << "fuck off" << std::endl;
+	}// end steady james particle deposition
+
+
+	// write out parameters at the end
+	print_parameters();
+
+
+
+
+
+
 
 	if(exit_program)
 		std::cout << "program aborted and exiting constructor" << std::endl;
@@ -1572,10 +2515,12 @@ int NavierStokesCoupled::read_parameters()
 	set_double_parameter(infile,"zeta_2",0.2096);
 	set_double_parameter(infile,"zeta_3",0.00904);
 	set_double_parameter(infile,"E",3.3);
+	/* DEPRECATED FOR num_generations_string
 	set_unsigned_int_parameter(infile,"num_generations_1",2);
 	set_unsigned_int_parameter(infile,"num_generations_2",5);
 	set_unsigned_int_parameter(infile,"num_generations_3",1);
 	set_unsigned_int_parameter(infile,"num_generations_4",1);
+	*/
 	// the petsc stuff
 	// different solver types. default(0), mumps_both(1), superlu_dist_both(2), mumps_1d_iter_3d(3), 
   std::string solver_options = set_string_parameter(infile,"solver_options","");
@@ -1806,6 +2751,8 @@ int NavierStokesCoupled::read_parameters()
 
 	set_unsigned_int_parameter(infile,"random_1d_generations",0);
 	set_string_parameter(infile,"num_generations_string","");
+	// this one is used for all
+	set_unsigned_int_parameter(infile,"num_generations",1);
 
 	// 0 is just use the whole matrix, 1 is multiple column solve in libmesh, 2 is multiple column solve in petsc
 	set_unsigned_int_parameter(infile,"multiple_column_solve",0);
@@ -1874,9 +2821,26 @@ int NavierStokesCoupled::read_parameters()
 
 	set_bool_parameter(infile,"output_system_matrix",false);
 
+	// put the characteristic length of the mesh in here (SI units)
+	// - i.e. diameter of inflow surface boundary in 3D
+	// - diameter of first element in 0D
+	set_double_parameter(infile,"characteristic_length",1.);
+
+	set_bool_parameter(infile,"unsteady_from_steady",false);
+
+	set_double_parameter(infile,"read_time_step_size",0.1);
+	set_bool_parameter(infile,"read_time_steps",false);
+	set_double_parameter(infile,"read_end_time",0.);
+
+
+	set_bool_parameter(infile,"gmsh_diff_wall_bdy_id",false);
+	set_bool_parameter(infile,"bifurcation_start_1d",false);
+
+	set_double_parameter(infile,"generation_ratio_1d",0.8);
+
+
 
   restart_folder << set_string_parameter(infile,"restart_folder",output_folder.str());
-
 
 
 	// ******************** now set some derived variables ******************** //
@@ -1889,7 +2853,8 @@ int NavierStokesCoupled::read_parameters()
 		sim_1d = true;
 
 	// set the restart parameter
-	if(restart_time_step > 0)
+	// if we are doing unsteady from steady, that means restart
+	if(restart_time_step > 0 || es->parameters.get<bool> ("unsteady_from_steady"))
 		restart = true;
 
 	t_step = restart_time_step;
@@ -2547,31 +3512,6 @@ int NavierStokesCoupled::read_parameters()
 
 
 
-	// **************** SET REYNOLDS NUMBER FOR NUMERICAL CONTINUATION ************** //
-	if(unsteady || !es->parameters.get<bool> ("viscosity_controlled"))
-	{
-		re_vec.push_back(reynolds_number);
-	}
-	else
-	{
-		
-		double current_re = 1.0;
-		current_re = es->parameters.get<double> ("numerical_continuation_starting_reynolds_number");
-		std::cout << "Ramping up Reynolds number as:" << std::endl;
-		std::cout << "\t";
-		while(current_re < reynolds_number)
-		{
-			std::cout << current_re << ", ";
-			re_vec.push_back(current_re);
-			current_re = current_re*es->parameters.get<double> ("numerical_continuation_scaling_factor");
-		}
-		re_vec.push_back(reynolds_number);
-		std::cout  << reynolds_number << std::endl;
-	
-	  es->parameters.set<unsigned int> ("num_continuation_iteration")   = 0;
-	}
-
-  es->parameters.set<Real> ("reynolds_number")   = re_vec[0];
 
 
 
@@ -2736,6 +3676,15 @@ int NavierStokesCoupled::read_parameters()
 	}
 
 
+	// *************** NO POINT DOING TWOD TO THREED IF DOING 3D ****************	//
+	if(threed && es->parameters.get<bool> ("twod_oned_tree"))
+	{
+		std::cout << "no need to do twodoned if running a 3D simulation." << std::endl;
+		std::cout << "changing to false" << std::endl;
+		es->parameters.set<bool> ("twod_oned_tree") = false;
+		std::cout << "twod_oned_tree = " << es->parameters.get<bool> ("twod_oned_tree") << std::endl;
+	}	
+
 	// ************** SETUP MESH REFINEMENT SETTINGS ******************* //
 
 	if(es->parameters.get<unsigned int> ("output_no_refinement") > es->parameters.get<unsigned int> ("no_refinement") )
@@ -2754,7 +3703,15 @@ int NavierStokesCoupled::read_parameters()
 	mesh_refinement.nelem_target() = es->parameters.get<unsigned int>("nelem_target");
 	mesh_refinement.coarsen_by_parents() = true;
 	mesh_refinement.face_level_mismatch_limit() = es->parameters.get<unsigned int>("face_level_mismatch_limit");		//without this can really get stuck...
-																											//but perhaps with a larger mesh this is not the case
+
+  mesh_refinement_3d.refine_fraction() = es->parameters.get<double>("refine_fraction");
+  mesh_refinement_3d.coarsen_fraction() = es->parameters.get<double>("coarsen_fraction");
+  mesh_refinement_3d.coarsen_threshold() = es->parameters.get<double>("coarsen_threshold");
+  mesh_refinement_3d.max_h_level() = es->parameters.get<unsigned int>("max_h_level");
+	mesh_refinement_3d.nelem_target() = es->parameters.get<unsigned int>("nelem_target");
+	mesh_refinement_3d.coarsen_by_parents() = true;
+	mesh_refinement_3d.face_level_mismatch_limit() = es->parameters.get<unsigned int>("face_level_mismatch_limit");		//without this can really get stuck...
+	//but perhaps with a larger mesh this is not the case
 	es->parameters.set<bool>("mesh_refined") = false;
 
 	/*
@@ -2916,76 +3873,6 @@ void NavierStokesCoupled::set_auto_fieldsplit_parameters()
 	std::cout << "group name of --solver_group_ns3d1d_0_p = " << group_name << std::endl;
 }
 
-// read in parameters from file and give them to the parameters object.
-void NavierStokesCoupled::read_particle_parameters()
-{
-	std::cout << "Reading particle parameters." << std::endl;
-	if(particle_deposition == 1)
-		restart = true;		// 3D particle deposition is basically a restart
-
-	set_double_parameter(infileparticle,"particle_deposition_start_time",0.0);
-	t_step = set_unsigned_int_parameter(infileparticle,"particle_deposition_start_time_step",0);
-	es->parameters.set<unsigned int> ("t_step")   = t_step;
-
-	set_bool_parameter(infileparticle,"unsteady_from_steady",false);
-	if(es->parameters.get<bool> ("unsteady_from_steady"))
-	{
-		es->parameters.set<double>("dt") = set_double_parameter(infileparticle,"particle_dt",0.1);
-		dt = es->parameters.set<double>("dt");
-		es->parameters.set<double>("end_time") = set_double_parameter(infileparticle,"particle_end_time",1.0);
-	}
-
-
-	set_unsigned_int_parameter(infileparticle,"particle_deposition_type",1);
-	set_unsigned_int_parameter(infileparticle,"particle_deposition_location",0);
-	set_double_parameter(infileparticle,"particle_deposition_rate",10);
-	set_unsigned_int_parameter(infileparticle,"particle_deposition_surface",0);
-	set_double_parameter(infileparticle,"distance_deposited_inside",1.0);
-	set_unsigned_int_parameter(infileparticle,"deposition_pattern",0);
-	set_double_parameter(infileparticle,"brownian_motion_magnitude",0.);
-	set_unsigned_int_parameter(infileparticle,"deposit_within_radius",0.);
-
-	//some parameters
-	set_double_parameter(infileparticle,"particle_diameter",10.e-6);
-	set_double_parameter(infileparticle,"particle_density",1200.);
-	set_double_parameter(infileparticle,"particle_air_density",1.2);
-	set_double_parameter(infileparticle,"particle_air_viscosity",2.04e-5);
-	set_double_parameter(infileparticle,"mean_free_path",68.e-9);
-	set_double_parameter(infileparticle,"gravity",9.81);
-
-	set_bool_parameter(infileparticle,"particle_sedimentation",false);
-	set_bool_parameter(infileparticle,"particle_impaction",false);
-	set_bool_parameter(infileparticle,"particle_drag",false);
-
-	set_unsigned_int_parameter(infileparticle,"gravity_type",0);
-
-	set_double_parameter(infileparticle,"particle_velocity_units",1.);
-	set_double_parameter(infileparticle,"initial_particle_velocity_scaling",0.99);
-
-	set_double_parameter(infileparticle,"gravity_x",0.);
-	set_double_parameter(infileparticle,"gravity_y",0.);
-	set_double_parameter(infileparticle,"gravity_z",1.);
-
-	set_bool_parameter(infileparticle,"deposition_verbose",false);
-
-
-}
-
-
-
-// output parameters to screen and to file.
-void NavierStokesCoupled::output_particle_parameters()
-{
-
-	// **************** COPY THE INPUT FILE TO TH OUTPUT FOLDER **************** //
-	if(!es->parameters.get<bool>("compare_results"))
-	{
-		std::ifstream  input_file_particle_src(input_file_particle.c_str(), std::ios::binary);
-		std::ofstream  input_file_particle_dst(std::string(es->parameters.get<std::string>("output_folder") + "particle.in").c_str(),   std::ios::binary);
-		input_file_particle_dst << input_file_particle_src.rdbuf();
-	}
-
-}
 
 
 // want functions to set values in parameters by reading from input file or overwritten by command line
@@ -3052,7 +3939,8 @@ std::string NavierStokesCoupled::set_string_command_line_parameter(std::string n
 
 
 // read in timestep sizes from the out.dat file
-void NavierStokesCoupled::read_timesteps()
+// we are assuming that
+void NavierStokesCoupled::setup_read_timesteps()
 {
 	if(es->parameters.get<bool>("unsteady_from_steady"))
 	{
@@ -3060,11 +3948,11 @@ void NavierStokesCoupled::read_timesteps()
 		es->parameters.set<unsigned int> ("t_step")   = t_step;
 
 	}
-	else
+	else if(es->parameters.get<bool>("read_time_steps"))
 	{
 
-		std::ifstream timestep_file((es->parameters.get<std::string>("output_folder") + "out.dat").c_str());
-		std::cout << "input file = " << (es->parameters.get<std::string>("output_folder") + "out.dat").c_str() << std::endl;
+		std::ifstream timestep_file((es->parameters.get<std::string>("restart_folder") + "out.dat").c_str());
+		std::cout << "input file = " << (es->parameters.get<std::string>("restart_folder") + "out.dat").c_str() << std::endl;
 		std::string line;
 		double begin_timestep_time = 0.;
 		double end_timestep_time = 0;
@@ -3092,10 +3980,39 @@ void NavierStokesCoupled::read_timesteps()
 		t_step = timestep_sizes[0];
 		es->parameters.set<unsigned int> ("t_step")   = t_step;
 
+		/*
+		std::cout << "CHECK TIMESTEP SIZES VECTOR" << std::endl;
+		for(unsigned int i=0; i< timestep_sizes.size(); i++)
+			std::cout << "i = " << i << " : " << timestep_sizes[i] << std::endl;
+		*/
+	}
+	else	// just make our own timestep vector based on a given timestep
+	{
+		double read_dt = es->parameters.get<double> ("read_time_step_size");
+		unsigned int num_read_time_steps = (unsigned int)(es->parameters.get<double> ("read_end_time")/read_dt) + 1;
+		timestep_sizes.resize(num_read_time_steps,read_dt);
 
 		std::cout << "CHECK TIMESTEP SIZES VECTOR" << std::endl;
 		for(unsigned int i=0; i< timestep_sizes.size(); i++)
 			std::cout << "i = " << i << " : " << timestep_sizes[i] << std::endl;
+	}
+
+
+	// make sure the particle dt is smaller than the fluid time step
+	if(!es->parameters.get<bool>("unsteady_from_steady"))
+	{
+		for(unsigned int i=0; i<timestep_sizes.size(); i++)
+		{
+			if(timestep_sizes[i] < dt - 1e-10)
+			{
+				std::cout << "particle time step size is larger than fluid time step." << std::endl;
+				std::cout << "particle_dt = " << dt << std::endl;
+				std::cout << "fluid_dt = " << timestep_sizes[i] << std::endl;
+				std::cout << "EXITING..." << std::endl;
+				std::exit(0);
+			}
+				
+		}
 	}
 
 
@@ -3295,6 +4212,7 @@ void NavierStokesCoupled::update_times()
 		system_coupled->time = time;
 
 	es->parameters.set<double> ("dt") = dt;
+	es->parameters.set<double> ("time") = time;
 	es->parameters.set<double> ("previous_dt") = previous_dt;
 	es->parameters.set<unsigned int> ("t_step") = t_step;
 
@@ -3398,35 +4316,21 @@ void NavierStokesCoupled::end_timestep_admin()
 		}
 		else
 		{
-			// update the timestep
-			dt = timestep_sizes[t_step];		//get the next time step, time should be updated itself...
-			update_times();
+			// the reading of solutions is done at the beginning of a time step
 
-			// get the velocity for next timestep
-			std::ostringstream file_name;
-			std::ostringstream file_name_es;
-
-			file_name << output_folder.str() << "out_3D";
-			// We write the file in the ExodusII format.
-			file_name_es << file_name.str() << "_es_" << std::setw(4) 
-				<< std::setfill('0') << t_step << ".xda";
-			es->read(file_name_es.str(), libMeshEnums::READ);
-
+			// move the last time step back
 			if(sim_3d && sim_type != 5)
 			{
+				*old_global_solution = *system_3d->solution;
 				system_3d->update();	
+				*system_3d->old_local_solution = *system_3d->current_local_solution;
 			}
 
 			if(sim_1d && sim_type != 5)
 			{
+				*system_1d->old_local_solution = *system_1d->current_local_solution;
 				system_1d->update();	
 			}
-
-			if(sim_type == 5)
-			{
-				system_coupled->update();	
-			}
-
 		}
 
 
@@ -3723,168 +4627,6 @@ void NavierStokesCoupled::output_linear_iteration_count(bool header)
 }
 
 
-// write the particle data for the timestep (old)
-void NavierStokesCoupled::output_particle_data_old(bool header)
-{
-
-	std::cout << "yeah" << std::endl;
-	if(header)
-	{
-		// write geometry variables later when reading meta data file
-		// write boundary conditions later with Picard class
-		particle_output_file << "# Particle results" << std::endl;
-		particle_output_file << "# timestep\tcurrent_time";
-
-		for(unsigned int i=0; i < particles_3D.size(); i++)
-		{
-			particle_output_file <<	"\tp" << i << "_pos_x";
-			particle_output_file <<	"\tp" << i << "_pos_y";
-			if(threed)
-				particle_output_file <<	"\tp" << i << "_pos_z";
-			particle_output_file <<	"\tp" << i << "_exit_surface";
-			particle_output_file <<	"\tp" << i << "_exit_time";
-			particle_output_file <<	"\tp" << i << "_entrance_time";
-			particle_output_file <<	"\tp" << i << "_pid";
-
-		}
-	
-		particle_output_file << std::endl;
-	}
-	else
-	{
-		particle_output_file << t_step << "\t" << time;
-
-		for(unsigned int i=0; i < particles_3D.size(); i++)
-		{
-			Point particle_position = particles_3D[i].get_position();
-			particle_output_file <<	"\t" << particle_position(0);
-			particle_output_file <<	"\t" << particle_position(1);
-			if(threed)
-				particle_output_file <<	"\t" << particle_position(2);
-			particle_output_file <<	"\t" << particles_3D[i].get_exit_surface();
-			particle_output_file <<	"\t" << particles_3D[i].get_exit_time();
-			particle_output_file <<	"\t" << particles_3D[i].get_entrance_time();
-			particle_output_file <<	"\t" << particles_3D[i].get_particle_id();
-		}
-
-		particle_output_file << std::endl;
-	}
-}
-
-
-// write the particle data for the timestep
-void NavierStokesCoupled::output_particle_data()
-{
-
-
-	//particle deposition file
-	std::ostringstream particle_output_data_file_name;
-
-	particle_output_data_file_name << output_folder.str() << "particles";
-	particle_output_data_file_name << std::setw(4) << std::setfill('0') << t_step;
-	particle_output_data_file_name << ".dat";
-	//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
-	particle_output_file.open(particle_output_data_file_name.str().c_str());
-
-
-
-
-	// write geometry variables later when reading meta data file
-	// write boundary conditions later with Picard class
-	particle_output_file << "# Particle results" << std::endl;
-	particle_output_file << "# pid\ttimestep\tcurrent_time\tx\ty\t";
-	if(threed)
-		particle_output_file << "z\t";
-	particle_output_file << "exit_surface\texit_time\tentrance_time\n";
-
-
-	for(unsigned int i=0; i < particles_3D.size(); i++)
-	{
-		unsigned int pid = particles_3D[i].get_particle_id();
-		Point particle_position = particles_3D[i].get_position();
-		double x = particle_position(0);
-		double y = particle_position(1);
-		double z = 0.;
-		if(threed)
-			z = particle_position(2);
-		int exit_surface = particles_3D[i].get_exit_surface();
-		double exit_time = particles_3D[i].get_exit_time();
-		double entrance_time = particles_3D[i].get_entrance_time();
-
-		
-		particle_output_file << pid << "\t";
-		particle_output_file << t_step << "\t";
-		particle_output_file << time << "\t";
-		particle_output_file << x << "\t";
-		particle_output_file << y << "\t";
-		if(threed)
-			particle_output_file << z << "\t";
-		particle_output_file << exit_surface << "\t";
-		particle_output_file << exit_time << "\t";
-		particle_output_file << entrance_time << "\n";
-	}
-
-	particle_output_file.close();
-}
-
-
-// print some particle data for the timestep
-void NavierStokesCoupled::print_particle_data()
-{
-
-	unsigned int num_valid_particles = 0;
-	unsigned int num_particles_on_wall = 0;
-	unsigned int num_particles_exited = 0;
-	unsigned int num_lost_particles = 0;
-	unsigned int num_particles_in_motion = 0;
-	unsigned int num_particles_close_to_wall = 0;
-
-	for(unsigned int i=0; i < particles_3D.size(); i++)
-	{
-		int exit_surface = particles_3D[i].get_exit_surface();
-		double exit_time = particles_3D[i].get_exit_time();
-		bool close_to_wall = particles_3D[i].was_deposited_close_to_wall();
-
-		if(exit_time > 0.)
-		{
-			if(exit_surface == -1)
-			{
-				num_particles_on_wall++;
-				num_valid_particles++;
-			}
-			else if(exit_surface == -2)
-			{
-				// none
-				num_lost_particles++;
-			}
-			else
-			{
-				num_particles_exited++;
-				num_valid_particles++;
-			}
-
-			if(close_to_wall)
-			{
-				num_particles_close_to_wall++;
-			}
-		}
-		else
-		{
-			num_particles_in_motion++;
-		}
-		
-	}
-
-	std::cout << "num_valid_particles = " << num_valid_particles << std::endl;
-	std::cout << "num_particles_on_wall = " << num_particles_on_wall << std::endl;
-	std::cout << "num_particles_exited = " << num_particles_exited << std::endl;
-	std::cout << "num_lost_particles = " << num_lost_particles << std::endl;
-	std::cout << "num_particles_in_motion = " << num_particles_in_motion << std::endl;
-	std::cout << "num_particles_close_to_wall = " << num_particles_close_to_wall << std::endl;
-	std::cout << "deposition_fraction = " << (double)num_particles_on_wall/(double)num_valid_particles << std::endl;
-}
-
-
 
 void NavierStokesCoupled::output_logging()
 {
@@ -3998,10 +4740,24 @@ void NavierStokesCoupled::init_dof_variable_vectors()
 		init_dof_variable_vector(system_1d, dof_variable_type_1d);
 
 	if(sim_type == 5)
+	{
 		init_dof_variable_vector(system_coupled, dof_variable_type_coupled);
+
+	}
+
+
+	// dof variable vectors for output and reading output
+	if(sim_3d)
+		init_dof_variable_vector(system_3d_output, dof_variable_type_3d);
+
+	if(sim_1d)
+		init_dof_variable_vector(system_1d_output, dof_variable_type_1d);
+		
+
+	std::cout << "done" << std::endl;
 }
 
-void NavierStokesCoupled::init_dof_variable_vector(TransientLinearImplicitSystem * system, std::vector<int>& _dof_variable_type)
+void NavierStokesCoupled::init_dof_variable_vector(System * system, std::vector<int>& _dof_variable_type)
 {
 
 	std::cout << "initing dof variable vector" << std::endl;	
@@ -4016,8 +4772,8 @@ void NavierStokesCoupled::init_dof_variable_vector(TransientLinearImplicitSystem
 
 	for (int var=0; var<nv_sys; var++)
 	{
-		MeshBase::element_iterator       it       = mesh.active_elements_begin();
-		const MeshBase::element_iterator end_elem = mesh.active_elements_end();
+		MeshBase::element_iterator       it       = system->get_mesh().active_elements_begin();
+		const MeshBase::element_iterator end_elem = system->get_mesh().active_elements_end();
 		for ( ; it != end_elem; ++it)
 		{
 			const Elem* elem = *it;
@@ -4107,408 +4863,6 @@ void NavierStokesCoupled::setup_results_vector(std::string results_folder,
 }
 
 */
-
-void NavierStokesCoupled::init_particles()
-{
-	// let us set gravity here
-	if(es->parameters.get<unsigned int>("gravity_type") == 2)
-	{
-		SurfaceBoundary* deposition_boundary = surface_boundaries[es->parameters.get<unsigned int>("particle_deposition_surface")];
-		Point normal = deposition_boundary->get_normal();
-
-		if(threed)
-		{
-			es->parameters.set<double>("gravity_x") = -normal(0);
-			es->parameters.set<double>("gravity_y") = -normal(1);
-			es->parameters.set<double>("gravity_z") = -normal(2);
-		}
-		else
-		{
-			es->parameters.set<double>("gravity_x") = -normal(0);
-			es->parameters.set<double>("gravity_y") = -normal(1);
-		}
-
-	}
-
-	//check the particle is indeed in the mesh
-	const PointLocatorBase & pl = mesh.point_locator();
-
-	// figure out number of particles to deposit
-	// particle_deposition_type 
-	// 0 - all at once
-	// 1 - at a rate
-	unsigned int num_new_particles = 0;
-	if(es->parameters.get<unsigned int>("particle_deposition_type") == 0) 
-		num_new_particles = (unsigned int) es->parameters.get<double>("particle_deposition_rate");
-	else if(es->parameters.get<unsigned int>("particle_deposition_type") == 1)
-		num_new_particles = (unsigned int) es->parameters.get<double>("particle_deposition_rate") * dt;
-	
-
-
-	if(es->parameters.get<unsigned int>("particle_deposition_location") == 0)
-	{
-		if(!threed)
-		{
-			Point new_point(0.8,0.7,0.);
-
-			const Elem * element_found = pl(new_point);
-			if(element_found == NULL)
-			{
-				std::cout << "particle not in mesh EXITING" << std::endl;
-				std::exit(0);
-			}
-
-			Particle new_particle(*es,new_point,element_found,particles_3D.size());
-			particles_3D.push_back(new_particle);
-
-			Point new_point_2(0.9,0.5,0.);
-	
-			const Elem * element_found_2 = pl(new_point_2);
-			if(element_found_2 == NULL)
-			{
-				std::cout << "particle not in mesh EXITING" << std::endl;
-				std::exit(0);
-			}
-
-			Particle new_particle_2(*es,new_point_2,element_found_2,particles_3D.size());
-			particles_3D.push_back(new_particle_2);
-		}
-		else
-		{
-
-			Point new_point(0.2,0.1,0.5);
-
-			const Elem * element_found = pl(new_point);
-			if(element_found == NULL)
-			{
-				std::cout << "particle not in mesh EXITING" << std::endl;
-				std::exit(0);
-			}
-			Particle new_particle(*es,new_point,element_found,particles_3D.size());
-			particles_3D.push_back(new_particle);
-
-			Point new_point_2(-0.3,0.2,0.5);
-
-			const Elem * element_found_2 = pl(new_point_2);
-			if(element_found_2 == NULL)
-			{
-				std::cout << "particle not in mesh EXITING" << std::endl;
-				std::exit(0);
-			}
-
-			Particle new_particle_2(*es,new_point_2,element_found_2,particles_3D.size());
-			particles_3D.push_back(new_particle_2);
-		}
-	}
-	else if(es->parameters.get<unsigned int>("particle_deposition_location") == 1)
-	{
-
-		SurfaceBoundary* deposition_boundary = surface_boundaries[es->parameters.get<unsigned int>("particle_deposition_surface")];
-		double max_radius = deposition_boundary->get_max_radius();
-		Point normal = deposition_boundary->get_normal();
-		Point centroid = deposition_boundary->get_centroid();
-		double distance_deposited_inside = es->parameters.get<double>("distance_deposited_inside");
-
-		std::cout << "centroid = " << centroid << std::endl;
-		std::cout << "normal = " << normal << std::endl;
-		std::cout << "max_radius = " << max_radius << std::endl;
-
-		max_radius *= 1.0;
-
-
-		std::cout << "depositing " << num_new_particles << " particles." << std::endl;
-		
-		if(threed)
-		{
-
-			//from normal get two orthogonal vectors
-			Point vector_1(0.,0.,0.);
-			Point vector_2(0.,0.,0.);
-			if(fabs(normal(2)) > 1e-10)
-			{
-				vector_1(0) = 0.;
-				vector_1(1) = 1.;
-				vector_1(2) = -normal(1)/normal(2);
-			}
-			else if(fabs(normal(1)) > 1e-10)
-			{
-				vector_1(0) = 0.;
-				vector_1(1) = -normal(2)/normal(1);
-				vector_1(2) = 1.;
-			}
-			else if(fabs(normal(0)) > 1e-10)
-			{
-				vector_1(0) = -normal(1)/normal(0);
-				vector_1(1) = 1.;
-				vector_1(2) = 0.;
-			}
-			else
-			{
-				std::cout << "wth, fuck you" << std::endl;
-				std::exit(0);
-			}
-
-			vector_1 = vector_1.unit();
-			vector_2 = vector_1.cross(normal);
-		
-			std::cout << "vector_1 = " << vector_1 << std::endl;
-			std::cout << "vector_2 = " << vector_2 << std::endl;
-
-			unsigned int num_failed_particles = 0;
-
-			for(unsigned int i=0; i<num_new_particles; i++)
-			{
-				bool particle_deposited = false;
-				while(!particle_deposited)
-				{
-					Point new_point;				
-
-					// square deposition pattern
-					if(es->parameters.get<unsigned int>("deposition_pattern") == 0)
-					{
-						// random number between -1 and 1 multiplied by the radius to get -r to r
-						double x = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
-						double y = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
-
-						//make parabolic distribution? i.e. more at the centre?
-						x *= x;
-						y *= y;
-
-						// make negative maybe
-						if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
-							x *= -1;
-
-						if(static_cast<double>(rand())/static_cast<double>(RAND_MAX) > 0.5)
-							y *= -1;					
-
-						new_point = centroid + x*vector_1 + y*vector_2;
-
-
-					}
-					// uniform circular pattern
-					else if(es->parameters.get<unsigned int>("deposition_pattern") == 1)
-					{
-						// according to wolfram, needs to be distributed as sqrt(r)cos(theta) to be uniform
-						double theta = (static_cast<double>(rand())/static_cast<double>(RAND_MAX)) * 2 * M_PI;
-						double radius_scale = (static_cast<double>(rand())/static_cast<double>(RAND_MAX));
-
-						// figure out what the radius is
-						double radius_at_angle = deposition_boundary->get_radius_from_angle(theta);
-						double x = sqrt(radius_scale) * radius_at_angle * cos(theta);
-						double y = sqrt(radius_scale) * radius_at_angle * sin(theta);
-
-						new_point = centroid + x*vector_1 + y*vector_2;
-					}
-
-					std::cout << "new_point = " << new_point << std::endl;
-					//distance_deposited_inside = 1.e-3;
-
-					if(deposition_boundary->is_on_surface(new_point))
-					{
-
-						const Elem * element_found = pl(new_point - distance_deposited_inside*normal);
-						if(element_found != NULL)
-						{
-							new_point = new_point - distance_deposited_inside*normal;
-							//normal is outward facing and want to deposit the particle a little bit inside
-							std::cout << "hmmmm " << new_point << std::endl;
-							Particle new_particle(*es,new_point,element_found,particles_3D.size());
-							particles_3D.push_back(new_particle);
-							std::cout << "particle deposited at " << new_point << std::endl;
-							particle_deposited = true;
-						}
-						else
-						{
-							std::cout << "particle should have been found but wasn't" << std::endl;
-							num_failed_particles++;
-						}
-					}
-					else
-					{
-						std::cout << "particle is not on surface." << std::endl;
-						num_failed_particles++;
-					}
-				}
-			}
-			std::cout << "num_failed_particles = " << num_failed_particles << std::endl;
-				
-		}
-		else
-		{
-
-			//from normal get orthogonal vector
-			Point vector_1(normal(1),-normal(0),0.);
-
-			for(unsigned int i=0; i<num_new_particles; i++)
-			{
-				bool particle_deposited = false;
-				while(!particle_deposited)
-				{
-					// random number between -1 and 1 multiplied by the radius to get -r to r
-					double x = (2 * static_cast<double>(rand())/static_cast<double>(RAND_MAX) - 1) * max_radius;
-					Point new_point = centroid + x*vector_1;
-					if(deposition_boundary->is_on_surface(new_point))
-					{
-	
-						const Elem * element_found = pl(new_point - distance_deposited_inside*normal);
-						if(element_found != NULL)
-						{
-							new_point = new_point - distance_deposited_inside*normal;
-							//normal is outward facing and want to deposit the particle a little bit inside
-							Particle new_particle(*es,new_point,element_found,particles_3D.size());
-							particles_3D.push_back(new_particle);
-							std::cout << "particle deposited at " << new_point << std::endl;
-							particle_deposited = true;
-						}
-						else
-							std::cout << "particle should have been found but wasn't..." << std::endl;
-					}
-				}
-			}
-				
-		}
-
-		
-		std::cout << num_new_particles << " particles deposited." << std::endl;
-
-	}
-	
-
-}
-
-void NavierStokesCoupled::move_particles()
-{
-
-	// it's as easy as this
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particles_3D[i].try_and_move();
-	}
-
-}
-
-
-// write particle data file for this time step
-void NavierStokesCoupled::write_particles()
-{
-
-	// output the parameters used to file and the header of the out.dat file
-	std::ostringstream particle_data_file_name;
-	std::ofstream particle_vtk_output_file;
-
-	particle_data_file_name << output_folder.str() << "particles";
-
-	particle_data_file_name << std::setw(4) << std::setfill('0') << t_step;
-	particle_data_file_name << ".vtk" ;
-	//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
-	particle_vtk_output_file.open(particle_data_file_name.str().c_str());
-
-	particle_vtk_output_file << "# vtk DataFile Version 2.0" << std::endl;
-	particle_vtk_output_file << "Particle file for paraview" << std::endl;
-	particle_vtk_output_file << "ASCII" << std::endl;
-	particle_vtk_output_file << "DATASET UNSTRUCTURED_GRID" << std::endl << std::endl;
-	particle_vtk_output_file << "POINTS " << particles_3D.size() << " float" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		Point particle_position = particles_3D[i].get_position();
-		particle_vtk_output_file << particle_position(0) << " ";
-		particle_vtk_output_file << particle_position(1) << " ";
-		if(threed)
-			particle_vtk_output_file << particle_position(2) << std::endl;
-		else
-			particle_vtk_output_file << 0 << std::endl;
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << "CELL_TYPES " << particles_3D.size() << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << 1 << std::endl;
-	}
-
-	particle_vtk_output_file << std::endl;
-
-	particle_vtk_output_file << "POINT_DATA " << particles_3D.size() << std::endl;
-	particle_vtk_output_file << "SCALARS status float 1" << std::endl;
-	particle_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << particles_3D[i].get_status() << " ";
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << std::endl;
-
-	particle_vtk_output_file << "SCALARS exit_surface float 1" << std::endl;
-	particle_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << particles_3D[i].get_exit_surface() << " ";
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << std::endl;
-
-	particle_vtk_output_file << "SCALARS exit_time float 1" << std::endl;
-	particle_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << particles_3D[i].get_exit_time() << " ";
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << std::endl;
-
-	particle_vtk_output_file << "SCALARS entrance_time float 1" << std::endl;
-	particle_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << particles_3D[i].get_entrance_time() << " ";
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << std::endl;
-
-
-
-	particle_vtk_output_file << "SCALARS particle_id float 1" << std::endl;
-	particle_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
-
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		particle_vtk_output_file << particles_3D[i].get_particle_id() << " ";
-	}
-
-	particle_vtk_output_file << std::endl;
-	particle_vtk_output_file << std::endl;
-
-
-	particle_vtk_output_file << "VECTORS velocity float" << std::endl;
-	for(unsigned int i=0; i<particles_3D.size(); i++)
-	{
-		NumberVectorValue particle_velocity = particles_3D[i].get_current_velocity();
-		particle_vtk_output_file << particle_velocity(0) << " ";
-		particle_vtk_output_file << particle_velocity(1) << " ";
-		if(threed)
-			particle_vtk_output_file << particle_velocity(2) << " ";
-		else
-			particle_vtk_output_file << 0 << "  ";
-	}
-
-
-	particle_vtk_output_file.close();
-
-
-
-		
-
-}
 
 
 // here we setup the variable scalings that we want to use. 
@@ -4603,13 +4957,36 @@ void NavierStokesCoupled::setup_variable_scalings_1D()
 
 	}
 
-	var_scalings_1D.resize(5);
+	var_scalings_1D.resize(6);
 	var_scalings_1D[0] = mean_pressure_scale;	// P
 	var_scalings_1D[1] = flow_scale;	// Q
 	var_scalings_1D[2] = 1.0;	// radius
-	var_scalings_1D[3] = 1.0;	// poiseuille
-	var_scalings_1D[4] = 1.0;	// proc_id
+	var_scalings_1D[3] = 1.0;	// radius vis
+	var_scalings_1D[4] = 1.0;	// poiseuille
+	var_scalings_1D[5] = 1.0;	// proc_id
 
+	if(particle_deposition == 3 ||  particle_deposition == 4 || particle_deposition == 5 ||  particle_deposition == 6)
+	{
+		var_scalings_1D.resize(14);
+		var_scalings_1D[6] = 1.0;	// p_airway
+		var_scalings_1D[7] = 1.0;	// p_total
+		var_scalings_1D[8] = 1.0;	// p_airway_sed
+		var_scalings_1D[9] = 1.0;	// p_total_sed
+		var_scalings_1D[10] = 1.0;	// p_airway_imp
+		var_scalings_1D[11] = 1.0;	// p_total_imp
+		var_scalings_1D[12] = 1.0;	// vel
+		var_scalings_1D[13] = 1.0;	// vel_2d
+	}
+
+
+	if(particle_deposition == 5 ||  particle_deposition == 6)
+	{
+		var_scalings_1D.resize(18);
+		var_scalings_1D[14] = 1.0;	// particle_fraction
+		var_scalings_1D[15] = 1.0;	// terminal_exit_fraction
+		var_scalings_1D[16] = 1.0;	// Q_1
+		var_scalings_1D[17] = 1.0;	// Q_2
+	}
 
 }
 
@@ -4641,4 +5018,590 @@ void NavierStokesCoupled::petsc_clean_up()
 }
 
 
+void NavierStokesCoupled::set_reynolds_number()
+{
+
+	if(!es->parameters.get<bool>("reynolds_number_calculation"))
+	{
+
+		std::cout << "setting Reynolds number" << std::endl;
+		double characteristic_velocity = 0.;
+		double diameter = es->parameters.get<double> ("characteristic_length");
+		double radius = 0.5*diameter;
+		double area = M_PI*pow(radius,2.0);
+
+		// for 2D simulations A = D
+		if(!threed)
+			area = diameter;
+
+
+		if(sim_type == 1)
+		{
+			// starting at 0D simulation
+			// Re = rho*Q*D/(mu*A)
+
+			// assume 3D
+			characteristic_velocity = 8./M_PI/pow(diameter,2.0)*es->parameters.get<double> ("flow_mag_1d");
+				
+		}
+		else
+		{
+
+			// need the velocity magnitude
+			if(es->parameters.get<bool> ("prescribed_flow"))
+			{
+				//if 2D then flow rate = 2/3*V_max*D and not kinda assuming 2D flow
+				if(!threed && !es->parameters.get<bool> ("twod_oned_tree"))
+					characteristic_velocity = 3./2./diameter*es->parameters.get<double> ("flow_mag_3d");
+				else
+					characteristic_velocity = 8./M_PI/pow(diameter,2.0)*es->parameters.get<double> ("flow_mag_3d");
+					
+			}
+			else
+			{		
+				characteristic_velocity = es->parameters.get<double> ("velocity_mag_3d");
+			}
+
+		}
+
+
+		std::cout << "density = " << es->parameters.get<double> ("density") << std::endl;
+		std::cout << "viscosity = " << es->parameters.get<double> ("viscosity") << std::endl;
+		std::cout << "characteristic_velocity = " << characteristic_velocity << std::endl;
+		std::cout << "diameter = " << diameter << std::endl;
+		std::cout << "area = " << area << std::endl;
+
+
+		es->parameters.set<double>("reynolds_number") = 
+				es->parameters.get<double> ("density") * characteristic_velocity * diameter
+				/ es->parameters.set<double> ("viscosity");
+
+
+		// setup vector for reynolds numbers/viscosity if necessary
+
+		// **************** SET REYNOLDS NUMBER FOR NUMERICAL CONTINUATION ************** //
+		if(unsteady || !es->parameters.get<bool> ("viscosity_controlled"))
+		{
+			re_vec.push_back(es->parameters.get<double>("reynolds_number"));
+		}
+		else
+		{
+		
+			double current_re = 1.0;
+			current_re = es->parameters.get<double> ("numerical_continuation_starting_reynolds_number");
+			std::cout << "Ramping up Reynolds number as:" << std::endl;
+			std::cout << "\t";
+			while(current_re < es->parameters.get<double>("reynolds_number"))
+			{
+				std::cout << current_re << ", ";
+				re_vec.push_back(current_re);
+				current_re = current_re*es->parameters.get<double> ("numerical_continuation_scaling_factor");
+			}
+			re_vec.push_back(es->parameters.get<double>("reynolds_number"));
+	
+			es->parameters.set<unsigned int> ("num_continuation_iteration")   = 0;
+		}
+
+		es->parameters.set<Real> ("reynolds_number")   = re_vec[0];
+
+
+		std::cout << "Reynolds number = " << es->parameters.get<double>("reynolds_number") << std::endl;
+	}
+	else	//
+	{
+		re_vec.push_back(es->parameters.get<double>("reynolds_number"));
+		std::cout << "Reynolds number = " << es->parameters.get<double>("reynolds_number") << std::endl;
+	}
+}
+
+
+
+
+
+// read in the solutions at time_step and time
+void NavierStokesCoupled::read_old_solutions(unsigned int read_time_step, double read_time)
+{
+
+		if(sim_1d && sim_3d)
+		{
+			std::cout << "--- restarting multidomain simulations experimental. ---" << std::endl;
+			std::cout << "not functional on old output, so make sure you're using new output files." << std::endl;
+		}
+		
+
+
+
+
+
+		//std::cout << "restart_folder = " << restart_folder.str() << std::endl;
+
+		if(sim_3d)
+		{
+			std::cout << "\nReading 3d solution." << std::endl;
+			std::ostringstream file_name_3d;
+			file_name_3d << restart_folder.str() << "out_3D";
+			read_old_solution_from_file(&*es_3d,file_name_3d,read_time_step);
+		}
+
+		if(sim_1d)
+		{
+			std::cout << "\nReading 1d solution." << std::endl;
+			std::ostringstream file_name_1d;
+			file_name_1d << restart_folder.str() << "out_1D";
+			read_old_solution_from_file(&*es_1d,file_name_1d,read_time_step);
+		}
+
+
+		// convert 1d solution back to nodal
+		if(sim_1d)
+		{
+			std::cout << "converting output solution from monomial to nodal in program." << std::endl;
+			convert_1d_solution_monomial_to_nodal();
+		}
+
+		// now we have read the old solution into the output eq systems,
+		// we copy it to the actual eq system that will be used
+		if(sim_3d)
+			copy_3d_solution_output_to_program();
+
+		
+		if(sim_1d)
+			copy_1d_solution_output_to_program();
+}
+
+
+
+
+
+
+void NavierStokesCoupled::read_old_solution_from_file(EquationSystems* _es, std::ostringstream& file_name, unsigned int read_time_step)
+{
+
+	std::ostringstream file_name_es;
+
+	std::cout << "read_time_step = " << read_time_step << std::endl;
+	
+	file_name_es << file_name.str() << "_es_" << std::setw(4) 
+		<< std::setfill('0') << read_time_step << ".xda";
+
+	std::cout << "Reading in data for restart from file:" << std::endl;
+	std::cout << "\t" << file_name_es.str() << std::endl;
+
+	unsigned int read_flags = (EquationSystems::READ_DATA); //(READ_HEADER | READ_DATA | READ_ADDITIONAL_DATA);
+	_es->read(file_name_es.str(), libMeshEnums::READ,read_flags);
+	std::cout << "Done reading in data." << std::endl;
+
+}
+
+
+
+
+
+// copy the current solution to the previous solution
+// copy is not necessarily the most efficient but hey
+void NavierStokesCoupled::copy_back_1d_solutions()
+{
+	std::cout << "Copying back solution" << std::endl;
+
+
+	std::cout << "1D flow" << std::endl;
+	TransientExplicitSystem * system_airflow;
+	// Get a reference to the airflow system object that we get the flow rate from.
+	system_airflow = &es_1d->get_system<TransientExplicitSystem> ("ns1d_output");
+
+
+	std::cout << "boo" << std::endl;
+	// some stuff for inside the loop
+	const DofMap & dof_map_airflow = system_airflow->get_dof_map();
+	std::vector<dof_id_type> dof_indices_airflow;
+	std::vector<dof_id_type> dof_indices_q;
+	std::vector<dof_id_type> dof_indices_q_1;
+	std::vector<dof_id_type> dof_indices_q_2;
+	const unsigned int q_var = system_airflow->variable_number ("Q");
+	const unsigned int q_1_var = system_airflow->variable_number ("Q_1");
+	const unsigned int q_2_var = system_airflow->variable_number ("Q_2");
+
+
+	// Get a constant reference to the mesh object.
+	const MeshBase& mesh = es_1d->get_mesh();
+
+	MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	std::cout << "boo" << std::endl;
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+		
+			// for each element
+			// - get the flow rate for the airway from solution vector
+			// - calculate the deposition due to each type
+			// - add them up
+			// - put it in airway_data
+			// - put it in a solution vector
+			// note, everything is in SI units
+
+
+
+			const int current_el_idx = elem->id();
+	    dof_map_airflow.dof_indices (elem, dof_indices_airflow);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q, q_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q_1, q_1_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q_2, q_2_var);
+
+
+			for(unsigned int i=0; i<dof_indices_q.size(); i++)
+			{
+				double Q = system_airflow->current_solution (dof_indices_q[i]);
+				double Q_1 = system_airflow->current_solution (dof_indices_q_1[i]);
+				double Q_2 = system_airflow->current_solution (dof_indices_q_2[i]);
+				// Q_2 -> Q_1
+				system_airflow->solution->set(dof_indices_q_1[i],Q_2);
+				// Q -> Q_2
+				system_airflow->solution->set(dof_indices_q_2[i],Q);
+
+			}
+
+		}
+	}
+
+	system_airflow->solution->close();
+
+}
+
+
+
+
+
+
+// copy the current solution to the previous solution
+// copy is not necessarily the most efficient but hey
+void NavierStokesCoupled::copy_back_3d_solutions()
+{
+	std::cout << "Copying back solution" << std::endl;
+
+
+	std::cout << "3D flow" << std::endl;
+	TransientExplicitSystem * system_airflow;
+	// Get a reference to the airflow system object that we get the flow rate from.
+	system_airflow = &es_3d->get_system<TransientExplicitSystem> ("ns3d_output");
+
+
+	std::cout << "boo" << std::endl;
+	// some stuff for inside the loop
+	const DofMap & dof_map_airflow = system_airflow->get_dof_map();
+	std::vector<dof_id_type> dof_indices_airflow;
+	std::vector<dof_id_type> dof_indices_u, dof_indices_u_1, dof_indices_u_2;
+	std::vector<dof_id_type> dof_indices_v, dof_indices_v_1, dof_indices_v_2;
+	std::vector<dof_id_type> dof_indices_w, dof_indices_w_1, dof_indices_w_2;
+	const unsigned int u_var = system_airflow->variable_number ("u");
+	const unsigned int u_1_var = system_airflow->variable_number ("u_1");
+	const unsigned int u_2_var = system_airflow->variable_number ("u_2");
+	const unsigned int v_var = system_airflow->variable_number ("v");
+	const unsigned int v_1_var = system_airflow->variable_number ("v_1");
+	const unsigned int v_2_var = system_airflow->variable_number ("v_2");
+	unsigned int w_var,w_1_var,w_2_var;
+	if(threed)
+	{
+		w_var = system_airflow->variable_number ("w");
+		w_1_var = system_airflow->variable_number ("w_1");
+		w_2_var = system_airflow->variable_number ("w_2");
+	}
+
+
+	// Get a constant reference to the mesh object.
+	const MeshBase& mesh = es_3d->get_mesh();
+
+	MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	std::cout << "boo" << std::endl;
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
+		{
+		
+			// for each element
+			// - get the flow rate for the airway from solution vector
+			// - calculate the deposition due to each type
+			// - add them up
+			// - put it in airway_data
+			// - put it in a solution vector
+			// note, everything is in SI units
+
+
+
+			const int current_el_idx = elem->id();
+	    dof_map_airflow.dof_indices (elem, dof_indices_airflow);
+	    dof_map_airflow.dof_indices (elem, dof_indices_u, u_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_u_1, u_1_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_u_2, u_2_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_v, v_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_v_1, v_1_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_v_2, v_2_var);
+			if(threed)
+			{
+			  dof_map_airflow.dof_indices (elem, dof_indices_w, w_var);
+			  dof_map_airflow.dof_indices (elem, dof_indices_w_1, w_1_var);
+			  dof_map_airflow.dof_indices (elem, dof_indices_w_2, w_2_var);
+			}
+
+
+			for(unsigned int i=0; i<dof_indices_u.size(); i++)
+			{
+				double u = system_airflow->current_solution (dof_indices_u[i]);
+				double u_1 = system_airflow->current_solution (dof_indices_u_1[i]);
+				double u_2 = system_airflow->current_solution (dof_indices_u_2[i]);
+				double v = system_airflow->current_solution (dof_indices_v[i]);
+				double v_1 = system_airflow->current_solution (dof_indices_v_1[i]);
+				double v_2 = system_airflow->current_solution (dof_indices_v_2[i]);
+				double w,w_1,w_2;
+				if(threed)
+				{
+					w = system_airflow->current_solution (dof_indices_w[i]);
+					w_1 = system_airflow->current_solution (dof_indices_w_1[i]);
+					w_2 = system_airflow->current_solution (dof_indices_w_2[i]);
+				}
+
+				// u_2 -> u_1
+				system_airflow->solution->set(dof_indices_u_1[i],u_2);
+				system_airflow->solution->set(dof_indices_v_1[i],v_2);
+				if(threed)
+					system_airflow->solution->set(dof_indices_w_1[i],w_2);
+
+				// u -> u_2
+				system_airflow->solution->set(dof_indices_u_2[i],u);
+				system_airflow->solution->set(dof_indices_v_2[i],v);
+				if(threed)
+					system_airflow->solution->set(dof_indices_w_2[i],w);
+
+
+			}
+
+		}
+	}
+
+	system_airflow->solution->close();
+
+
+}
+
+
+
+
+// copy the current solution to the previous solution
+// copy is not necessarily the most efficient but hey
+void NavierStokesCoupled::calculate_local_particle_1d_flow_rate()
+{
+	std::cout << "Calculating local particle flow rate" << std::endl;
+
+
+	std::cout << "1D flow" << std::endl;
+	TransientExplicitSystem * system_airflow;
+	// Get a reference to the airflow system object that we get the flow rate from.
+	system_airflow = &es_1d->get_system<TransientExplicitSystem> ("ns1d_output");
+
+
+	std::cout << "boo" << std::endl;
+	// some stuff for inside the loop
+	const DofMap & dof_map_airflow = system_airflow->get_dof_map();
+	std::vector<dof_id_type> dof_indices_airflow;
+	std::vector<dof_id_type> dof_indices_q;
+	std::vector<dof_id_type> dof_indices_q_1;
+	std::vector<dof_id_type> dof_indices_q_2;
+	const unsigned int q_var = system_airflow->variable_number ("Q");
+	const unsigned int q_1_var = system_airflow->variable_number ("Q_1");
+	const unsigned int q_2_var = system_airflow->variable_number ("Q_2");
+
+
+	// Get a constant reference to the mesh object.
+	const MeshBase& mesh = es_1d->get_mesh();
+
+	MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	std::cout << "boo" << std::endl;
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+		
+			// for each element
+			// - get the flow rate for the airway from solution vector
+			// - calculate the deposition due to each type
+			// - add them up
+			// - put it in airway_data
+			// - put it in a solution vector
+			// note, everything is in SI units
+
+
+
+			const int current_el_idx = elem->id();
+	    dof_map_airflow.dof_indices (elem, dof_indices_airflow);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q, q_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q_1, q_1_var);
+	    dof_map_airflow.dof_indices (elem, dof_indices_q_2, q_2_var);
+
+			// Q = Q_1 + (time - real_time_1)/(real_time_2 - real_time_1) * (Q_2 - Q_1)
+			double fraction_of_fluid_dt = 0.;
+			if(fabs(read_time_2 - read_time_1) > 1e-10)
+				fraction_of_fluid_dt = (time - read_time_1) / (read_time_2 - read_time_1);
+			else
+				fraction_of_fluid_dt = 0.;
+
+
+			for(unsigned int i=0; i<dof_indices_q.size(); i++)
+			{
+				double Q_1 = system_airflow->current_solution (dof_indices_q_1[i]);
+				double Q_2 = system_airflow->current_solution (dof_indices_q_2[i]);
+
+	
+				// needs to be based on the new values, which won't have changed 
+				double Q = Q_1 + fraction_of_fluid_dt * (Q_2 - Q_1);
+				system_airflow->solution->set(dof_indices_q[i],Q);
+			}
+
+		}
+	}
+
+	system_airflow->solution->close();
+	//system_airflow->update();	// don't need this
+
+
+
+
+}
+
+
+
+
+
+
+// copy the current solution to the previous solution
+// copy is not necessarily the most efficient but hey
+void NavierStokesCoupled::calculate_local_particle_3d_flow_rate()
+{
+	std::cout << "Calculating local particle flow rate" << std::endl;
+
+	std::cout << "3D flow" << std::endl;
+	TransientExplicitSystem * system_airflow;
+	// Get a reference to the airflow system object that we get the flow rate from.
+	system_airflow = &es_3d->get_system<TransientExplicitSystem> ("ns3d_output");
+
+
+	std::cout << "boo" << std::endl;
+	// some stuff for inside the loop
+	const DofMap & dof_map_airflow = system_airflow->get_dof_map();
+	std::vector<dof_id_type> dof_indices_airflow;
+	std::vector<dof_id_type> dof_indices_u, dof_indices_u_1, dof_indices_u_2;
+	std::vector<dof_id_type> dof_indices_v, dof_indices_v_1, dof_indices_v_2;
+	std::vector<dof_id_type> dof_indices_w, dof_indices_w_1, dof_indices_w_2;
+	const unsigned int u_var = system_airflow->variable_number ("u");
+	const unsigned int u_1_var = system_airflow->variable_number ("u_1");
+	const unsigned int u_2_var = system_airflow->variable_number ("u_2");
+	const unsigned int v_var = system_airflow->variable_number ("v");
+	const unsigned int v_1_var = system_airflow->variable_number ("v_1");
+	const unsigned int v_2_var = system_airflow->variable_number ("v_2");
+	unsigned int w_var, w_1_var, w_2_var;
+	if(threed)
+	{
+		w_var = system_airflow->variable_number ("w");
+		w_1_var = system_airflow->variable_number ("w_1");
+		w_2_var = system_airflow->variable_number ("w_2");
+	}
+
+
+	// Get a constant reference to the mesh object.
+	const MeshBase& mesh = es_3d->get_mesh();
+
+	MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+	std::cout << "boo" << std::endl;
+
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_3d.begin(), subdomains_3d.end(), elem->subdomain_id()) != subdomains_3d.end())
+		{
+		
+			// for each element
+			// - get the flow rate for the airway from solution vector
+			// - calculate the deposition due to each type
+			// - add them up
+			// - put it in airway_data
+			// - put it in a solution vector
+			// note, everything is in SI units
+
+
+
+			const int current_el_idx = elem->id();
+	    dof_map_airflow.dof_indices (elem, dof_indices_airflow);
+		    dof_map_airflow.dof_indices (elem, dof_indices_u, u_var);
+		    dof_map_airflow.dof_indices (elem, dof_indices_u_1, u_1_var);
+		    dof_map_airflow.dof_indices (elem, dof_indices_u_2, u_2_var);
+		    dof_map_airflow.dof_indices (elem, dof_indices_v, v_var);
+		    dof_map_airflow.dof_indices (elem, dof_indices_v_1, v_1_var);
+		    dof_map_airflow.dof_indices (elem, dof_indices_v_2, v_2_var);
+				if(threed)
+				{
+				  dof_map_airflow.dof_indices (elem, dof_indices_w, w_var);
+				  dof_map_airflow.dof_indices (elem, dof_indices_w_1, w_1_var);
+				  dof_map_airflow.dof_indices (elem, dof_indices_w_2, w_2_var);
+				}
+
+				// u = u_1 + (time - real_time_1)/(real_time_2 - real_time_1) * (u_2 - u_1)
+				double fraction_of_fluid_dt = 0.;
+				if(fabs(read_time_2 - read_time_1) > 1e-10)
+					fraction_of_fluid_dt = (time - read_time_1) / (read_time_2 - read_time_1);
+				else
+					fraction_of_fluid_dt = 0.;
+
+				// u,v,w will have the same size
+				for(unsigned int i=0; i<dof_indices_u.size(); i++)
+				{
+					double u_1 = system_airflow->current_solution (dof_indices_u_1[i]);
+					double u_2 = system_airflow->current_solution (dof_indices_u_2[i]);
+
+					double v_1 = system_airflow->current_solution (dof_indices_v_1[i]);
+					double v_2 = system_airflow->current_solution (dof_indices_v_2[i]);
+
+					double w_1,w_2;
+					if(threed)
+					{
+						double w_1 = system_airflow->current_solution (dof_indices_w_1[i]);
+						double w_2 = system_airflow->current_solution (dof_indices_w_2[i]);
+					}
+
+		
+					// needs to be based on the new values, which won't have changed 
+					double u = u_1 + fraction_of_fluid_dt * (u_2 - u_1);
+					double v = v_1 + fraction_of_fluid_dt * (v_2 - v_1);
+					double w;
+					if(threed)
+						w = w_1 + fraction_of_fluid_dt * (w_2 - w_1);
+
+					system_airflow->solution->set(dof_indices_u[i],u);
+					system_airflow->solution->set(dof_indices_v[i],v);
+					if(threed)
+						system_airflow->solution->set(dof_indices_w[i],w);
+				}
+
+			}
+		}
+
+		system_airflow->solution->close();
+		//system_airflow->update();	// don't need this
+	
+
+
+}
 

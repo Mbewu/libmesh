@@ -28,6 +28,14 @@ Airway::Airway ()
 	flow = 0.;
 	pressure_diff = 0.;
 
+	previous_flow_rate = 0.;
+	velocity = 0.;
+	previous_velocity = 0.;
+
+	terminal_exit_fraction = 0.;
+
+	particle_fraction = 0.;
+
 }
 
 // all the get methods
@@ -223,4 +231,53 @@ void Airway::print_concise()
 		std::cout << "\t\t " << i << " = " << daughters[i] << std::endl;
 	}
 
+}
+
+
+
+void Airway::add_particle_fraction(double amount, double entry_time)
+{
+	particle_fraction_amount.push_back(amount);
+	particle_fraction_entry_time.push_back(entry_time);
+	particle_fraction_distance.push_back(0.);
+}
+
+
+unsigned int Airway::num_particle_fractions()
+{
+	return particle_fraction_amount.size();
+}
+
+double Airway::get_total_particle_fraction()
+{
+	double total_particle_fraction = 0.;
+	
+	// we assume that if this is called during an unsteady simulation
+	// Airway.particle_fraction has not been set and is zero as it should be
+	if(particle_fraction_amount.size() > 0)
+	{
+		for(unsigned int i=0; i<particle_fraction_amount.size(); i++)
+		{
+			total_particle_fraction += particle_fraction_amount[i];
+		}
+	}
+	else
+	{
+		total_particle_fraction = particle_fraction;
+	}
+
+	return total_particle_fraction;
+}
+
+void Airway::set_total_particle_fraction(double _particle_fraction)
+{
+	particle_fraction = _particle_fraction;
+}
+
+
+void Airway::remove_particle_fraction(unsigned int particle_fraction_number)
+{
+	particle_fraction_amount.erase(particle_fraction_amount.begin() + particle_fraction_number);
+	particle_fraction_entry_time.erase(particle_fraction_entry_time.begin() + particle_fraction_number);
+	particle_fraction_distance.erase(particle_fraction_distance.begin() + particle_fraction_number);
 }

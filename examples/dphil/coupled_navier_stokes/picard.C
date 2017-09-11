@@ -2918,6 +2918,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									}
 								}
 
+
+
 								// for the pressure term in the 3d equations
 								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
 						  	{
@@ -2935,7 +2937,6 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 								// for the flux condition in the 1d equations
 
-								// for the pressure term in the 3d equations
 								// EQN IS + dt*Q_1d - dt*Q_3d = 0
 								// later on we eliminate the terms that correspond to the 
 								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
@@ -3076,7 +3077,8 @@ Picard::assemble (ErrorVector &)	// error_vector)
 					// if one of the dofs is a 
 					// constrained dof then we zero it. otherwise we add it to the matrix
 					// problem is that the pressure integral should contain stuff from the boundary
-					// maybe it wil average? who knows... seems like it, but it isn't nice.                         
+					// maybe it wil average? who knows... seems like it, but it isn't nice. 
+					// not sure why this is necessary for pressure???                        
 					for (unsigned int i = 0; i < dof_indices.size (); i++)
 					{
 						//if not constrained dof

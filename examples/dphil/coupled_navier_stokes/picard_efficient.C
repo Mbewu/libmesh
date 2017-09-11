@@ -2887,6 +2887,14 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 								// for the flux condition in the 1d equations
 
+								// scale the flow rate accordingly
+								double flow_rate_scaling = 1.0;
+								if(es->parameters.get<bool> ("twod_oned_tree"))
+								{
+									double diameter_3d = (*surface_boundaries)[boundary_id]->get_max_radius() * 2.0;
+									flow_rate_scaling = 3.*M_PI/16.*diameter_3d;
+								}
+
 								// for the pressure term in the 3d equations
 								// EQN IS + dt*Q_1d - dt*Q_3d = 0
 								// later on we eliminate the terms that correspond to the 
@@ -2894,8 +2902,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								{
 									for (unsigned int i = 0; i < n_u_dofs; i++)
 									{
-										Fu_coupled_u (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (0);
-										Fv_coupled_u (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (1);
+										Fu_coupled_u (i) += flow_rate_scaling *	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (0);
+										Fv_coupled_u (i) +=	flow_rate_scaling * JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (1);
 										if (threed)
 							  		{
 											Fw_coupled_u (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (2);

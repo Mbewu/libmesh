@@ -223,7 +223,7 @@ void HofmannParticleDeposition::calculate_flow_at_daughters(unsigned int t_step,
 	if(daughter_ids.size() > 0)
 		daughter_1_id = daughter_ids[0];
 	if(daughter_ids.size() > 1)
-		daughter_1_id = daughter_ids[1];
+		daughter_2_id = daughter_ids[1];	// hmmm, it was, daughter_1_id (untested)
 
 	// has two daughter branches
 	if(daughter_1_id != -1 && daughter_2_id != -1)

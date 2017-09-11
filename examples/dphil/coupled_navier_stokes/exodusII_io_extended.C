@@ -735,10 +735,12 @@ void ExodusII_IO_Extended::write_nodal_data (const std::string& fname,
 		var_scalings.resize(output_names.size(),1.0);
 
 	std::cout << "WRITING NODAL DATA" << std::endl;
+	/*
 	for(unsigned int i=0; i<output_names.size(); i++)
 		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
 
 	std::cout << "num output vars = " << output_names.size() << std::endl; 
+	*/
 
   // This will count the number of variables actually output
 
@@ -956,10 +958,13 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 		var_scalings.resize(output_names.size(),1.0);
 
 	std::cout << "WRITING NODAL DATA DISCONTINUOUS" << std::endl;
+
+	/*
 	for(unsigned int i=0; i<output_names.size(); i++)
 		std::cout << "var_scalings[" << i << "] = " << var_scalings[i] << std::endl;
 
 	std::cout << "num output vars = " << output_names.size() << std::endl; 
+	*/
 
   if (mesh.processor_id())
     {
@@ -983,8 +988,10 @@ void ExodusII_IO_Extended::write_nodal_data_discontinuous (const std::string& fn
 	    unsigned int variable_name_position =
 				libmesh_cast_int<unsigned int>(pos - output_names.begin());
 
+			/*
 			std::cout << "names[" << c << "] = " << names[c] << std::endl;
 			std::cout << "variable_name_position = " << variable_name_position << std::endl;
+			*/
 
 #ifdef LIBMESH_USE_COMPLEX_NUMBERS
       std::vector<Real> real_parts(num_nodes);

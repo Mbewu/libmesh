@@ -119,6 +119,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
   MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
   const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
 
+	std::vector<unsigned int> zero_d_dofs;
 								
   for ( ; el != end_el; ++el)
   {
@@ -213,6 +214,14 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 		    dof_map.dof_indices (sibling_elems[i], dof_indices_siblings_p[i], p_var);
 			}
 
+
+			for(unsigned int i=0; i<dof_indices_p.size(); i++)
+				zero_d_dofs.push_back(dof_indices_p[i]);
+
+			for(unsigned int i=0; i<dof_indices_q.size(); i++)
+				zero_d_dofs.push_back(dof_indices_q[i]);
+
+
       //const unsigned int n_dofs   = 4;	// unused
       //const unsigned int n_p_dofs = 2;	// unused
 
@@ -234,12 +243,14 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 			C = density*pow(velocity_scale,2)*C/length_scale;
 			I = I*length_scale/density;
 
+/*
 		std::cout << "R = " << R << std::endl;
 		std::cout << "viscosity = " << viscosity << std::endl;
 		std::cout << "density = " << density << std::endl;
 		std::cout << "l = " << l << std::endl;
 		std::cout << "r = " << r << std::endl;
 		//std::cout << "r^4 = " << pow(r,4.0) << std::endl;
+*/
 
 
 			// use given reynolds number is reynolds number calc
@@ -272,7 +283,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 					
 					R = 0.327 * sqrt(reynolds_number_0d*2.*r/l) * R;
 					airway_data[current_1d_el_idx].set_poiseuille(false);
-					std::cout << "gen = " << generation << ", using pedley" << std::endl;
+					//std::cout << "gen = " << generation << ", using pedley" << std::endl;
 
 				}
 				else
@@ -337,10 +348,12 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 				if(R > mono_preconditioner_resistance_scaling)
 				{
 					mono_preconditioner_resistance_scaling = R;
+					/*
 					std::cout << "l = " << l << std::endl;
 					std::cout << "viscosity = " << viscosity << std::endl;
 					std::cout << "r = " << r << std::endl;
 					std::cout << "M_PI = " << M_PI << std::endl;
+					*/
 
 				}
 			}
@@ -472,12 +485,13 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 						// now there is no zero on the 3rd equation
 						// equation 3 - inflow bc multiplied by dt so is like the 3d eqn - not anymore it isn't
 	
+						// daughter 1 handles the flux conservation to sibling and parent (1 equation)
 						if(is_daughter_1)
 						{
 							
 							add_to_matrices (system,eqn_3_dof,dof_indices_q[0],-1.0);
 
-							std::cout << "flux dof in 0d = " << eqn_3_dof << std::endl;
+							//std::cout << "flux dof in 0d = " << eqn_3_dof << std::endl;
 							if(has_sibling)
 							{
 								//std::cout << "num siblings = " << sibling_el_ids.size() << std::endl;
@@ -499,7 +513,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 								// if there is a bifurcation at the inflow then daughter_1 can add it
 								if(is_daughter_1)
 								{
-									std::cout << "double oopsie" << std::endl;
+									//std::cout << "double oopsie" << std::endl;
 									system->rhs->add (eqn_3_dof,-flux_values[boundary_ids[0]]);
 								}
 							}
@@ -522,7 +536,7 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 								add_to_matrices (system,eqn_3_dof,dof_indices_siblings_p[i][0],-1.0);
 						}
 					}
-					// pressure
+					// pressure-pressure type boundary condition
 					else if(es->parameters.get<unsigned int> ("bc_type_1d") == 1)
 					{
 		    		add_to_matrices (system,eqn_3_dof,dof_indices_p[0],1.0);
@@ -583,6 +597,19 @@ void NavierStokesAssembler::assemble_stokes_steady_0D ()
 
   // That's it.
 	//system->matrix->close();
+
+	/*
+	std::cout << "0d matrix" << std::endl;
+	for(unsigned int i=0; i<zero_d_dofs.size();i++)
+	{
+		for(unsigned int j=0;j<zero_d_dofs.size();j++)
+		{
+			std::cout << " " << (*(system->matrix))(zero_d_dofs[i],zero_d_dofs[j]);
+		}
+		std::cout << std::endl;
+	}
+	*/
+		
 	//system->matrix->print();
 	//system->rhs->print();
 

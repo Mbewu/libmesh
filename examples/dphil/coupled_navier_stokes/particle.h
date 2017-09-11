@@ -55,7 +55,7 @@ using namespace libMesh;
 class Particle
 {
 	public:
-		Particle (EquationSystems& es_in,Point& p,const Elem* element, unsigned int _particle_id, double _perturbation_magnitude = 1e-5);
+		Particle (EquationSystems& es_in,EquationSystems& es_3d_in,Point& p,const Elem* element, unsigned int _particle_id, PerfLog* _perf_log_move, double _perturbation_magnitude = 1e-5);
 
 		// initialise particles
 		Point get_position (){ return position;};
@@ -124,7 +124,11 @@ class Particle
 
 		bool goes_through_side(Point new_position,int side_number,const Elem* element, double old_s_param, double& s_param);
 
+		bool goes_through_side_efficient(Point new_position,int side_number,const Elem* element, double old_s_param, double& s_param);
+
 		void check_neighbors(const Elem* element,Point& new_position, double old_s_param, std::vector<unsigned int>& elements_checked, bool& element_found);
+
+		void check_neighbors_efficient(const Elem* element,Point& new_position, double old_s_param, std::vector<unsigned int>& elements_checked, bool& element_found);
 
 		void check_neighbors_simple(const Elem* element,Point& new_position, std::vector<unsigned int>& elements_checked, bool& element_found);
 
@@ -139,11 +143,18 @@ class Particle
 		
 		
 		EquationSystems* es;
+		EquationSystems* es_3d;
+		TransientLinearImplicitSystem * ns3d_output_system;	// used for reading velocity and mesh stuff
+
+		PerfLog* perf_log_move;
+
+
 		Point position;
 		const Elem* current_elem;		//-1 if outside of domain.
 		bool on_wall;		//true if on a wall
 		bool deposited_close_to_wall;	// true if on wall because was close to wall
 		bool exited;		//true if exited domain
+		bool broken;		// broken/lost particle
 		int exit_surface;		//surface through which particle passed
 		double maximum_timestep;		//this is the maximum timestep allowed. (equiv to moving an element length)
 		NumberVectorValue current_velocity;
@@ -152,9 +163,10 @@ class Particle
 		bool threed;
 		unsigned int particle_id;
 		double entrance_time;
-		bool broken;
 		double failure_perturbation_magnitude;
 		double perturbation_magnitude;
+
+		bool deposition_verbose;
 
 		double constant_drag_force;
 		double cunningham_correction_factor;
@@ -162,6 +174,10 @@ class Particle
 		bool sedimentation;
 		bool impaction;
 		bool drag;
+
+		unsigned int u_var;
+		unsigned int v_var;
+		unsigned int w_var;
 
 
 };
