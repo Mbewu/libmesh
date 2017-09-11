@@ -1,0 +1,40 @@
+# File for inputting particle deposition parameters so don't need command line!
+
+particle_deposition_start_time = 0.
+particle_deposition_start_time_step = 0
+unsteady_from_steady = true
+particle_dt = 0.0000125
+particle_end_time = 0.1		#need 200
+particle_write_interval = 0.01
+particle_backup_write_interval = 0.1
+particle_entry_end_time = 0.1
+
+# 0 - particle deposition all at once, 1 - particle deposition at a specified rate on a surface
+particle_deposition_type = 3
+# 0 - test particle deposition just in the middle of a domain, 1 - particle deposition at a specified rate on a surface
+particle_deposition_location = 1
+particle_deposition_rate = 40000 	#rate at which particles are deposited per second or right at the beginning
+particle_deposition_surface = 0		#surface on which particles are deposited
+deposition_pattern = 3	# 0 is just a square, 1 is circular uniform, 2 is equally spaced (2D so far)
+distance_deposited_inside = 0.01e-3
+brownian_motion_magnitude = 0.;	#adds random vector of sqrt(3)*mag to the velocity at each time step
+
+#some parameters
+particle_diameter = 10.0e-6			#2.5-30 um
+particle_density = 1200.
+particle_air_density = 1.2
+particle_air_viscosity = 2.04e-5
+mean_free_path = 68.0e-9
+gravity = 9.81e0
+# 0 is normal gravity in -z direction or -y direction, 1 - user defined gravity, 2 - in the direction of surface deposition boundary/trachea
+gravity_type = 2		
+gravity_x = 0.0
+gravity_y = -1.
+gravity_z = 0.
+
+particle_sedimentation = true
+particle_impaction = false
+particle_drag = true
+
+particle_velocity_units = 1.0	#way to convert input velocity e.g. cm/s to SI
+initial_particle_velocity_scaling = 0.98

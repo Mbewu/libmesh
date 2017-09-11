@@ -1,0 +1,211 @@
+comparison of eigenvalues from different resistances, schur 0D negative
+
+plain 3D:
+
+Printing eigenvalues:
+ eig 0 = 0.337802 + 0i
+ eig 1 = 0.390575 + 0i
+ eig 2 = 0.50475 + 0i
+ eig 3 = 0.58916 + 0i
+ eig 4 = 0.826177 + 0i
+ eig 5 = 1 + 0i
+ eig 6 = 1 + 0i
+ eig 7 = 1 + 0i
+ eig 8 = 1 + 0i
+ eig 9 = 1 + 0i
+ eig 10 = 1 + 0i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + 0i
+ eig 13 = 1 + 0i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1.65496 + 0i
+ eig 24 = 2.2577 + 0i
+ eig 25 = 2.61386 + 0i
+ eig 26 = 3.88861 + 0i
+
+resistance = 3.4e-5, length_diam_ratio = 3.36e2
+
+Printing eigenvalues:
+ eig 0 = -1 + 0i
+ eig 1 = -1 + 0i
+ eig 2 = -1 + 0i
+ eig 3 = -1 + 0i
+ eig 4 = 0.337802 + 0i
+ eig 5 = 0.390575 + 0i
+ eig 6 = 0.50475 + 0i
+ eig 7 = 0.58916 + 0i
+ eig 8 = 0.826177 + 0i
+ eig 9 = 1 + 0i
+ eig 10 = 1 + 0i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + 0i
+ eig 13 = 1 + 0i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1 + 0i
+ eig 24 = 1 + 0i
+ eig 25 = 1 + 0i
+ eig 26 = 1 + 0i
+ eig 27 = 1.65496 + 0i
+ eig 28 = 2.2577 + 0i
+ eig 29 = 2.61386 + 0i
+ eig 30 = 3.88861 + 0i
+
+
+resistance = 3.4e-2, length_diam_ratio = 3.36e1
+
+Printing eigenvalues:
+ eig 0 = -1.00201 + 0i
+ eig 1 = -1 + 0i
+ eig 2 = -1 + 0i
+ eig 3 = -1 + 0i
+ eig 4 = 0.337783 + 0i
+ eig 5 = 0.390566 + 0i
+ eig 6 = 0.504589 + 0i
+ eig 7 = 0.589136 + 0i
+ eig 8 = 0.826176 + 0i
+ eig 9 = 1 + 1.37775e-15i
+ eig 10 = 1 + -1.37775e-15i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + 0i
+ eig 13 = 1 + 0i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1 + 0i
+ eig 24 = 1 + 0i
+ eig 25 = 1 + 0i
+ eig 26 = 1 + 0i
+ eig 27 = 1.65249 + 0i
+ eig 28 = 2.25758 + 0i
+ eig 29 = 2.61383 + 0i
+ eig 30 = 3.88859 + 0i
+
+resistance = 3.4e+1, length_diam_ratio = 3.36e0
+
+Printing eigenvalues:
+ eig 0 = -4.68334 + 0i
+ eig 1 = -1 + 0i
+ eig 2 = -1 + 0i
+ eig 3 = -1 + 0i
+ eig 4 = 0.219486 + 0i
+ eig 5 = 0.357187 + 0i
+ eig 6 = 0.399607 + 0i
+ eig 7 = 0.578404 + 0i
+ eig 8 = 0.773001 + 0i
+ eig 9 = 0.829245 + 0i
+ eig 10 = 1 + 0i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + -2.93737e-16i
+ eig 13 = 1 + 2.93737e-16i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1 + 0i
+ eig 24 = 1 + 0i
+ eig 25 = 1 + 0i
+ eig 26 = 1 + 0i
+ eig 27 = 1 + 0i
+ eig 28 = 2.23752 + 0i
+ eig 29 = 2.60652 + 0i
+ eig 30 = 3.88031 + 0i
+
+
+resistance = 3.4e+4, length_diam_ratio = 3.36e-1
+
+Printing eigenvalues:
+ eig 0 = -4865.12 + 0i
+ eig 1 = -1 + 0i
+ eig 2 = -1 + 0i
+ eig 3 = -1 + 0i
+ eig 4 = 0.000258723 + 0i
+ eig 5 = 0.34815 + 0i
+ eig 6 = 0.395281 + 0i
+ eig 7 = 0.572433 + 0i
+ eig 8 = 0.665919 + 0i
+ eig 9 = 0.826985 + 0i
+ eig 10 = 1 + 0i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + 0i
+ eig 13 = 1 + 0i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1 + 0i
+ eig 24 = 1 + 0i
+ eig 25 = 1 + 0i
+ eig 26 = 1 + 0i
+ eig 27 = 1 + 0i
+ eig 28 = 2.23354 + 0i
+ eig 29 = 2.60449 + 0i
+ eig 30 = 3.87541 + 0i
+
+
+resistance = 3.4e+7, length_diam_ratio = 3.36e-2
+
+Printing eigenvalues:
+ eig 0 = -4.86567e+06 + 0i
+ eig 1 = -1 + 0i
+ eig 2 = -1 + 0i
+ eig 3 = -1 + 0i
+ eig 4 = 2.5873e-07 + 0i
+ eig 5 = 0.348145 + 0i
+ eig 6 = 0.395279 + 0i
+ eig 7 = 0.572424 + 0i
+ eig 8 = 0.665847 + 0i
+ eig 9 = 0.826984 + 0i
+ eig 10 = 1 + 0i
+ eig 11 = 1 + 0i
+ eig 12 = 1 + 0i
+ eig 13 = 1 + 0i
+ eig 14 = 1 + 0i
+ eig 15 = 1 + 0i
+ eig 16 = 1 + 0i
+ eig 17 = 1 + 0i
+ eig 18 = 1 + 0i
+ eig 19 = 1 + 0i
+ eig 20 = 1 + 0i
+ eig 21 = 1 + 0i
+ eig 22 = 1 + 0i
+ eig 23 = 1 + 0i
+ eig 24 = 1 + 0i
+ eig 25 = 1 + 0i
+ eig 26 = 1 + 0i
+ eig 27 = 1 + 0i
+ eig 28 = 2.23354 + 0i
+ eig 29 = 2.60449 + 0i
+ eig 30 = 3.8754 + 0i
+
