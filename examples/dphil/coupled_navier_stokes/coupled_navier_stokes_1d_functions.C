@@ -36,6 +36,12 @@ void NavierStokesCoupled::setup_1d_mesh ()
 	else
 		generate_1d_mesh();
 
+	// calculate the total terminal surface area
+	es->parameters.set<double>("total_terminal_area") = calculate_total_terminal_area();
+
+	// init parameters that we can
+	init_1d_airway_parameters();
+
 	// calculate characteristic length for 0D simulation
 	if(sim_type == 1)
 	{
@@ -84,6 +90,7 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 
 
 	unsigned int num_1d_trees = es->parameters.get<unsigned int> ("num_1d_trees");
+	double length_scale = es->parameters.get<double> ("length_scale");
 
 	unsigned int tree_start = 1;
 	if(es->parameters.get<bool> ("use_centreline_data"))
@@ -188,10 +195,13 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 
 				//okay, now that we have the mesh in SI units, we need to scale the mesh to the length scale we want to solve on
 				//now in dimensionless units
+				// we only scale the mesh when creating it				
+				/*
 				x_coord /= es->parameters.get<double> ("length_scale");
 				y_coord /= es->parameters.get<double> ("length_scale");
 				z_coord /= es->parameters.get<double> ("length_scale");
 				radius /= es->parameters.get<double> ("length_scale");
+				*/
 
 				node_data.push_back(x_coord);
 				node_data.push_back(y_coord);
@@ -250,7 +260,9 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 				}
 
 				radius *= mesh_scaling;
-				radius /= es->parameters.get<double> ("length_scale");
+				
+				// only scale the mesh when creating it
+				//radius /= es->parameters.get<double> ("length_scale");
 
 				edge_data.push_back(edge_num);
 				edge_data.push_back(node_1);
@@ -406,7 +418,7 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 
 	
 
-		//now we need to create the element_data vector
+		// now we need to create the element_data vector
 		// we now add an extra bit to the element data vector with the flow and current efficiency
 		// we can also get the point at which 
 
@@ -419,7 +431,7 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 			unsigned int order = (unsigned int)edge_1d_data[i][5];
 			unsigned int node_1 = (unsigned int)edge_1d_data[i][1];
 			unsigned int node_2 = (unsigned int)edge_1d_data[i][2];
-			airway_data_temp[elem_number].set_local_elem_number(elem_number);
+			//airway_data_temp[elem_number].set_local_elem_number(elem_number);
 			airway_data_temp[elem_number].set_tree_number(m);
 
 			//okay let us find the parent number
@@ -638,9 +650,14 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 
 				unsigned int subtree_number_2 = (unsigned int)node_1d_data[node_2][4];
 
+				//std::cout << "subtree_number_2 = " << subtree_number_2 << std::endl;
+				//std::cout << "elem_number = " << elem_number << std::endl;
+				//std::cout << "airway_data_temp.size() = " << airway_data_temp.size() << std::endl;
+
 				centreline_terminal_id_to_tree_id.resize(airway_data_temp.size(),-1);	
 				if(subtree_number_2 > 0)
 				{
+					//std::cout << "hello" << std::endl;
 					centreline_terminal_id_to_tree_id[elem_number] = subtree_number_2;
 				}
 
@@ -732,8 +749,8 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 
 				for(unsigned int i=1; i<surface_boundaries.size(); i++)
 				{
-					centroid = surface_boundaries[i]->get_centroid();
-					max_radius = surface_boundaries[i]->get_max_radius();
+					centroid = surface_boundaries[i]->get_centroid() * length_scale;
+					max_radius = surface_boundaries[i]->get_max_radius() * length_scale;
 					double distance = (centroid - coupling_point).size();
 
 					//std::cout << "distance = " << distance << std::endl;
@@ -761,12 +778,35 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 	
 			// give it boundary id 1
 			std::cout << "adding 1d tree to full mesh" << std::endl;
-			add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id,boundary_id);
+			add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id,boundary_id,true);
 
 			std::cout << "adding 1d tree to output mesh" << std::endl;
 			airway_elem_id_start = add_1d_tree_to_mesh(mesh_1d,vertices,cell_vertices, subdomain_id,boundary_id);
 
-				
+			
+			// potentially add acinar units
+			if(es->parameters.get<unsigned int> ("acinar_model") == 1)
+			{
+				// we need to add the 1d tree to the 1d + acinar mesh
+				//std::cout << "adding tree to 1d + acinar mesh" << std::endl;
+				//add_1d_tree_to_mesh(mesh_1d_acinar,vertices,cell_vertices, subdomain_id, boundary_id);
+
+				// we give each 
+				unsigned int acinar_subdomain_id = subdomain_id + 100;
+				subdomains_acinar.push_back(acinar_subdomain_id);
+	
+				// add the terminal airway tree to a mesh for output and all that jazz
+				// boundary_id is the id of the airway it came from
+				// subdomain_id just iterates from the previous sudomain_ids
+
+				std::cout << "adding acinar to full mesh" << std::endl;
+				add_acinar_to_mesh(mesh,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start,true);
+
+				std::cout << "adding acinar to acinar mesh" << std::endl;
+				add_acinar_to_mesh(mesh_acinar,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start);
+
+
+			}
 
 
 
@@ -823,6 +863,11 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 		// prepare both output and full mesh for use
 		mesh.prepare_for_use (/*skip_renumber =*/ false);
 		mesh_1d.prepare_for_use (/*skip_renumber =*/ false);
+
+		if(es->parameters.get<unsigned int>("acinar_model") == 1)
+		{
+			mesh_acinar.prepare_for_use (/*skip_renumber =*/ false);
+		}
 	}
 	else
 	{
@@ -893,6 +938,17 @@ void NavierStokesCoupled::read_1d_mesh (bool only_centrelines_mesh)
 		std::cout << " finished setting up centrelines mesh from file" << std::endl;
 
 	}
+
+
+
+	// we may want to add additional airways to the mesh
+	if(es->parameters.get<unsigned int> ("additional_symmetric_generations"))
+	{
+		std::cout << "additional airways not implemented for read in mesh yet" << std::endl;
+		std::cout << "EXITING..." << std::endl;
+	}
+
+
 }
 
 
@@ -908,6 +964,7 @@ void NavierStokesCoupled::calculate_num_alveloar_generations_for_tree()
 
 
 
+// Generate a 1D mesh and save it to airway_data and the mesh
 void NavierStokesCoupled::generate_1d_mesh ()
 {
 
@@ -916,10 +973,15 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 	//so to create a 1d_tree we first create the first 1d segment and then grow the tree from that
 	//these are simply parameters of the tree making thing so can be gotten from the input file
+
+	// some parameters and data structures
+	double length_scale = es->parameters.get<double> ("length_scale");
+
 	// initial segment length, chosen so that wall thickness is always positive
 	//double length_scale = es->parameters.get<double> ("length_scale");	// unused
 	double initial_segment_length = es->parameters.get<double> ("initial_segment_length");
-	initial_segment_length /= es->parameters.get<double> ("length_scale");
+	// only scale later
+	//initial_segment_length /= es->parameters.get<double> ("length_scale");
 
 	// some vectors that will temporarily be used when creating the tree, element_data
 	// is owned globally.
@@ -928,9 +990,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 	std::vector<unsigned int> segment;
 	Point p0,p1,p2;
 
-	// okay we want to make this general so that for a simulation in which it is 
-	// only a 1d simulation.
-
+	// maps between trees and boundary ids
 	if(sim_type == 1)
 	{
 		// +1 cause we number the 1d trees from 1
@@ -951,16 +1011,17 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 	//we need to make this tree in dimensionless units, assume parameters are in SI units
 	
+	//subdomain counting
+	unsigned int subdomain_id = 0;
+
 	// generate 1d tree from 3d/2d start point and also generate 0d tree in 0d simulation
 	if((es->parameters.get<unsigned int> ("geometry_type") == 4 
-			|| es->parameters.get<unsigned int> ("geometry_type") == 2))// && sim_3d)
+			|| es->parameters.get<unsigned int> ("geometry_type") == 2)
+			|| !sim_3d)// && sim_3d)
 	{
 
 		std::cout << "in generate_1d_mesh generating " << es->parameters.get<unsigned int> ("num_1d_trees") 
 							<< " trees" << std::endl;
-
-		//subdomain counting
-		unsigned int subdomain_id = 0;
 
 		// if there is a 3D subdomain, give the 1D tree a subdomain starting after the last 3D
 		if(subdomains_3d.size() > 0)
@@ -1050,14 +1111,39 @@ void NavierStokesCoupled::generate_1d_mesh ()
 			if(es->parameters.get<double> ("length_diam_ratio") > 1e-10)
 			{
 				if(i==1)
+				{
 					length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio_1");
+
+					// if we are ussing a resistance scale methodology, calculate what it should be
+					double resistance_scale = es->parameters.get<double> ("resistance_scale_1");
+					if(fabs(resistance_scale) > 1.e-10)
+					{
+						length_diam_ratio_true = pow(resistance_scale,1./4.) * length_diam_ratio;
+					}				
+					
+				}
 				else
-					length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio_2");					
+				{
+					length_diam_ratio_true = es->parameters.get<double> ("length_diam_ratio_2");	
+
+					// if we are ussing a resistance scale methodology, calculate what it should be
+					double resistance_scale = es->parameters.get<double> ("resistance_scale_2");
+					if(fabs(resistance_scale) > 1.e-10)
+					{
+						length_diam_ratio_true = pow(resistance_scale,1./4.) * length_diam_ratio;
+					}				
+				}
+
 			}
+
+
+
+			// ********* get geometry info from mesh if possible
 
 			Point normal;
 			Point centroid;
-			double area;
+			double area = 0.;
+			double approx_3d_diam = 0.;
 
 			// if just 0d then generate start point
 			if(sim_type == 1)
@@ -1065,13 +1151,53 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				centroid = Point(0.,0.,0.);
 				normal = Point(1.,0.,0.);
 			}
+			// if 3d-0d and resistance adjusted then get start point from 3d mesh,
+			// but radius from initial radius
+			else if(es->parameters.get<bool> ("resistance_adjusted_radius"))
+			{
+				std::cout << "using resistance adjusted mesh" << std::endl;
+				normal = surface_boundaries[i]->get_normal();
+				centroid = surface_boundaries[i]->get_centroid() * length_scale;
+				double area_0 = surface_boundaries[0]->get_area() * pow(length_scale,2.0);	// 3D will get area, 2D will get diameter
+
+				// calculate the approximate diameter from the mesh, shouldn't be 3D
+				double approx_3d_diam_0 = area_0; // diameter approximated by assuming circular outflow
+		
+				// we now need to adjust this based on the generation ratio and the number of 2D generations
+				double generation_ratio_1d = es->parameters.get<double> ("generation_ratio_1d");
+				double num_generations_3d = es->parameters.get<unsigned int> ("num_generations_3d");
+				approx_3d_diam = approx_3d_diam_0 * pow(generation_ratio_1d,num_generations_3d);
+				
+				std::cout << " info from mesh:" << std::endl;
+				std::cout << "centroid = " << centroid << std::endl;
+				std::cout << "normal = " << normal << std::endl;
+				std::cout << "area_0 = " << area_0 << std::endl;
+				std::cout << "diameter = " << approx_3d_diam << std::endl;
+
+
+			}
 			// if 3d-0d then get start point from 3d mesh
 			else
 			{
 				normal = surface_boundaries[i]->get_normal();
-				centroid = surface_boundaries[i]->get_centroid();
-				area = surface_boundaries[i]->get_area();
+				centroid = surface_boundaries[i]->get_centroid() * length_scale;
+				area = surface_boundaries[i]->get_area() * pow(length_scale,2.0);	// 3D will get area, 2D will get diameter
+
+				// calculate the approximate diameter from the mesh
+				if(es->parameters.get<bool> ("threed"))
+					approx_3d_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
+				else
+					approx_3d_diam = area; // diameter approximated by assuming circular outflow
+				
+				std::cout << " info from mesh:" << std::endl;
+				std::cout << "centroid = " << centroid << std::endl;
+				std::cout << "normal = " << normal << std::endl;
+				std::cout << "area = " << area << std::endl;
+				std::cout << "diameter = " << approx_3d_diam << std::endl;
+
+
 			}
+
 			tree_id_to_boundary_id[i] = i;
 			boundary_id_to_tree_id[i] = i;
 
@@ -1082,57 +1208,41 @@ void NavierStokesCoupled::generate_1d_mesh ()
 
 			// start at centroid
 			p0 = centroid;
-			std::cout << "centroid = " << centroid << std::endl;
-			std::cout << "area = " << area << std::endl;
 			//next point should be in direction of normal, with length based on diameter
 
 
 
 
-			// calculate the approximate diameter from the mesh
-			double approx_3d_diam = 0.;
-			if(es->parameters.get<bool> ("threed"))
-				approx_3d_diam = 2* sqrt(area/M_PI); // diameter approximated by assuming circular outflow
-			else
-				approx_3d_diam = area; // diameter approximated by assuming circular outflow
-				
 
 
-			// set the radius and initial segment length
+			// *** set the radius and initial segment length
 			double radius = 0.;
 
-			// set the initial segment length and radius from mesh
-			if(es->parameters.get<bool> ("initial_segment_length_from_mesh"))
-			{
-				radius = approx_3d_diam*0.5;
-				initial_segment_length = length_diam_ratio * approx_3d_diam;
 
+			// set the initial segment length and radius from mesh, if there is a mesh
+			if(es->parameters.get<bool> ("initial_segment_length_from_mesh") && sim_type != 1)
+			{
+				// set the length from length_diam_ratio
+				initial_segment_length = length_diam_ratio_true * approx_3d_diam;
+
+				// if starting with a bifurcation then use the generation ratio to scale the length
+				if(es->parameters.get<bool> ("bifurcation_start_1d"))
+				{
+					initial_segment_length *=es->parameters.get<double> ("generation_ratio_1d");
+				}
+
+				// set the radius from length_diam_ratio_true
+				radius = 1./length_diam_ratio_true * initial_segment_length / 2.0;
 			}
 			else
 			{
 				// use the default initial segment length
-				radius = initial_segment_length/length_diam_ratio_true/2.0;
+				radius = initial_segment_length/length_diam_ratio/2.0;
 				
 			}
 
-			// if half initial length, then halve it
-			if(es->parameters.get<bool> ("half_initial_length"))
-			{
-				initial_segment_length *= 0.5;
-			}
-
-			// if starting with a bifurcation then use the generation ratio
-			if(es->parameters.get<bool> ("bifurcation_start_1d"))
-			{
-				initial_segment_length *=es->parameters.get<double> ("generation_ratio_1d");
-				radius *=es->parameters.get<double> ("generation_ratio_1d");
-			}
-
-
-
-			std::cout << "radius = " << radius << std::endl;
 			// if we are doing a twod approx then we need to change the radius
-			// NOTE: now coupling is handled in 0d assembler
+			// NOTE: now coupling is handled in 0d assembler --> hmm
 			if(false)//es->parameters.get<bool> ("twod_oned_tree"))
 			{
 				radius = pow(16/3/M_PI*pow(radius,3.0),1./4.0);
@@ -1140,10 +1250,23 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				
 			}
 
+			initial_segment_length *= es->parameters.get<double> ("length_adjustment_factor_0d");
+
+
+
+			// if half initial length, then halve it at the end i.e. now
+			if(es->parameters.get<bool> ("half_initial_length"))
+			{
+				initial_segment_length *= 0.5;
+			}
+
 			std::cout << "radius = " << radius << std::endl;
 			std::cout << "length_diam_ratio_true = " << length_diam_ratio_true << std::endl;
 
 			std::cout << "initial_sgment_length = " << initial_segment_length << std::endl;
+
+			double poiseuille_resistance = 8*es->parameters.get<double> ("viscosity")*initial_segment_length/(M_PI*pow(radius,4.0));
+			std::cout << "poiseuille resistance = " << poiseuille_resistance << std::endl;
 
 
 
@@ -1170,7 +1293,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				airway_data.push_back(Airway());
 				airway_data[airway_data.size() - 1].set_parent(-1);
 				airway_data[airway_data.size() - 1].set_length(initial_segment_length);
-				airway_data[airway_data.size() - 1].set_local_elem_number(airway_data.size() - 1);
+				//airway_data[airway_data.size() - 1].set_local_elem_number(airway_data.size() - 1);
 				airway_data[airway_data.size() - 1].set_tree_number(i);
 				airway_data[airway_data.size() - 1].set_radius(radius);	//this is the radius no diameter
 				airway_data[airway_data.size() - 1].set_generation(0 + max_generations_3d);	//generation
@@ -1186,11 +1309,38 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				boundary_id = i;
 				// add to full mesh and output mesh
 				std::cout << "adding tree to full mesh" << std::endl;
-				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id);
+				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id,true);
 				std::cout << "adding tree to output mesh" << std::endl;
 				unsigned int airway_elem_id_start = add_1d_tree_to_mesh(mesh_1d,vertices,cell_vertices, subdomain_id, boundary_id);
 				std::cout << "airway_elem_id_start on boundary " << boundary_id << " = " << airway_elem_id_start << std::endl;
 				airway_elem_id_start_vec.push_back(airway_elem_id_start);
+
+
+
+				// potentially add acinar units
+				if(es->parameters.get<unsigned int> ("acinar_model") == 1)
+				{
+					// we need to add the 1d tree to the 1d + acinar mesh
+					//std::cout << "adding tree to 1d + acinar mesh" << std::endl;
+					//add_1d_tree_to_mesh(mesh_1d_acinar,vertices,cell_vertices, subdomain_id, boundary_id);
+
+					// we give each 
+					unsigned int acinar_subdomain_id = subdomain_id + 100;
+					subdomains_acinar.push_back(acinar_subdomain_id);
+					unsigned int boundary_id = i;
+		
+					// add the terminal airway tree to a mesh for output and all that jazz
+					// boundary_id is the id of the airway it came from
+					// subdomain_id just iterates from the previous sudomain_ids
+
+					std::cout << "adding acinar to full mesh" << std::endl;
+					add_acinar_to_mesh(mesh,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start,true);
+
+					std::cout << "adding acinar to acinar mesh" << std::endl;
+					add_acinar_to_mesh(mesh_acinar,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start);
+
+
+				}
 			
 			}// end construct starting from single airway
 		
@@ -1247,11 +1397,12 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				unsigned int start_airway_data_id_1 = airway_data.size() - 1;
 				airway_data[start_airway_data_id_1].set_parent(-1);
 				airway_data[start_airway_data_id_1].set_length(initial_segment_length);
-				airway_data[start_airway_data_id_1].set_local_elem_number(airway_data.size() - 1);
+				//airway_data[start_airway_data_id_1].set_local_elem_number(airway_data.size() - 1);
 				airway_data[start_airway_data_id_1].set_tree_number(i);
 				airway_data[start_airway_data_id_1].set_radius(radius);	//this is the radius no diameter
 				airway_data[start_airway_data_id_1].set_generation(0 + max_generations_3d);	//generation
 				airway_data[start_airway_data_id_1].set_order(num_generations_local);	//generation
+
 				//particle deposition stuff
 				airway_data[start_airway_data_id_1].set_flow_rate(0.);	//the flow rate in this tube for the current time step
 				airway_data[start_airway_data_id_1].set_efficiency(0.);	//the efficiency in this tube for the current time step
@@ -1268,12 +1419,36 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				boundary_id = i;
 				// add to full mesh and output mesh
 				std::cout << "adding tree to full mesh" << std::endl;
-				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id);
+				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id,true);
 				std::cout << "adding tree to output mesh" << std::endl;
 				unsigned int airway_elem_id_start = add_1d_tree_to_mesh(mesh_1d,vertices,cell_vertices, subdomain_id, boundary_id);
 				std::cout << "airway_elem_id_start on boundary " << boundary_id << " = " << airway_elem_id_start << std::endl;
 				airway_elem_id_start_vec.push_back(airway_elem_id_start);
 
+
+				// potentially add acinar units
+				if(es->parameters.get<unsigned int> ("acinar_model") == 1)
+				{
+					/*
+					// we need to add the 1d tree to the 1d + acinar mesh
+					std::cout << "adding tree to 1d + acinar mesh" << std::endl;
+					add_1d_tree_to_mesh(mesh_1d_acinar,vertices,cell_vertices, subdomain_id, boundary_id);
+					*/
+					// we give each 
+					unsigned int acinar_subdomain_id = subdomain_id + 100;
+					subdomains_acinar.push_back(acinar_subdomain_id);
+					unsigned int boundary_id = i;
+		
+					// add the terminal airway tree to a mesh for output and all that jazz
+					// boundary_id is the id of the airway it came from
+					// subdomain_id just iterates from the previous sudomain_ids
+					add_acinar_to_mesh(mesh,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start,true);
+
+					add_acinar_to_mesh(mesh_acinar,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start);
+
+
+
+				}
 
 
 				// make 2nd part of tree
@@ -1300,7 +1475,7 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				unsigned int start_airway_data_id_2 = airway_data.size() - 1;
 				airway_data[start_airway_data_id_2].set_parent(-1);
 				airway_data[start_airway_data_id_2].set_length(initial_segment_length);
-				airway_data[start_airway_data_id_2].set_local_elem_number(airway_data.size() - 1);
+				//airway_data[start_airway_data_id_2].set_local_elem_number(airway_data.size() - 1);
 				airway_data[start_airway_data_id_2].set_tree_number(i);
 				airway_data[start_airway_data_id_2].set_radius(radius);	//this is the radius no diameter
 				airway_data[start_airway_data_id_2].set_generation(0 + max_generations_3d);	//generation
@@ -1323,14 +1498,36 @@ void NavierStokesCoupled::generate_1d_mesh ()
 				boundary_id = i;
 				// add to full mesh and output mesh
 				std::cout << "adding tree to full mesh" << std::endl;
-				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id);
+				add_1d_tree_to_mesh(mesh,vertices,cell_vertices, subdomain_id, boundary_id,true);
 				std::cout << "adding tree to output mesh" << std::endl;
 				airway_elem_id_start = add_1d_tree_to_mesh(mesh_1d,vertices,cell_vertices, subdomain_id, boundary_id);
 				std::cout << "airway_elem_id_start on boundary " << boundary_id << " = " << airway_elem_id_start << std::endl;
 				airway_elem_id_start_vec.push_back(airway_elem_id_start);
 
-			
 
+				// potentially add acinar units
+				if(es->parameters.get<unsigned int> ("acinar_model") == 1)
+				{
+					/*
+					// we need to add the 1d tree to the 1d + acinar mesh
+					std::cout << "adding tree to 1d + acinar mesh" << std::endl;
+					add_1d_tree_to_mesh(mesh_1d_acinar,vertices,cell_vertices, subdomain_id, boundary_id);
+					*/
+					// we give each 
+					unsigned int acinar_subdomain_id = subdomain_id + 100;
+					subdomains_acinar.push_back(acinar_subdomain_id);
+					unsigned int boundary_id = i;
+		
+					// add the terminal airway tree to a mesh for output and all that jazz
+					// boundary_id is the id of the airway it came from
+					// subdomain_id just iterates from the previous sudomain_ids
+					add_acinar_to_mesh(mesh,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start,true);
+
+					add_acinar_to_mesh(mesh_acinar,vertices,cell_vertices, acinar_subdomain_id,airway_elem_id_start);
+
+
+
+				}
 			}
 			
 			std::cout << "boundary_id = " << boundary_id << std::endl;
@@ -1550,6 +1747,11 @@ void NavierStokesCoupled::generate_1d_mesh ()
   mesh.prepare_for_use (/*skip_renumber =*/ false);
   mesh_1d.prepare_for_use (/*skip_renumber =*/ false);
 
+	if(es->parameters.get<unsigned int>("acinar_model") == 1)
+	{
+	  mesh_acinar.prepare_for_use (/*skip_renumber =*/ false);
+	}
+
 	std::cout << "after partition?" << std::endl;
 
 
@@ -1565,6 +1767,161 @@ void NavierStokesCoupled::generate_1d_mesh ()
 		flux_values_1d.push_back(0.0);	//inflow
 	
 
+
+
+
+
+
+
+
+
+
+	// **********  we may want to add additional airways to the mesh ************* //
+	if(es->parameters.get<unsigned int> ("additional_symmetric_generations"))
+	{
+		// okay so here, we need to add airways onto the terminal airways.
+		// 1 - loop over the current airways
+		// 2 - identify if it is terminal
+		// 3 - if it is, add to the terminal_airway_tree_data object
+		// 4 - then add all the airways and their relevant data
+
+		
+
+		//tree params
+		double bifurcation_angle = es->parameters.get<double> ("0d_bifurcation_angle");
+		double length_ratio = es->parameters.get<double> ("generation_ratio_1d");	//ratio between lengths and diameters in each generation
+		double left_length_ratio = 0.876;	//halves the length of segments in each generation
+		double right_length_ratio = 0.686;	//halves the length of segments in each generation
+		//const double length_diam_ratio = 3.0;
+		const double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
+		left_length_ratio = length_ratio;		
+
+		std::vector<unsigned int> segment;
+		Point p0,p1;
+
+		std::vector<Point> terminal_vertices;
+		std::vector<std::vector<unsigned int> > terminal_cell_vertices;
+		
+		// map from the terminal airway structure to airway id
+		std::vector<std::vector<unsigned int> > terminal_airway_id_to_element;
+
+		unsigned int subdomain_id_terminal = subdomain_id;
+
+
+		// loop over airways
+		for(unsigned int i=0; i<airway_data.size(); i++)
+		{
+			// check if terminal (i.e. doesn't have a daughter_1)
+			if(!airway_data[i].has_daughter_1())
+			{
+				// set up a vector 
+				std::vector<Airway> temp_terminal_airway_tree;
+				Point start_vertex = vertices[cell_vertices[i][0]];
+
+				std::vector<Point> terminal_vertices;
+				std::vector<std::vector<unsigned int> > terminal_cell_vertices;
+
+				for(unsigned int j=0; j<es->parameters.get<unsigned int> ("additional_symmetric_generations"); j++)
+				{
+					Airway temp_current_airway;
+					temp_current_airway.set_parent(j-1);
+					//temp_current_airway.set_local_elem_number(-1);
+					temp_current_airway.set_tree_number(i);
+
+					// length
+					double length = airway_data[i].get_length()*pow(length_ratio,j+1);
+					temp_current_airway.set_length(airway_data[i].get_length()*pow(length_ratio,j+1));
+
+					// radius
+					double radius = length/length_diam_ratio/2.0;
+					// if we are doing a twod approx then we need to change the radius
+					// NOTE: now coupling is handled in 0d assembler
+					if(false) //es->parameters.get<bool> ("twod_oned_tree"))
+						radius = pow(16/3/M_PI*pow(radius,3.0),1./4.0);
+					temp_current_airway.set_radius(radius);	//this is the radius no diameter
+
+					// bifurcation angle, gravity angle
+					// best thing to do here for now is to 
+					temp_current_airway.set_branching_angle(M_PI/4.0);
+					temp_current_airway.set_gravity_angle(M_PI/3.0);
+
+					// generation
+					unsigned int generation = airway_data[i].get_generation() + j + 1;
+					temp_current_airway.set_generation(generation);	//generation
+
+					//particle deposition stuff
+					temp_current_airway.set_flow_rate(0.);	//the flow rate in this tube for the current time step
+					temp_current_airway.set_efficiency(0.);	//the efficiency in this tube for the current time step
+					temp_current_airway.set_num_alveolar_generations(0);	//num alveolar generations
+
+					// set whether is a symmetric airway and how many in this generation
+					temp_current_airway.set_is_symmetric_airway(true);
+					temp_current_airway.set_num_symmetric_airways(pow(2.,j+1));
+					std::cout << "setting num symmetric airways = " << pow(2.,j+1) << std::endl;
+
+					// set daughter status
+					temp_current_airway.set_is_daughter_1(true);	// no
+
+					// if there is going to be a daughter then add a daughter
+					if(j+1<es->parameters.get<unsigned int> ("additional_symmetric_generations"))
+						temp_current_airway.add_daughter(j+1);
+
+					temp_terminal_airway_tree.push_back(temp_current_airway);
+
+
+					// set up the vertices for this airway to put in the mesh
+					// - get first vertex from vertices
+					p0 = cell_vertices[i][1];
+					terminal_vertices.push_back(p0);
+					segment.clear();
+					segment.push_back(terminal_vertices.size() - 1);
+					// - figure out what the next vertex should be of this symmetric airway
+					Point direction = cell_vertices[i][1] - cell_vertices[i][0];
+					direction = direction.unit();
+					p1 = p0 + length*direction;
+					terminal_vertices.push_back(p1);
+					segment.push_back(terminal_vertices.size() - 1);
+
+					terminal_cell_vertices.push_back(segment);
+					
+				}
+			
+				terminal_airway_data.push_back(temp_terminal_airway_tree);
+				terminal_airway_to_airway_map.push_back(i);
+				// we give each 
+				subdomains_1d_terminal.push_back(subdomain_id);
+				unsigned int boundary_id = i;
+				
+				// add the terminal airway tree to a mesh for output and all that jazz
+				// boundary_id is the id of the airway it came from
+				// subdomain_id just iterates from the previous sudomain_ids
+				unsigned int terminal_airway_elem_id_start = add_1d_tree_to_mesh(mesh_1d_terminal,terminal_vertices,terminal_cell_vertices, subdomain_id, boundary_id);
+
+				// iterate for next time
+				subdomain_id++;
+				terminal_airway_elem_id_starts.push_back(terminal_airway_elem_id_start);
+
+			}
+		}
+
+		// debug print data on airways
+		for(unsigned int i=0; i<terminal_airway_data.size(); i++)
+		{
+			std::cout << "terminal airway tree " << i << " from airway " << terminal_airway_to_airway_map[i] << std::endl;
+			for(unsigned int j=0; j< terminal_airway_data[i].size(); j++)
+			{
+				std::cout << " Airway " << j << " data:" << std::endl;
+				terminal_airway_data[i][j].print_concise();
+			}
+			std::cout << std::endl;
+		}
+
+		// do later
+		//terminal_airway_id_to_element_id = terminal_cell_vertices;
+
+	}
+
+
 }
 
 
@@ -1575,13 +1932,28 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 {
 	//tree params
 	double bifurcation_angle = es->parameters.get<double> ("0d_bifurcation_angle");
-	double length_ratio = es->parameters.get<double> ("generation_ratio_1d");	//ratio between lengths and diameters in each generation
-	double left_length_ratio = 0.876;	//halves the length of segments in each generation
-	double right_length_ratio = 0.686;	//halves the length of segments in each generation
-	//const double length_diam_ratio = 3.0;
 	const double length_diam_ratio = es->parameters.get<double> ("length_diam_ratio");
-	left_length_ratio = length_ratio;
-	right_length_ratio = length_ratio;
+	double length_ratio = es->parameters.get<double> ("generation_ratio_1d");	//ratio between lengths and diameters in each generation
+	//const double length_diam_ratio = 3.0;
+
+	double left_length_ratio = 0.;
+	double right_length_ratio = 0.;
+	if(es->parameters.get<unsigned int> ("asymmetric_0d_tree") == 0)
+	{
+		left_length_ratio = length_ratio;
+		right_length_ratio = length_ratio;
+	}
+	else if(es->parameters.get<unsigned int> ("asymmetric_0d_tree") == 1)
+	{
+		left_length_ratio = es->parameters.get<double> ("generation_ratio_1d_left");
+		right_length_ratio = es->parameters.get<double> ("generation_ratio_1d_right");
+	}
+	else
+	{
+		std::cout << "asymmetric_0d_tree type " << es->parameters.get<unsigned int> ("asymmetric_0d_tree") << " not defined." << std::endl;
+		std::cout << "EXITING..." << std::endl;
+		std::exit(0);
+	}
 
 	//helpful variables
 	std::vector<unsigned int> segment(2);
@@ -1658,12 +2030,15 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			airway_data[cell_vertices.size() - 1 + element_offset].set_is_daughter_1(true);
 			airway_data[cell_vertices.size() - 1 + element_offset].set_length(length_1);
 
-			double radius_1 = length_1/length_diam_ratio/2.0;
+			// get the radius back up to the value it should be with length adjustment factor
+			double radius_1 = length_1/length_diam_ratio/2.0/es->parameters.get<double> ("length_adjustment_factor_0d");
+;
 			// if we are doing a twod approx then we need to change the radius
 			// NOTE: now coupling is handled in 0d assembler
 			if(false)//es->parameters.get<bool> ("twod_oned_tree"))
 				radius_1 = pow(16/3/M_PI*pow(radius_1,3.0),1./4.0);
 
+			//std::cout << "radius_1 = " << radius_1 << std::endl;
 			airway_data[cell_vertices.size() - 1 + element_offset].set_radius(radius_1); //radius not diam
 			airway_data[cell_vertices.size() - 1 + element_offset].set_generation(i + max_generations_3d); //generation
 			airway_data[cell_vertices.size() - 1 + element_offset].set_order(num_generations - i); //order
@@ -1683,12 +2058,13 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 			airway_data[cell_vertices.size() - 1 + element_offset].set_is_daughter_1(false);
 			airway_data[cell_vertices.size() - 1 + element_offset].set_length(length_2);
 
-			double radius_2 = length_2/length_diam_ratio/2.0;
+			double radius_2 = length_2/length_diam_ratio/2.0/es->parameters.get<double> ("length_adjustment_factor_0d");
 			// if we are doing a twod approx then we need to change the radius
 			// NOTE: now coupling is handled in 0d assembler
 			if(false)//es->parameters.get<bool> ("twod_oned_tree"))
 				radius_2 = pow(16/3/M_PI*pow(radius_2,3.0),1./4.0);
 
+			//std::cout << "radius_2 = " << radius_2 << std::endl;
 			airway_data[cell_vertices.size() - 1 + element_offset].set_radius(radius_2); //radius not diam
 			airway_data[cell_vertices.size() - 1 + element_offset].set_generation(i + max_generations_3d); //generation
 			airway_data[cell_vertices.size() - 1 + element_offset].set_order(num_generations - i); //order
@@ -1710,7 +2086,7 @@ void NavierStokesCoupled::create_1d_tree(std::vector<Point>& vertices,
 // ********* this adds the 1d tree data structure to a libmesh mesh ************* //
 // we do this for the full coupled mesh and the 1d output mesh
 unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<Point>& vertices, 
-		std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int subdomain_id, unsigned int boundary_id)
+		std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int subdomain_id, unsigned int boundary_id, bool full_mesh)
 {
 
 
@@ -1722,6 +2098,10 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 
 	// starting element, assuming it doesn't change lol
 	unsigned int airway_elem_id_start = 0;
+
+	double length_scale = 1.0;
+	if(full_mesh)
+		length_scale = es->parameters.get<double>("length_scale");
 
 	//loop over segments adding nodes and stuff
 
@@ -1773,8 +2153,8 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 	{
 
 		//starting point
-		Point start_point = vertices[cell_vertices[i][0]];
-		Point end_point = vertices[cell_vertices[i][1]];
+		Point start_point = vertices[cell_vertices[i][0]] * length_scale;
+		Point end_point = vertices[cell_vertices[i][1]] * length_scale;
 		Point direction = end_point - start_point;
 
 		libmesh_assert_not_equal_to (nx, 0);
@@ -1785,6 +2165,7 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 		//this will stay the same because for each segment we want the number of elements simply adds
 		case INVALID_ELEM:
 		case EDGE2:
+
 		case EDGE3:
 		  {
 		    _mesh.reserve_elem (nx);
@@ -1793,6 +2174,7 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 
 		default:
 		  {
+				std::cout << "huh??" << std::endl;
 		    libMesh::err << "ERROR: Unrecognized 1D element type." << std::endl;
 		    libmesh_error();
 		  }
@@ -1822,24 +2204,10 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 		      break;
 		    }
 
-		  case EDGE3:
-		    {
-					if(i==0)
-					{
-						_mesh.add_point (start_point);
-
-					}
-		      for (unsigned int j=1; j<=2*nx; j++)
-		      {
-		      
-		        _mesh.add_point (start_point + static_cast<Real>(j)/static_cast<Real>(2*nx) * direction);
-		      }
-		      break;
-		    }
-
 
 		  default:
 		    {
+				std::cout << "huh???" << std::endl;
 		      libMesh::err << "ERROR: Unrecognized 1D element type." << std::endl;
 		      libmesh_error();
 		    }
@@ -1894,61 +2262,21 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 						// ************* set what the starting element id is ********
 						if(i==0 && j==0)
 							airway_elem_id_start = elem->id();
-		      }
-		    break;
-		    }
 
-		  case EDGE3:
-		    {
-
-					//for the first segment we add all the elements normally
-					//however for the others the first element needs to be connected to the 
-					
-		      for (unsigned int j=0; j<nx; j++)
-		      {
-						
-		        Elem* elem = _mesh.add_elem (new Edge3);
-        	  elem->subdomain_id() = subdomain_id;
-
-						if(i==0)
-			        elem->set_node(0) = _mesh.node_ptr(node_start + 2*j);
-            else
-              elem->set_node(0) = _mesh.node_ptr(segment_vertex_to_node[cell_vertices[i][0]]);
-		        elem->set_node(2) = _mesh.node_ptr(node_start + 2*j + 1);
-		        elem->set_node(1) = _mesh.node_ptr(node_start + 2*j + 2);
-
-						//inflow boundary
-						if(j==0 && vertex_count[cell_vertices[i][0]] == 1)
-		        	_mesh.boundary_info->add_side(elem, 0, boundary_id);
-
-
-		        if (j == (nx-1))
+						// ************ make the mapping from full mesh elem id to airway_data id
+						if(full_mesh)
 						{
-							//hmmm need to now know a priori which elements are terminal somehow
-							//if the vertex count of the current segments end is equal to one then
-							// terminal and add it to the boundary information
-							if(vertex_count[cell_vertices[i][1]] == 1)
-		          	_mesh.boundary_info->add_side(elem, 1, 1000);
-
-							//also save the node of the end of the segment
-							segment_vertex_to_node[cell_vertices[i][1]] = node_start + 2*nx;
+							elem_to_airway.resize(mesh.n_elem());
+							elem_to_airway[elem->id()] = i + num_airways_in_full_mesh;
+							airway_data[i + num_airways_in_full_mesh].set_local_elem_number(elem->id());
 						}
-
-						//sorta obvious?? - the first one
-						segment_vertex_to_node[0] = node_start;
-
-
-						// ************* set what the starting element id is ********
-						if(i==0 && j==0)
-							airway_elem_id_start = elem->id();
-
-					}
-
+		      }
 		    break;
 		    }
 
 		  default:
 		    {
+				std::cout << "huh????" << std::endl;
 		      libMesh::err << "ERROR: Unrecognized 1D element type." << std::endl;
 		      libmesh_error();
 		    }
@@ -1966,8 +2294,146 @@ unsigned int NavierStokesCoupled::add_1d_tree_to_mesh(Mesh& _mesh, std::vector<P
 		node_start = _mesh.n_nodes() - 1;
 	}
 
+	if(full_mesh)
+		num_airways_in_full_mesh += n_segments;
+
 
 	return airway_elem_id_start;
+
+
+}
+
+
+
+
+// ********* this adds the 1d tree data structure to a libmesh mesh ************* //
+// we do this for the full coupled mesh and the 1d output mesh
+void NavierStokesCoupled::add_acinar_to_mesh(Mesh& _mesh, std::vector<Point>& vertices, 
+		std::vector<std::vector<unsigned int> >& cell_vertices, unsigned int subdomain_id, unsigned int airway_elem_id_start, bool full_mesh)
+{
+
+
+
+	// we made the inflow bdys the same as the subdomain_id
+	// we made the outflow bdys 1000
+	// okay need to figure out how we are going to distribute the mesh_1d
+	// need to take into account the connectivity, but essentially we could put separate trees onto separate cores
+
+	std::cout << "yo" << std::endl;
+
+	//loop over segments adding nodes and stuff
+	double length_scale = 1.0;
+	if(full_mesh)
+		length_scale = es->parameters.get<double>("length_scale");
+	unsigned int
+	n_vertices = vertices.size();
+	unsigned int n_segments = cell_vertices.size();
+
+	//hmmm we need to build a map from segment vertex to node number
+	std::vector<unsigned int> segment_vertex_to_node(n_vertices,-1);
+	std::vector<unsigned int> vertex_count(n_vertices,0);
+
+	//need to construct a thing that counts up how many times a vertex was used
+	// if we start on a segment then vertex_count will be 1,
+	// if we start on a bifurcation then vertex count will be 2,
+	// if we are in the middle of a mesh the vertex count will be 3,
+	// if we are at the end of a tree then the vertex count will be 1
+	for(unsigned int i=0;i<n_segments;i++)
+	{
+		vertex_count[cell_vertices[i][0]] += 1;
+		vertex_count[cell_vertices[i][1]] += 1;
+	}
+
+	// only 0D supported
+	ElemType type = NODEELEM;		//element type
+
+	std::cout << "yo" << std::endl;
+	//keep track of the number of nodes from when the previous element added
+	unsigned int node_start = _mesh.n_nodes(); //0;
+	std::cout << "node_start initially = " << node_start << std::endl;
+	std::cout << "airway_elem_id_start = " << airway_elem_id_start << std::endl;
+	unsigned int acinar_number = 0;
+	for(unsigned int i=0;i<n_segments;i++)
+	{
+
+		//terminal point
+		Point terminal_point = vertices[cell_vertices[i][1]] * length_scale;
+
+		// Build the nodes, depends on whether we're using linears,
+		// quadratics or cubics and whether using uniform grid or Gauss-Lobatto
+		// we will not consider gauss lobatto 
+		switch(type)
+		{
+		  case INVALID_ELEM:
+		  case NODEELEM:
+		    {
+					//hmmm need to now know a priori which elements are terminal somehow
+					//if the vertex count of the current segments end is equal to one then
+					// terminal and add it to the boundary information
+					if(vertex_count[cell_vertices[i][1]] == 1)
+					{
+//	std::cout << "yo1" << std::endl;
+		        _mesh.add_point (terminal_point);	// add the terminal point to the mesh
+//	std::cout << "yo" << std::endl;
+		        Elem* elem = _mesh.add_elem (new NodeElem);	// create the node element
+//	std::cout << "yo" << std::endl;
+        	  elem->subdomain_id() = subdomain_id;	// tell the element what its subdomain id is
+//	std::cout << "yo" << std::endl;
+//	std::cout << "node_start before being used = " << node_start << std::endl;
+	        	elem->set_node(0) = _mesh.node_ptr(node_start);	// tell the element which node it is at
+//	std::cout << "yo" << std::endl;
+						acinar_to_airway.resize(acinar_number+1);
+//	std::cout << "yo" << std::endl;
+						acinar_to_airway[acinar_number] = airway_elem_id_start + i;	// create the mapping between acinar and airway
+//	std::cout << "yo" << std::endl;
+
+						// give the airway_data the acinar id
+						airway_data[airway_elem_id_start + i].set_acinar_id(acinar_number);
+
+						if(full_mesh)
+						{
+							airway_data[airway_elem_id_start + i].set_acinar_elem(_mesh.n_elem()-1);	// lets the airway know what elem the acinar is on
+							elem_to_acinar.resize(_mesh.n_elem());
+							elem_to_acinar[_mesh.n_elem() - 1] = acinar_number;	// create the mapping between acinar and airway
+						}
+						else
+						{
+//							std::cout << "HII: _mesh.n_elem()-1 = " << _mesh.n_elem()-1 << std::endl;
+//							std::cout << "HII: _mesh.n_elem() = " << _mesh.n_elem() << std::endl;
+							airway_data[airway_elem_id_start + i].set_acinar_output_elem(_mesh.n_elem()-1);	// lets the airway know what elem the acinar is on
+//							std::cout << "set acinar_output_elem to " << _mesh.n_elem() -1 << std::endl;
+//							std::cout << "actual value, i=" << i << ":" << airway_data[airway_elem_id_start + i].get_acinar_output_elem() << std::endl;
+						}
+						//update where to start adding nodes from
+						//node_start = _mesh.n_nodes() - 1;
+						node_start++;
+						acinar_number++;
+					}
+
+		      break;
+		    }
+
+
+		  default:
+		    {
+		      libMesh::err << "ERROR: Unrecognized 1D element type." << std::endl;
+		      libmesh_error();
+		    }
+
+		}
+
+	}
+
+/*	
+	std::cout << "acinar output elems:" << std::endl;
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		std::cout << i << " : " << airway_data[i].get_acinar_output_elem() << std::endl;
+	}
+*/
+
+
+	//return airway_elem_id_start;
 
 
 }
@@ -1982,7 +2448,7 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 
 	std::set<subdomain_id_type> active_subdomains;
 	active_subdomains.clear(); 
-	
+
 
 	for(unsigned int i=0; i<subdomains_1d.size(); i++)
 		active_subdomains.insert(subdomains_1d[i]);
@@ -2009,6 +2475,7 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 	std::cout << "P_var = " << P_var << std::endl;
 	std::cout << "Q_var = " << Q_var << std::endl;
 
+
 	// variables for particle deposition system
 	if(particle_deposition == 2)
 	{
@@ -2016,6 +2483,7 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 
 		std::cout << "efficiency_var = " << efficiency_var << std::endl;
 	}
+
 	
 
 	// only want to set the extra variables on the output mesh once
@@ -2026,11 +2494,13 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 		int radius_vis_var = extra_1d_data_system->add_variable("radius_vis", CONSTANT, MONOMIAL,&active_subdomains);
 		int poiseuille_var = extra_1d_data_system->add_variable("poiseuille", CONSTANT, MONOMIAL,&active_subdomains);
 		int proc_id_var = extra_1d_data_system->add_variable("proc_id_1d", CONSTANT, MONOMIAL,&active_subdomains);
+		int resistance_var = extra_1d_data_system->add_variable("resistance", CONSTANT, MONOMIAL,&active_subdomains);
 
 		std::cout << "radius_var = " << radius_var << std::endl;
 		std::cout << "radius_vis_var = " << radius_vis_var << std::endl;
 		std::cout << "poiseuille_var = " << poiseuille_var << std::endl;
 		std::cout << "proc_id_1d_var = " << proc_id_var << std::endl;
+		std::cout << "resistance_var = " << proc_id_var << std::endl;
 
 	}
 
@@ -2044,7 +2514,10 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 		int proc_id_var = system->add_variable("proc_id_1d", CONSTANT, MONOMIAL);
 
 		if(particle_deposition)
+		{
 			const unsigned int dep_frac_var = system->add_variable ("deposition_fraction", CONSTANT, MONOMIAL);
+			const unsigned int part_frac_var = system->add_variable ("particle_fraction", CONSTANT, MONOMIAL);
+		}
 
 	}
 
@@ -2054,12 +2527,61 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 		system->add_variable ("Q_1", FIRST,MONOMIAL,&active_subdomains);
 		system->add_variable ("Q_2", FIRST,MONOMIAL,&active_subdomains);
 		system->add_variable ("vel", FIRST,MONOMIAL,&active_subdomains);
-		system->add_variable ("vel_2d", FIRST,MONOMIAL,&active_subdomains);
+	}
+
+	// only add matrices and vector for assembly to the actual system
+	if(!output_system)
+	{
+		// need to add these if mono hasn't added them
+		if(es->parameters.get<bool> ("residual_formulation_0d"))// && sim_type !=5)
+		{
+			// vector to save the original forcing vector (not including newton terms), without BCs
+			system->add_vector("Forcing Vector",false);
+			system->add_vector("Forcing Vector BC",false);
+
+			// vector to save the "lhs of the residual" i.e. A(x_star) * x_star
+			system->add_vector("Residual LHS",false);
+		}
 	}
 
 
 
+}
 
+
+
+// add the acinar stuff to the system
+//
+void NavierStokesCoupled::setup_acinar_system(System * system, bool output_system, bool centrelines)
+{
+
+	std::set<subdomain_id_type> active_subdomains;
+	active_subdomains.clear(); 
+
+
+	for(unsigned int i=0; i<subdomains_acinar.size(); i++)
+		active_subdomains.insert(subdomains_acinar[i]);
+
+	for(unsigned int i=0; i<subdomains_acinar.size(); i++)
+		std::cout << "subdomains_acinar = " << subdomains_acinar[i] << std::endl;
+
+	int V_var = 0;
+
+	V_var = system->add_variable ("V", CONSTANT,MONOMIAL,&active_subdomains);
+	std::cout << "V_var = " << V_var << std::endl;
+
+	// for the output system we want some extra data
+	// - the pleural pressure
+	// - the acinar pressure
+	// - the pressure difference
+	if(output_system)
+	{
+		system->add_variable ("P_pl", CONSTANT,MONOMIAL,&active_subdomains);
+		system->add_variable ("P_acin", CONSTANT,MONOMIAL,&active_subdomains);
+		system->add_variable ("P_diff", CONSTANT,MONOMIAL,&active_subdomains);
+		system->add_variable ("radius", CONSTANT,MONOMIAL,&active_subdomains);
+
+	}
 }
 
 
@@ -2068,7 +2590,7 @@ void NavierStokesCoupled::setup_1d_system(System * system, bool output_system, b
 
 
 
-void NavierStokesCoupled::calculate_1d_boundary_values()
+void NavierStokesCoupled::calculate_1d_boundary_values(bool mono_0d_only)
 {
 	
 	std::cout << "Calculating 1D boundary values... ";
@@ -2077,9 +2599,22 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 	{
 
 		// if we are running a 3d-1d then the flux values are the first elements
-		if(sim_type == 5 || sim_type == 3 || sim_type == 2)
+		if(sim_type == 5 && !mono_0d_only)
 		{
-			std::cout << "flux_values_1d.size() = " << flux_values_1d.size()<< std::endl;
+			//std::cout << "flux_values_1d.size() = " << flux_values_1d.size()<< std::endl;
+
+			// there is no 0 boundary flux
+			// i is the tree id, but we want to calculate on the boundary
+			for(unsigned int i=1; i< flux_values_1d.size(); i++)
+			{
+				flux_values_1d[i] = ns_assembler_mono->calculate_flux(tree_id_to_boundary_id[i]);
+				pressure_values_1d[i] = ns_assembler_mono->calculate_pressure(tree_id_to_boundary_id[i]);			
+			}
+
+		}
+		else if(sim_type == 3 || sim_type == 2 || (sim_type == 5 && mono_0d_only))
+		{
+			//std::cout << "flux_values_1d.size() = " << flux_values_1d.size()<< std::endl;
 
 			// there is no 0 boundary flux
 			// i is the tree id, but we want to calculate on the boundary
@@ -2094,9 +2629,17 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		{
 			if(sim_type == 1)
 			{
-				// we count from 1 for some reason
-				flux_values_1d[0] = ns_assembler->calculate_flux(1);
-				pressure_values_1d[0] = ns_assembler->calculate_pressure(1);
+				// we count from 1 for some reason, do we??
+				//flux_values_1d[0] = ns_assembler->calculate_flux(1);
+				//flux_values_1d[0] = ns_assembler->calculate_flux(0);
+				//pressure_values_1d[0] = ns_assembler->calculate_pressure(1);
+				//pressure_values_1d[0] = ns_assembler->calculate_pressure(0);
+
+				for(unsigned int i=0; i<flux_values_1d.size(); i++)
+				{
+					flux_values_1d[i] = ns_assembler->calculate_flux(i);
+					pressure_values_1d[i] = ns_assembler->calculate_pressure(i);
+				}
 
 			}
 			else
@@ -2132,7 +2675,7 @@ void NavierStokesCoupled::calculate_1d_boundary_values()
 		//exit(0);
 	}
 
-	std::cout << "Done calculating 1D boundary values." << std::endl;
+	//std::cout << "Done calculating 1D boundary values." << std::endl;
 }
 
 
@@ -2206,6 +2749,7 @@ void NavierStokesCoupled::write_1d_solution()
 	variables_1d.push_back("radius_vis");
 	variables_1d.push_back("poiseuille");
 	variables_1d.push_back("proc_id_1d");
+	variables_1d.push_back("resistance");
 
 	if(particle_deposition == 3 ||  particle_deposition == 4 ||  particle_deposition == 5 ||  particle_deposition == 6)
 	{
@@ -2216,7 +2760,6 @@ void NavierStokesCoupled::write_1d_solution()
 		variables_1d.push_back("p_airway_imp");
 		variables_1d.push_back("p_total_imp");
 		variables_1d.push_back("vel");
-		variables_1d.push_back("vel_2d");
 	}
 
 	if(particle_deposition == 5 ||  particle_deposition == 6)
@@ -2324,53 +2867,464 @@ void NavierStokesCoupled::write_1d_solution()
 
 
 
-int NavierStokesCoupled::solve_1d_system()
+
+
+void NavierStokesCoupled::write_acinar_solution()
+{
+	std::cout << "hi?" << std::endl;
+	
+	copy_acinar_solution_program_to_output();
+
+	std::cout << "hi?" << std::endl;
+	// we need to get some info on the mesh and stuff
+	unsigned int num_acinar = mesh_acinar.n_elem();
+	double length_scale = 1.0;	
+	double volume_scale = 1.0;
+	double pressure_scale = 1.0;
+	if(es->parameters.get<bool>("nondimensionalised") && !es->parameters.get<bool>("output_nondim"))
+	{
+		length_scale = es->parameters.get<double>("length_scale");
+		volume_scale = pow(length_scale,3.0);
+		pressure_scale = 1.0;es->parameters.get<double>("density") *
+														pow(es->parameters.get<double>("velocity_scale"),2.0);
+	}
+
+
+	std::cout << "hi?" << std::endl;
+	// output the parameters used to file and the header of the out.dat file
+	std::ostringstream acinar_data_file_name;
+	std::ofstream acinar_vtk_output_file;
+
+	acinar_data_file_name << output_folder.str() << "acinar";
+
+	acinar_data_file_name << std::setw(4) << std::setfill('0') << t_step;
+	acinar_data_file_name << ".vtk" ;
+	//output_data_file_name << "results/out_viscosity"	<< es->parameters.set<Real> ("viscosity") << ".dat";
+	acinar_vtk_output_file.open(acinar_data_file_name.str().c_str());
+
+	acinar_vtk_output_file << "# vtk DataFile Version 2.0" << std::endl;
+	acinar_vtk_output_file << "Acinar file for paraview" << std::endl;
+	acinar_vtk_output_file << "ASCII" << std::endl;
+	acinar_vtk_output_file << "DATASET UNSTRUCTURED_GRID" << std::endl << std::endl;
+	acinar_vtk_output_file << "POINTS " << num_acinar << " float" << std::endl;
+
+	std::cout << "hi?" << std::endl;
+  MeshBase::const_element_iterator       el     = mesh_acinar.active_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh_acinar.active_elements_end();
+
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+		double x_coord = (*elem->get_node(0))(0);
+		double y_coord = (*elem->get_node(0))(1);
+		double z_coord = (*elem->get_node(0))(2);
+
+		acinar_vtk_output_file << x_coord << " ";
+		acinar_vtk_output_file << y_coord << " ";
+		acinar_vtk_output_file << z_coord << std::endl;
+	}
+
+	std::cout << "hi?" << std::endl;
+	acinar_vtk_output_file << std::endl;
+	acinar_vtk_output_file << "CELL_TYPES " << num_acinar << std::endl;
+
+	for(unsigned int i=0; i<num_acinar; i++)
+	{
+		acinar_vtk_output_file << 1 << std::endl;
+	}
+
+	acinar_vtk_output_file << std::endl;
+
+	acinar_vtk_output_file << "POINT_DATA " << num_acinar << std::endl;
+	acinar_vtk_output_file << "SCALARS volume float 1" << std::endl;
+	acinar_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
+
+  const DofMap & dof_map = system_acinar_output->get_dof_map();
+  std::vector<dof_id_type> dof_indices;
+  std::vector<dof_id_type> dof_indices_v;
+	const unsigned int v_var = system_acinar_output->variable_number ("V");
+
+	std::cout << "before adding volumes" << std::endl;
+
+	// reset for the next loop dumbass
+  el     = mesh_acinar.active_elements_begin();
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+    dof_map.dof_indices (elem, dof_indices_v, v_var);
+		double volume = (*system_acinar_output->solution)(dof_indices_v[0]) * volume_scale;
+
+		acinar_vtk_output_file << volume << " ";
+
+	}
+
+	acinar_vtk_output_file << std::endl;
+	acinar_vtk_output_file << std::endl;
+
+	acinar_vtk_output_file << "SCALARS P_pl float 1" << std::endl;
+	acinar_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
+
+  std::vector<dof_id_type> dof_indices_p_pl;
+	const unsigned int p_pl_var = system_acinar_output->variable_number ("P_pl");
+
+	std::cout << "before adding P_pl" << std::endl;
+
+	// reset for the next loop dumbass
+  el     = mesh_acinar.active_elements_begin();
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+    dof_map.dof_indices (elem, dof_indices_p_pl, p_pl_var);
+		double p_pl = (*system_acinar_output->solution)(dof_indices_p_pl[0]) * pressure_scale;
+
+		acinar_vtk_output_file << p_pl << " ";
+
+	}
+
+
+	acinar_vtk_output_file << std::endl;
+	acinar_vtk_output_file << std::endl;
+
+	acinar_vtk_output_file << "SCALARS P_acin float 1" << std::endl;
+	acinar_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
+
+  std::vector<dof_id_type> dof_indices_p_acin;
+	const unsigned int p_acin_var = system_acinar_output->variable_number ("P_acin");
+
+	std::cout << "before adding P_acin" << std::endl;
+
+	// reset for the next loop dumbass
+  el     = mesh_acinar.active_elements_begin();
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+    dof_map.dof_indices (elem, dof_indices_p_acin, p_acin_var);
+		double p_acin = (*system_acinar_output->solution)(dof_indices_p_acin[0]) * pressure_scale;
+
+		acinar_vtk_output_file << p_acin << " ";
+
+	}
+
+
+	acinar_vtk_output_file << std::endl;
+	acinar_vtk_output_file << std::endl;
+
+	acinar_vtk_output_file << "SCALARS P_diff float 1" << std::endl;
+	acinar_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
+
+  std::vector<dof_id_type> dof_indices_p_diff;
+	const unsigned int p_diff_var = system_acinar_output->variable_number ("P_diff");
+
+	std::cout << "before adding P_diff" << std::endl;
+
+	// reset for the next loop dumbass
+  el     = mesh_acinar.active_elements_begin();
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+    dof_map.dof_indices (elem, dof_indices_p_diff, p_diff_var);
+		double p_diff = (*system_acinar_output->solution)(dof_indices_p_diff[0]) * pressure_scale;
+
+		acinar_vtk_output_file << p_diff << " ";
+
+	}
+
+	acinar_vtk_output_file << std::endl;
+	acinar_vtk_output_file << std::endl;
+
+	acinar_vtk_output_file << "SCALARS radius float 1" << std::endl;
+	acinar_vtk_output_file << "LOOKUP_TABLE default" << std::endl;
+
+  std::vector<dof_id_type> dof_indices_radius;
+	const unsigned int radius_var = system_acinar_output->variable_number ("radius");
+
+	std::cout << "before adding radius" << std::endl;
+
+	// reset for the next loop dumbass
+  el     = mesh_acinar.active_elements_begin();
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+
+    dof_map.dof_indices (elem, dof_indices_radius, radius_var);
+		double radius = (*system_acinar_output->solution)(dof_indices_radius[0]) * length_scale;
+
+		acinar_vtk_output_file << radius << " ";
+
+	}
+
+
+	acinar_vtk_output_file.close();
+
+}
+
+
+// calculate the total acinar volume
+double NavierStokesCoupled::calculate_total_acinar_volume()
+{
+	// to do this, we will loop over the elements and add up all the acinar volumes.
+	
+	double total_acinar_volume = 0.;
+
+	double length_scale = 1.0;	
+	double volume_scale = 1.0;
+
+	if(es->parameters.get<bool>("nondimensionalised") && !es->parameters.get<bool>("output_nondim"))
+	{
+		length_scale = es->parameters.get<double>("length_scale");
+		volume_scale = pow(length_scale,3.0);
+	}
+
+
+	TransientLinearImplicitSystem * system;
+  // Get a reference to the Stokes system object.
+	if(sim_type == 5)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
+	}
+
+  const DofMap & dof_map = system->get_dof_map();
+  std::vector<dof_id_type> dof_indices_v;
+	const unsigned int v_var = system->variable_number ("V");
+
+  MeshBase::const_element_iterator       el     = mesh.active_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_elements_end();
+
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+		unsigned int subdomain_id = elem->subdomain_id();
+		if(std::find(subdomains_acinar.begin(), subdomains_acinar.end(), subdomain_id) != subdomains_acinar.end())
+		{
+		  dof_map.dof_indices (elem, dof_indices_v, v_var);
+			double local_acinar_volume = (*system->solution)(dof_indices_v[0]) * volume_scale;
+//			std::cout << "local_acinar_volume = " << local_acinar_volume << std::endl;
+
+			total_acinar_volume += local_acinar_volume;
+		}
+
+	}
+
+	
+
+	return total_acinar_volume;
+}
+
+
+
+
+
+int NavierStokesCoupled::solve_1d_system(TransientLinearImplicitSystem * system)
 {
 
+	// initing some stuff
+	// setup some stuff for the linear solver
 	PetscErrorCode ierr;	// unused
 
 	PetscLinearSolver<Number>* system_linear_solver =
 			libmesh_cast_ptr<PetscLinearSolver<Number>* >
-			(system_1d->linear_solver.get());
+			(system->linear_solver.get());
 
 	std::string prefix_1d = "ns1d_";
 	system_linear_solver->set_prefix(prefix_1d);
 	system_linear_solver->init();	// set the name
 
-
-	std::cout << "poo" << std::endl;
-	// set the poiseuille data
-	set_poiseuille();
-	std::cout << "is good to eat" << std::endl;
-
-
-	// Assemble & solve the linear system.
-	perf_log.push("Linear 1D solve");
-	std::cout << "hello" << std::endl;
-	es->get_system("ns1d").solve();
-	std::cout << "hello" << std::endl;
-	perf_log.pop("Linear 1D solve");
+	// -1 - stuff for calculating nonlinear residuals
+	std::vector<Real> weights;  // P, Q
+	weights.push_back(1.0);
+	weights.push_back(1.0);
+	std::vector<FEMNormType>	norms;	//if empty will automagically use discrete l2
 
 
-	if(es->parameters.get<bool>("ksp_view") && nonlinear_iteration == 1 && t_step == 1)
+	bool converged = false;
+	unsigned int nonlinear_iteration_1d = 0;
+	unsigned int max_nonlinear_iterations_1d = es->parameters.set<unsigned int> ("max_nonlinear_iterations_1d");
+	while(!converged)
 	{
-		// we need to set this directly
-		KSP system_ksp_1d = system_linear_solver->ksp();
-		ierr = KSPView(system_ksp_1d,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
-	}
-	//system_1d->matrix->print(std::cout,false);
-	//system_1d->rhs->print(std::cout);
+		nonlinear_iteration_1d++;
+		std::cout << "0D Nonlinear iteration " << nonlinear_iteration_1d << std::endl;
+		//std::cout << "t_step = " << t_step << std::endl;
 
-	//system_1d->solution->print();
+
+		//let us set up to use the same preconditioner
+		system_linear_solver->reuse_preconditioner(es->parameters.get<bool>("reuse_preconditioner"));
+
+		//std::cout << "poo" << std::endl;
+		// set the poiseuille data
+		set_poiseuille();
+		//std::cout << "is good to eat" << std::endl;
+
+
+		// 0 - get the previous solution
+		*last_1d_nonlinear_soln = *system->solution;	//don't need to worry bout sizes
+		last_1d_nonlinear_soln->close();
+
+		// Assemble & solve the linear system.
+
+		perf_log.push("assembly_1d");
+		system->assemble();
+		perf_log.pop("assembly_1d");
+
+		perf_log.push("solve_setup_1d");
+
+		//get petsc solver
+		PetscLinearSolver<Number>* system_linear_solver =
+				libmesh_cast_ptr<PetscLinearSolver<Number>* >
+				(system->linear_solver.get());
+
+		// this inits the ksp so need to set prefix before this
+		std::string prefix_1d;
+		if(sim_type != 5)
+			prefix_1d = "ns1d_";
+		else
+			prefix_1d = "ns3d1d_";
+
+		system_linear_solver->set_prefix (prefix_1d);
+		KSP system_ksp = system_linear_solver->ksp();
+
+		// Get the user-specifiied linear solver tolerance
+		const Real tol = es->parameters.get<Real>("linear solver tolerance");
+
+		// Get the user-specified maximum # of linear solver iterations
+		const unsigned int maxits = es->parameters.get<unsigned int>("linear solver maximum iterations");
+
+		system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
+		perf_log.pop("solve_setup_1d");
+
+		//std::cout << "last_1d_nonlinear_soln l2 norm = " << last_1d_nonlinear_soln->l2_norm() << std::endl;
+		//std::cout << "rhs l2 norm = " << system->rhs->l2_norm() << std::endl;
+		//system->rhs->print();
+
+		perf_log.push("solve_1d");
+
+
+		//std::cout << "Using system matrix as preconditioner" << std::endl;
+		system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
+	
+
+		// if we are using the residual formulation, we need to update
+		// the solution from the last_nonlinear_soln
+		if(es->parameters.get<bool>("residual_formulation_0d"))
+		{
+			//std::cout << "post solve increment l2 norm = " << system->solution->l2_norm() << std::endl;
+
+			// we get out the increment so add the previous solution to find the new one
+			system->solution->add(*last_1d_nonlinear_soln);
+			system->solution->close();
+
+			// enforce the constraints on the solution after the solve
+			//system->get_dof_map().enforce_constraints_exactly(*system);	
+
+		}
+
+
+
+		//std::cout << "hello" << std::endl;
+		//system->solve();
+		set_resistance();
+		//std::cout << "hello" << std::endl;
+		perf_log.pop("solve_1d");
+
+		if(es->parameters.get<bool>("ksp_view_1d"))
+		{
+			std::cout << "0D linear solver details:" << std::endl;
+			// we need to set this directly
+			KSP system_ksp_1d = system_linear_solver->ksp();
+			ierr = KSPView(system_ksp_1d,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+			es->parameters.set<bool>("ksp_view_1d") = false;	// only want to do it once
+		}
+
+		std::cout << " 0D linear solver converged at step: "
+		      		<< system->n_linear_iterations()
+		      		<< ", Solver residual: "
+		      		<< system->final_linear_residual()
+		      		<< std::endl;
+
+
+		// debug soln norm
+		double soln_norm = system->calculate_norm(*system->solution,SystemNorm(norms, weights));
+		//std::cout << " 0D soln norm = " << soln_norm << std::endl;
+
+
+		// 2 - calculate the residual
+
+		// Compute the difference between this solution and the last
+		// nonlinear iterate.
+		last_1d_nonlinear_soln->add (-1., *system->solution);
+		last_1d_nonlinear_soln->close();
+
+		//std::cout << "last_1d_nonlinear_soln l2 norm = " << last_1d_nonlinear_soln->l2_norm() << std::endl;
+		current_1d_nonlinear_residual = system->calculate_norm(*last_1d_nonlinear_soln,SystemNorm(norms, weights));
+		// now normalise it is the solution is not zero
+		if(fabs(soln_norm) > 1e-10)
+			current_1d_nonlinear_residual /= soln_norm;
+
+		std::cout << " 0D error norm = " << current_1d_nonlinear_residual << std::endl;
+
+		// calculate the boundary values so that we can calculate the pressure flow rate ratio
+		//calculate_1d_boundary_values();
+
+		double nonlinear_tolerance_1d = 1e-4;
+		if(current_1d_nonlinear_residual < nonlinear_tolerance_1d)
+			converged = true;
+
+		if(false)//es->parameters.get<unsigned int>("resistance_type_1d") == 0)
+		{
+			std::cout << "linear resistance type so no need for convergence."<< std::endl;
+			converged = true;
+		}
+		else if(!es->parameters.get<bool>("partitioned_converge") &&
+						(sim_type == 3 || es->parameters.get<unsigned int>("moghadam_coupling") >= 1) )
+		{
+			std::cout << "not converging the 0D model at each 3D iteration." << std::endl;
+			converged = true;
+		}
+
+		if(nonlinear_iteration_1d > max_nonlinear_iterations_1d)
+		{
+			std::cout << "Error, taking too many 0D nonlinear iterations" << std::endl;
+			std::cout << "max 0D nonlinear iterations = " << max_nonlinear_iterations_1d << std::endl;
+			std::cout << "Exiting..." << std::endl;
+			std::exit(0);
+		}
+		
+		// send global to local
+		system->update();
+
+	}
+
+
+
+
+
+
+	/*
+	// DEBUG: print the system matrix
+	
+	std::ostringstream file_name;
+	file_name << output_folder.str() << "system_matrix.dat";
+	system->request_matrix("System Matrix")->print_matlab(file_name.str());
+	system->request_matrix("System Matrix")->close();	// close before using
+	*/
+
+	//system->matrix->print(std::cout,false);
+	//system->rhs->print(std::cout);
+
+	//system->solution->print();
 
   // Print out convergence information for the linear and
   // nonlinear iterations.
-
-	std::cout << "Solver converged at step: "
-        		<< system_1d->n_linear_iterations()
-        		<< ", Solver residual: "
-        		<< system_1d->final_linear_residual()
-        		<< std::endl;
 
 	return 0;
 }
@@ -2433,7 +3387,10 @@ void NavierStokesCoupled::set_radii(System * system, bool centrelines)
 			double radius_vis = radius;
 			// NOTE: now coupling is handled in 0d assembler
 			if(false)//es->parameters.get<bool> ("twod_oned_tree"))
-				radius_vis = pow(3*M_PI/16*pow(radius,4.0),1./3.0);
+			{
+				//radius_vis = pow(3*M_PI/16*pow(radius,4.0),1./3.0);
+				//radius_vis = pow(3*M_PI/16*pow(radius,4.0),1./3.0);
+			}
 
 			for(unsigned int i=0; i < dof_indices_rad_vis.size(); i++)
 				system->solution->set(dof_indices_rad_vis[i], radius_vis);
@@ -2525,6 +3482,14 @@ void NavierStokesCoupled::set_poiseuille()
 
 	extra_1d_data_system->solution->close();
 }
+
+
+
+
+
+
+
+
 
 
 
@@ -2740,7 +3705,7 @@ void NavierStokesCoupled::copy_1d_solution_output_to_program()
   std::vector<Number> output_soln;
   system_1d_output->update_global_solution (output_soln);
 
-	std::vector<int> dof_variable_vector_output = dof_variable_type_1d;
+	std::vector<int> dof_variable_vector_output = dof_variable_type_1d_output;
 
 	std::vector<int> dof_variable_vector_program;
 	if(sim_type == 5)
@@ -2833,7 +3798,7 @@ void NavierStokesCoupled::copy_1d_solution_program_to_output()
   std::vector<Number> program_soln;
   system_program->update_global_solution (program_soln);
 
-	std::vector<int> dof_variable_vector_output = dof_variable_type_1d;
+	std::vector<int> dof_variable_vector_output = dof_variable_type_1d_output;
 
 	std::vector<int> dof_variable_vector_program;
 	if(sim_type == 5)
@@ -2884,6 +3849,214 @@ void NavierStokesCoupled::copy_1d_solution_program_to_output()
 
 	// close the output solution vector, 
 	system_1d_output->solution->close();
+
+}
+
+
+
+
+
+
+
+
+
+// copy the 1d solution from the program format to output format
+void NavierStokesCoupled::copy_acinar_solution_program_to_output()
+{
+	std::cout << "hullo"<< std::endl;
+
+	TransientLinearImplicitSystem * system_program;
+  // Get a reference to the Program Stokes system object.
+	if(sim_type == 5)
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
+	}
+
+  // Numeric ids corresponding to each variable in the program system
+  const int V_var_program = system_program->variable_number ("V");
+
+  // Numeric ids corresponding to each variable in the program system
+  const int V_var_output = system_acinar_output->variable_number ("V");
+
+
+	// need to make the output solution vector global and get its values
+  std::vector<Number> program_soln;
+  system_program->update_global_solution (program_soln);
+
+	std::vector<int> dof_variable_vector_output = dof_variable_type_acinar_output;
+
+	std::vector<int> dof_variable_vector_program;
+	if(sim_type == 5)
+		dof_variable_vector_program = dof_variable_type_coupled;
+	else
+		dof_variable_vector_program = dof_variable_type_1d;
+		
+
+	std::cout << "hullo23"<< std::endl;
+
+	// now we need to copy the values from the output solution to the program solution
+	// need to find a correspondence between these vectors even though they are on different meshes
+	// should be in the same order, so have two iterators, the outer iterator 
+	// and an inner iterator that goes until it hits a variable of the same type.
+
+	// dof_variable_type_1d is only 1d variables - easy for 
+	unsigned int output_i = 0;
+	for(unsigned int i=0; i<dof_variable_vector_program.size(); i++)
+	{
+		
+		if(dof_variable_vector_program[i] == V_var_program)
+		{
+			// iterate until we find the Q variable in the output vector
+			while(dof_variable_vector_output[output_i] != V_var_output)
+				output_i++;
+
+			// get the Q soln from the program soln
+			double value = program_soln[i];
+			// set the Q value to the output
+			system_acinar_output->solution->set(output_i,value);
+
+			output_i++;
+		}
+
+	}
+
+	std::cout << "hullo32"<< std::endl;
+  const int p_pl_var_output = system_acinar_output->variable_number ("P_pl");
+
+	// set the pleural pressure
+	double p_pl = ns_assembler->calculate_pleural_pressure(es->parameters.get<double>("time"));
+	for(unsigned int i=0; i<dof_variable_vector_output.size(); i++)
+	{
+		if(dof_variable_vector_output[i] == p_pl_var_output)
+		{
+			// set the pleural pressure value to the output
+			system_acinar_output->solution->set(i,p_pl);
+		}
+	}
+
+	std::cout << "hullo"<< std::endl;
+	// close the output solution vector, 
+	system_acinar_output->solution->close();
+
+	// set the acinar pressure and the pressure difference
+	// to do this
+	// - loop over the 1d elements
+	// - find the elements with acinar
+	// - get the outlet pressure
+	// - add it to vector with acinar pressures
+	// - find the acinar elem
+	// - set the acinar pressure
+	// - set the acinar pressure difference
+
+  // Numeric ids corresponding to each variable in the program system
+  const int p_var_program = system_program->variable_number ("P");
+  const int p_acin_var_output = system_acinar_output->variable_number ("P_acin");
+  const int p_diff_var_output = system_acinar_output->variable_number ("P_diff");
+  const int radius_var_output = system_acinar_output->variable_number ("radius");
+  const int v_var_output = system_acinar_output->variable_number ("V");
+
+
+  const DofMap & dof_map_program = system_program->get_dof_map();
+  const DofMap & dof_map_output = system_acinar_output->get_dof_map();
+
+  std::vector<dof_id_type> dof_indices_p;
+  std::vector<dof_id_type> dof_indices_p_pl;
+  std::vector<dof_id_type> dof_indices_p_acin;
+  std::vector<dof_id_type> dof_indices_p_diff;
+  std::vector<dof_id_type> dof_indices_radius;
+  std::vector<dof_id_type> dof_indices_v;
+
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+/*
+	std::cout << "acinar output elems:" << std::endl;
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		std::cout << i << " : " << airway_data[i].get_acinar_output_elem() << std::endl;
+	}
+*/
+	
+
+	std::cout << "hullo"<< std::endl;
+	unsigned int n_initial_3d_elem = es->parameters.get<unsigned int>("n_initial_3d_elem");
+  for ( ; el != end_el; ++el)
+  {				
+    const Elem* elem = *el;
+		//std::cout << "elem->id() = " << elem->id() << std::endl;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+
+	//std::cout << "hullo1"<< std::endl;
+			// get the acinar dofs and other acinar stuff
+			unsigned int acinar_v_dof_idx = 0;
+			if(es->parameters.get<unsigned int>("acinar_model") == 1)
+			{
+	//std::cout << "hullo2"<< std::endl;
+				// first check if it has an acinar i.e. terminal
+				const int current_el_idx = elem->id();
+				//unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+				unsigned int current_1d_el_idx = elem_to_airway[current_el_idx];
+				//std::cout << "current_1d_el_idx = " << current_1d_el_idx << std::endl;
+				int acinar_output_elem_number = airway_data[current_1d_el_idx].get_acinar_output_elem();
+	//std::cout << "hullo2"<< std::endl;
+				if(acinar_output_elem_number > -1)
+				{
+	//std::cout << "hullo2"<< std::endl;
+					// get the acinar pressure
+     			dof_map_program.dof_indices (elem, dof_indices_p, p_var_program);
+					double acinar_pressure = (*system_program->solution)(dof_indices_p[1]);
+					
+	//std::cout << "hullo2"<< std::endl;
+	//std::cout << "acinar_output_elem_number = "<< acinar_output_elem_number << std::endl;
+
+					// now get the correct acinar output element
+					const Elem* acinar_elem = mesh_acinar.elem(acinar_output_elem_number);
+					//std::cout << "acinar_output_elem_number = " << acinar_output_elem_number << std::endl;
+					//std::cout << "hey babe" << std::endl;
+      		dof_map_output.dof_indices (acinar_elem, dof_indices_p_pl, p_pl_var_output);
+      		dof_map_output.dof_indices (acinar_elem, dof_indices_p_acin, p_acin_var_output);
+      		dof_map_output.dof_indices (acinar_elem, dof_indices_p_diff, p_diff_var_output);
+      		dof_map_output.dof_indices (acinar_elem, dof_indices_radius, radius_var_output);
+      		dof_map_output.dof_indices (acinar_elem, dof_indices_v, v_var_output);
+
+					//std::cout << "dof_indices_p_pl[0] = " << dof_indices_p_pl[0] << std::endl;
+					//std::cout << "dof_indices_p_acin[0] = " << dof_indices_p_acin[0] << std::endl;
+					//std::cout << "dof_indices_p_diff[0] = " << dof_indices_p_diff[0] << std::endl;
+
+					double pleural_pressure = (*system_acinar_output->solution)(dof_indices_p_pl[0]);
+					double pressure_diff = acinar_pressure - pleural_pressure;
+
+					double radius = pow(3./4./M_PI * (*system_acinar_output->solution)(dof_indices_v[0]),1./3.);
+
+					//std::cout << "pleural_pressure = " << pleural_pressure << std::endl;
+					//std::cout << "acinar_pressure = " << acinar_pressure << std::endl;
+					//std::cout << "pressure_diff = " << pressure_diff << std::endl;
+
+					// set the acinar pressure
+					system_acinar_output->solution->set(dof_indices_p_acin[0],acinar_pressure);
+					// set the pressure difference
+					system_acinar_output->solution->set(dof_indices_p_diff[0],pressure_diff);
+					// set the radius
+					system_acinar_output->solution->set(dof_indices_radius[0],radius);
+
+					
+				}
+
+			}
+		}
+
+	}
+
+	std::cout << "hullo"<< std::endl;
+	// close the output solution vector, 
+	system_acinar_output->solution->close();
 
 }
 
@@ -3006,7 +4179,8 @@ void NavierStokesCoupled::output_poiseuille_resistance_per_generation()
 			//and the values referenced in it also do so need to take this into account
 			
 			const int current_el_idx = elem->id();
-			unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			//unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			unsigned int current_1d_el_idx = elem_to_airway[current_el_idx];//current_el_idx -	n_initial_3d_elem;
 
       // Get the degree of freedom indices for the
       // current element.  These define where in the global
@@ -3712,7 +4886,8 @@ void NavierStokesCoupled::set_efficiency()
 		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
 		{
 			dof_map.dof_indices (elem, dof_indices,eff_var);
-			const dof_id_type elem_id = elem->id() - es->parameters.get<unsigned int>("n_initial_3d_elem");
+			//const dof_id_type elem_id = elem->id() - es->parameters.get<unsigned int>("n_initial_3d_elem");
+			const dof_id_type elem_id = elem_to_airway[elem->id()];// - es->parameters.get<unsigned int>("n_initial_3d_elem");
 			
 			for(unsigned int i=0; i < dof_indices.size(); i++)
 				particle_deposition_system_1d->solution->set(dof_indices[i], total_efficiency[elem_id]);
@@ -3726,60 +4901,886 @@ void NavierStokesCoupled::set_efficiency()
 
 
 // calculate the linear resistance of each 1d tree
-void NavierStokesCoupled::calculate_1d_linear_resistance_values()
+// - there are two methods here
+// - default is just to calculate the ratio of pressure difference to flow rate
+// - moghadam_coupling 1 uses the default
+// - moghadam_coupling 2 calculates the "linear resistance" 
+//    (actually the the partial derivative of pressure wrt flow rate)
+//    using a numerical derivative based on the flow rate at the previous iteration
+// - also calculates the pressure at zero flow
+// NOTE: moghadam_coupling 2 only comes into force if we solve the nonlinear problem
+void NavierStokesCoupled::calculate_1d_pressure_deriv_values()
 {
+	std::cout << "Calcuating 1D \"linear\" resistance..." << std::endl;
 
-	// solve the 1d equation system for any input flow or don't and just use the values from the restart
-	if(!restart)
+	double flux_scaling = 1.0;
+	double pressure_scaling = 1.0;
+	double resistance_scaling = 1.0;
+	/*
+	if(!es->parameters.get<bool>("reynolds_number_calculation"))
 	{
-		std::cout << "Calcuating linear resistance." << std::endl;
+		flux_scaling = es->parameters.get<double>("velocity_scale") * 
+										pow(es->parameters.get<double>("length_scale"),2.0);
+		pressure_scaling = es->parameters.get<double>("density") *
+													pow(es->parameters.get<double>("velocity_scale"),2.0);
+	}
+	*/
+	if(es->parameters.get<bool>("nondimensionalised"))
+	{
+		flux_scaling = es->parameters.get<double>("velocity_scale") * 
+										pow(es->parameters.get<double>("length_scale"),2.0);
 
-		// ************** SOLVE 1D SYSTEM ********************* //
+		pressure_scaling = es->parameters.get<double>("density") *
+													pow(es->parameters.get<double>("velocity_scale"),2.0);
 
-		//initialise vector to store flux input
-		std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
+		resistance_scaling = pressure_scaling/flux_scaling;
+	}
 
-		double inflow = es->parameters.get<double>("time_scaling");
 
-		if(es->parameters.get<unsigned int>("unsteady"))
-			inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
-							(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
-		else	//put flow_mag into the nondimensional units
-			inflow = es->parameters.get<double>("flow_mag_1d") / 
-							(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	
+	bool unknown_flow_rate = false;
+	// we have a problem is one of the pipes has zero flow.
+	// need to check all pipes
 
-		for(unsigned int i=0; i<input_flux_values.size(); i++)
+	bool twod_oned_tree = es->parameters.get<bool>("twod_oned_tree");
+	//initialise vector to store flux input
+	std::vector<double> input_flux_values(es->parameters.get<unsigned int>("num_1d_trees") + 1);
+	if(sim_3d)
+	{
+		calculate_3d_boundary_values();
+		input_flux_values = flux_values_3d;
+	}
+
+
+	// don't need to check 0 the 3D one
+	for(unsigned int i=1; i<input_flux_values.size(); i++)
+	{
+		std::cout << "input_flux_values[" << i << "] = " << input_flux_values[i] << std::endl;
+		if(fabs(input_flux_values[i]) < 1e-16)
 		{
-			input_flux_values[i] = inflow;
-			std::cout << "inflow = " << inflow << std::endl;
+			unknown_flow_rate = true;
+			std::cout << "Assuming unknown flow rate because one of the flow rates is zero." << std::endl;
+			break;
+		}
+
+	}
+
+	if(!es->parameters.get<bool> ("residual_linear_solve")) 
+	{
+		if(es->parameters.get<unsigned int> ("t_step") == 0 || 
+			(es->parameters.get<unsigned int> ("t_step") == 1 && nonlinear_iteration == 1))
+		{
+			std::cout << "unknown flow rate so using linear resistance" << std::endl;
+			unknown_flow_rate = true;
+		}
+	}
+	else
+	{
+		std::cout << "residual_linear_iteration = " << residual_linear_iteration << std::endl;
+		if(es->parameters.get<unsigned int> ("t_step") == 0 || 
+			(es->parameters.get<unsigned int> ("t_step") == 1 && nonlinear_iteration == 1 && residual_linear_iteration <= 1))
+		{
+			std::cout << "unknown flow rate so using linear resistance" << std::endl;
+			unknown_flow_rate = true;
+		}
+
+	}
+
+	// also need to check that none of the outflow
+
+	// method 1: calculate the ratio of pressure difference to flow rate
+	//  use this method if doing mogahdam_coupling 1 or for some reason you aren't using moghadam_coupling
+	// always use method 2 from now
+	if(false) //es->parameters.get<unsigned int> ("moghadam_coupling") <= 1 )
+	{
+
+		std::cout << " assuming linear resistance i.e. P/Q" << std::endl;
+
+		// ******* SETUP BCS ****************** //
+
+
+
+		// as boundary conditions, we use the previous iteration flow rate
+		// or if that isn't available, we use the maximum
+		
+		unsigned int temp_resistance_type_1d = es->parameters.get<unsigned int>("resistance_type_1d");
+		
+		// if we are on the first time step, then we need to have some value to use, so choose the max
+		if(unknown_flow_rate)
+		{
+			// if here then we want to temporarily use the linear resistance
+			es->parameters.set<unsigned int>("resistance_type_1d") = 0;
+
+			double inflow = es->parameters.get<double>("time_scaling");
+			/*
+			if(es->parameters.get<unsigned int>("unsteady"))
+				inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
+								(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
+			else	//put flow_mag into the nondimensional units
+			*/
+			// always use the full value, it doesn't really matter since we are doing linear anyway
+			inflow = es->parameters.get<double>("flow_mag_1d");	
+
+			std::cout << "- input flux values when calculating linear resistance:" << std::endl;
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				input_flux_values[i] = inflow;
+				std::cout << "inflow = " << inflow << std::endl;
+			}
+		}
+		else
+		{
+
+			std::cout << "- input flux values when calculating linear resistance:" << std::endl;
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				std::cout << "flux " << i << " = " << input_flux_values[i] << std::endl;
+				// already set
+				//input_flux_values[i] = flux_values_3d[i];
+			}
+			
 		}
 
 
-		// solve the nonlinear 0D system
+		// now initialise the boundary conditions and solve the problem
 		ns_assembler->init_bc(input_flux_values);
-		std::cout << "bye" << std::endl;
-		solve_1d_system();			// note that we only call this at the beginning of a simulation so should be linear regardless
-		std::cout << "bye" << std::endl;
+
+
+		std::cout << " done init bc" << std::endl;
+
+
+
+
+
+		// ******* SOLVE THE PROBLEM ****************** //
+
+		solve_1d_system(system_1d);
+
+
+
+
+		// ******* CALCULATE THE RESISTANCE ****************** //
+
+		// calculate the boundary values so that we can calculate the pressure flow rate ratio
 		calculate_1d_boundary_values();
 
-
-
 		// calculate the linear resistance values
-		linear_resistance_values_1d.resize(flux_values_1d.size());
+		pressure_deriv_values_1d.resize(flux_values_1d.size());
 		for(unsigned int i=1; i< flux_values_1d.size(); i++)
 		{
-			linear_resistance_values_1d[i] = pressure_values_1d[i] / flux_values_1d[i];
+			pressure_deriv_values_1d[i] = pressure_values_1d[i] / flux_values_1d[i];
 			std::cout << "flux_values_1d[" << i << "] = " << flux_values_1d[i] << std::endl;
 			std::cout << "pressure_values_1d[" << i << "] = " << pressure_values_1d[i] << std::endl;	
-			std::cout << "linear_resistance_values_1d[" << i << "] = " << linear_resistance_values_1d[i] << std::endl;	
+			std::cout << "pressure_deriv_values_1d[" << i << "] = " << pressure_deriv_values_1d[i] << std::endl;	
 		}
 
-		// zero them cause at beginning of simulation
-		std::fill(flux_values_1d.begin(), flux_values_1d.end(), 0.);
-		std::fill(pressure_values_1d.begin(), pressure_values_1d.end(), 0.);
+
+
+
+
+		// revert the resistance to its previous value
+		// if at the beginning of a simulation, we have put the wrong things into the system so zero them back
+		if(unknown_flow_rate)
+		{
+			es->parameters.set<unsigned int>("resistance_type_1d") = temp_resistance_type_1d;
+			std::fill(flux_values_1d.begin(), flux_values_1d.end(), 0.);
+			std::fill(pressure_values_1d.begin(), pressure_values_1d.end(), 0.);
+		}
+
+
 	}
+	else // if(es->parameters.get<unsigned int> ("moghadam_coupling") == 2)
+	{
+
+		//std::cout << " taking into account nonlinear resistance i.e. numerical dP/dQ" << std::endl;
+
+		// to do this method we need to solve the 0D system twice
+		//  first with Q*(1+epsilon) and then with Q
+		//  we do Q last so it is at the correct value
+		//
+
+
+		// ******* SETUP BCS for (1+epsilon) ****************** //
+
+		double epsilon = es->parameters.get<double> ("moghadam_linear_resistance_epsilon");
+		//std::cout << "epislon = " << epsilon << std::endl;
+
+
+
+		// as boundary conditions, we use the previous iteration flow rate
+		// or if that isn't available, we use the maximum
+		
+		unsigned int temp_resistance_type_1d = es->parameters.get<unsigned int>("resistance_type_1d");
+		
+		// if we are on the first time step, then we need to have some value to use, so choose the max
+		if(unknown_flow_rate)
+		{
+			// if here then we want to temporarily use the linear resistance
+			if(es->parameters.get<bool>("nonlinear_resistance_type_1d"))
+				es->parameters.set<unsigned int>("resistance_type_1d") = 0;
+
+			double inflow = es->parameters.get<double>("time_scaling");
+
+			/*
+			if(es->parameters.get<unsigned int>("unsteady"))
+				inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
+								(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
+			else	//put flow_mag into the nondimensional units
+			*/
+			// always use the full value, it doesn't really matter since we are doing linear anyway
+
+			// flow_mag_1d may be set to zero, rather just use 1.0
+			/*
+			inflow = es->parameters.get<double>("flow_mag_1d") / 
+								(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	*/
+			inflow = 1.0;
+
+			//std::cout << "Q*epsilon = " << inflow * epsilon << std::endl;
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				input_flux_values[i] = inflow * (1+epsilon);
+				//std::cout << "inflow = " << inflow << std::endl;
+			}
+		}
+		else
+		{
+
+			//std::cout << "- input flux values when calculating linear resistance ( *(1+epsilon) ):" << std::endl;
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				// already set
+				//input_flux_values[i] = flux_values_3d[i];
+				input_flux_values[i] = input_flux_values[i]*(1+epsilon);
+				//std::cout << "flux " << i << " = " << input_flux_values[i] << std::endl;
+				//std::cout << "Q*epsilon = " << flux_values_3d[i] * epsilon << std::endl;
+			}
+			
+		}
+
+
+		// now initialise the boundary conditions and solve the problem
+		ns_assembler->init_bc(input_flux_values);
+
+		std::cout << "es->parameters.get<double>(\"flow_mag_1d\") = " << es->parameters.get<double>("flow_mag_1d") << std::endl;
+		std::cout << "input_flux_values:" << std::endl;
+		for(unsigned int i=0; i<input_flux_values.size(); i++)
+			std::cout << input_flux_values[i] << std::endl;
+		
+
+
+		//std::cout << " done init bc" << std::endl;
+
+
+
+
+
+		// ******* SOLVE THE PROBLEM for *(1+epsilon) ****************** //
+
+		solve_1d_system(system_1d);
+
+
+	
+		// save the pressures
+
+		// calculate the boundary values so that we can calculate the pressure flow rate ratio
+		calculate_1d_boundary_values(true);
+
+		std::vector<double> pressure_values_1d_epsilon = pressure_values_1d;
+		for(unsigned int i=1; i< flux_values_1d.size(); i++)
+		{
+			//std::cout << "pressure_values_1d_epsilon[" << i << "] = " << pressure_values_1d_epsilon[i] << std::endl;	
+		}
+
+
+
+		// ******* SETUP BCS for (1) ****************** //
+
+		// if we are on the first time step, then we need to have some value to use, so choose the max
+		if(unknown_flow_rate)
+		{
+			double inflow = es->parameters.get<double>("time_scaling");
+
+			/*
+			if(es->parameters.get<unsigned int>("unsteady"))
+				inflow = es->parameters.get<double>("flow_mag_1d") * es->parameters.get<double>("time_scaling") / 
+								(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0));//fabs(sin(2*M_PI*time/4));
+			else	//put flow_mag into the nondimensional units
+			*/
+			// always use the full value, it doesn't really matter since we are doing linear anyway
+			/*inflow = es->parameters.get<double>("flow_mag_1d") / 
+								(es->parameters.get<double>("velocity_scale") * pow(es->parameters.get<double>("length_scale"),2.0)) ;	*/
+			inflow = 1.0;
+
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				input_flux_values[i] = inflow;
+				//std::cout << "inflow = " << inflow << std::endl;
+			}
+		}
+		else
+		{
+			
+			//calculate_3d_boundary_values(); // already calculated
+			input_flux_values = flux_values_3d;
+
+
+			//std::cout << "- input flux values when calculating linear resistance (1):" << std::endl;
+			for(unsigned int i=0; i<input_flux_values.size(); i++)
+			{
+				//std::cout << "flux " << i << " = " << input_flux_values[i] << std::endl;
+			}
+			
+		}
+		
+		// now initialise the boundary conditions and solve the problem
+		ns_assembler->init_bc(input_flux_values);
+
+
+		//std::cout << " done init bc" << std::endl;
+
+
+
+
+
+		// ******* SOLVE THE PROBLEM for *(1) ****************** //
+
+		solve_1d_system(system_1d);
+
+	
+		// ******* CALCULATE THE RESISTANCE ****************** //
+
+		// calculate the boundary values so that we can calculate the pressure flow rate ratio
+		calculate_1d_boundary_values(true);
+
+		// calculate the linear resistance values
+		pressure_deriv_values_1d.resize(flux_values_1d.size());
+		std::cout << "Linear resistance results:" << std::endl;
+		for(unsigned int i=0; i< flux_values_1d.size(); i++)
+		{
+			pressure_deriv_values_1d[i] = (pressure_values_1d_epsilon[i] - pressure_values_1d[i]) / (flux_values_1d[i]*epsilon);
+			std::cout << " flux_values_1d[" << i << "] = " << flux_values_1d[i] << " ("
+										<< flux_values_1d[i] * flux_scaling << " m^3 s^-1)" << std::endl;
+			std::cout << " pressure_values_1d[" << i << "] = " << pressure_values_1d[i] << " ("
+										<< pressure_values_1d[i] * pressure_scaling << " Pa)" << std::endl;	
+			std::cout << " moghadam_pressure_deriv_values_1d[" << i << "] = " << pressure_deriv_values_1d[i] << " ("
+										<< pressure_deriv_values_1d[i] * resistance_scaling << " Pa/(m^3 s^-1) )" << std::endl;	
+			//std::cout << " normal_linear_resistance_values_1d[" << i << "] = " << pressure_values_1d[i]/flux_values_1d[i] << std::endl;	
+			//std::cout << " pressure_zero_flow_values_1d[" << i << "] = " << pressure_zero_flow_values_1d[i] << std::endl;	
+		}
+
+
+
+		// revert the resistance to its previous value
+		// if at the beginning of a simulation, we have put the wrong things into the system so zero them back
+		// we have to guess the pressure at the first time step of moghadam, esp if it is pressure driven
+		
+		// just do it always, not a problem
+		es->parameters.set<unsigned int>("resistance_type_1d") = temp_resistance_type_1d;
+		if(unknown_flow_rate)
+		{
+
+			// if the flow rate is unknown, and we are doing pleural pressure, we still need to know the pressure at zero flow, hmmm, useful only for moghadam, otherwise we want zeros
+			
+			if(es->parameters.get<unsigned int>("moghadam_coupling") &&
+				(es->parameters.get<unsigned int>("acinar_model") != 0 || fabs(es->parameters.get<double>("out_pressure_1d")) > 1e-10))
+			{
+				for(unsigned int i=0; i<input_flux_values.size(); i++)
+				{
+					input_flux_values[i] = 0.;
+					//std::cout << "inflow = " << inflow << std::endl;
+				}
+
+				// now initialise the boundary conditions and solve the problem
+				ns_assembler->init_bc(input_flux_values);
+
+				// ******* SOLVE THE PROBLEM for *(1) ****************** //
+				solve_1d_system(system_1d);
+
+				// calculate the boundary values so that we can calculate the pressure
+				calculate_1d_boundary_values(true);
+
+				std::cout << "values at zero flow:" << std::endl;
+				for(unsigned int i=1; i< flux_values_1d.size(); i++)
+				{
+					std::cout << " pressure_values_1d[" << i << "] = " << pressure_values_1d[i] << " ("
+											<< pressure_values_1d[i] * pressure_scaling << " Pa)" <<std::endl;	
+				}
+			}
+			else
+			{
+				std::fill(flux_values_1d.begin(), flux_values_1d.end(), 0.);
+				std::fill(pressure_values_1d.begin(), pressure_values_1d.end(), 0.);
+			}
+			
+		}
+
+
+	}
+
+
 
 }
 
+
+
+
+// output the airway tree of the mesh, 0d and centrelines
+void NavierStokesCoupled::output_airway_tree()
+{
+	// hmmm, so, we have a 0d tree numbered from like 0
+	// and a 3d tree numbered from like 1
+	// - airway_tree_3d.dat
+	// - airway_tree_0d.dat
+	// - airway_tree_coupling.dat
+
+
+
+	// **** airway_tree_0d.dat ****
+
+	std::ofstream airway_tree_0d_file;
+	std::ostringstream airway_tree_0d_file_name;
+	airway_tree_0d_file_name << output_folder.str() << "airway_tree_0d.dat";
+	airway_tree_0d_file.open(airway_tree_0d_file_name.str().c_str());
+
+	airway_tree_0d_file << "# Airway tree 0d data" << std::endl;
+	airway_tree_0d_file << "#airway_id";
+	airway_tree_0d_file << "\tdaughter_1";
+	airway_tree_0d_file << "\tdaughter_2";
+	airway_tree_0d_file << "\tradius";
+	airway_tree_0d_file << "\tlength";
+
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+
+		// set variables
+		unsigned int airway_id = i;
+		// if it has daughter 1 then it should have daughter 2...
+		int daughter_1 = -1;
+		int daughter_2 = -1;
+		if(airway_data[i].has_daughter_1())
+		{
+			daughter_1 = airway_data[i].get_daughters()[0];
+			daughter_2 = airway_data[i].get_daughters()[1];
+		}
+		double radius = airway_data[i].get_radius();
+		double length = airway_data[i].get_length();
+
+		// write variables
+		airway_tree_0d_file << "\n" << airway_id;
+		airway_tree_0d_file << "\t" << daughter_1;
+		airway_tree_0d_file << "\t" << daughter_2;
+		airway_tree_0d_file << "\t" << radius;
+		airway_tree_0d_file << "\t" << length;				
+	}
+
+	airway_tree_0d_file.close();
+
+
+
+
+	if(es->parameters.get<bool> ("use_centreline_data"))
+	{
+		// **** airway_tree_3d.dat ****
+
+		std::ofstream airway_tree_3d_file;
+		std::ostringstream airway_tree_3d_file_name;
+		airway_tree_3d_file_name << output_folder.str() << "airway_tree_3d.dat";
+		airway_tree_3d_file.open(airway_tree_3d_file_name.str().c_str());
+
+		airway_tree_3d_file << "# Airway tree 3d data" << std::endl;
+		airway_tree_3d_file << "#airway_id";
+		airway_tree_3d_file << "\tdaughter_1";
+		airway_tree_3d_file << "\tdaughter_2";
+		airway_tree_3d_file << "\tradius";
+		airway_tree_3d_file << "\tlength";
+
+		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
+		{
+
+			// set variables
+			unsigned int airway_id = i;
+			int daughter_1 = -1;
+			int daughter_2 = -1;
+			if(centreline_airway_data[i].has_daughter_1())
+			{
+				daughter_1 = centreline_airway_data[i].get_daughters()[0];
+				daughter_2 = centreline_airway_data[i].get_daughters()[1];
+			}
+			double radius = centreline_airway_data[i].get_radius();
+			double length = centreline_airway_data[i].get_length();
+
+			// write variables
+			airway_tree_3d_file << "\n" << airway_id;
+			airway_tree_3d_file << "\t" << daughter_1;
+			airway_tree_3d_file << "\t" << daughter_2;
+			airway_tree_3d_file << "\t" << radius;
+			airway_tree_3d_file << "\t" << length;				
+		}
+
+		airway_tree_3d_file.close();
+
+
+		// **** airway_tree_coupling.dat ****
+
+		std::ofstream airway_tree_coupling_file;
+		std::ostringstream airway_tree_coupling_file_name;
+		airway_tree_coupling_file_name << output_folder.str() << "airway_tree_coupling.dat";
+		airway_tree_coupling_file.open(airway_tree_coupling_file_name.str().c_str());
+
+		airway_tree_coupling_file << "# Airway tree coupling data" << std::endl;
+		airway_tree_coupling_file << "#airway_id_3d";
+		airway_tree_coupling_file << "\tdaughter_1_0d";
+		airway_tree_coupling_file << "\tdaughter_2_0d";
+
+		// we really need to calculate this...
+		// we have boundary ids 
+		//
+		std::vector<int> centreline_airway_data_to_airway_elem_id_starts = calculate_3d_to_0d_airway_ids();
+
+		for(unsigned int i=0; i<centreline_airway_data.size(); i++)
+		{
+			// set variables
+			unsigned int airway_id_3d = i;
+			int daughter_1_0d = -1;
+			int daughter_2_0d = -1;
+			if(centreline_airway_data_to_airway_elem_id_starts[i] >= 0)
+			{
+				daughter_1_0d = airway_elem_id_starts[centreline_airway_data_to_airway_elem_id_starts[i]][0];
+				daughter_2_0d = airway_elem_id_starts[centreline_airway_data_to_airway_elem_id_starts[i]][1];
+			}
+
+			// write variables
+			airway_tree_coupling_file << "\n" << airway_id_3d;
+			airway_tree_coupling_file << "\t" << daughter_1_0d;
+			airway_tree_coupling_file << "\t" << daughter_2_0d;			
+		}
+
+		airway_tree_coupling_file.close();
+
+	}
+
+
+}
+
+
+// output the airway tree of the mesh, 0d and centrelines
+std::vector<int> NavierStokesCoupled::calculate_3d_to_0d_airway_ids()
+{
+
+	// okay least confusing way to do this is to loop over and compare points
+	// we know the 0d elements and their boundary ids from airway_elem_start_ids
+
+	std::vector<int> centreline_airway_data_to_airway_elem_id_starts(centreline_airway_data.size(),-1);
+
+	// loop over centreline edges
+	for(unsigned int i=0; i<centreline_airway_data.size(); i++)
+	{
+		// get the second point
+		Point coupling_point_3d = centreline_airway_data[i].get_node_2();
+
+		std::cout << " i = " << i << std::endl;
+		std::cout << "coupling_point_3d = " << coupling_point_3d << std::endl;
+		// now we loop over the airway_elem_start_ids, starting from 1 because 0 is trachea
+		for(unsigned int j=1; j<airway_elem_id_starts.size(); j++)
+		{
+			std::cout << "airway_elem_id_starts[" << j << "][0] = " << airway_elem_id_starts[j][0] << std::endl;
+			// get the first point from one of the airways
+			Point coupling_point_0d = mesh_1d.elem(airway_elem_id_starts[j][0])->point(0);
+
+			std::cout << "coupling_point_0d = " << coupling_point_0d << std::endl;
+			// check whether they are the same
+			Point difference = coupling_point_3d - coupling_point_0d;
+
+			std::cout << "diff = " << difference.size() << std::endl;
+			if(difference.size() < 1e-7)
+			{
+				std::cout << "We are coupled: " << i << " to " << j << std::endl;
+				centreline_airway_data_to_airway_elem_id_starts[i] = j;
+				break;
+			}
+		
+		}
+	}
+
+	std::cout << "3d to 0d airway ids set" << std::endl;
+	for(unsigned int i=0; i<centreline_airway_data_to_airway_elem_id_starts.size(); i++)
+		std::cout << "centreline_airway_data_to_airway_elem_id_starts[" << i << "] = " << centreline_airway_data_to_airway_elem_id_starts[i] << std::endl;
+	return centreline_airway_data_to_airway_elem_id_starts;
+	
+
+}
+
+
+
+// initialise the acinar volume to the steady state -C*P_pl
+void NavierStokesCoupled::init_acinar_volumes()
+{
+
+	std::cout << "Initialising acinar volumes." << std::endl;
+
+  // Get a constant reference to the mesh object.
+  const MeshBase& mesh = es->get_mesh();
+
+	TransientLinearImplicitSystem * system;
+  // Get a reference to the Stokes system object.
+	if(sim_type == 5)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
+	}
+
+	double length_scale = 1.0;	
+	double volume_scale = 1.0;
+	double pressure_scale = 1.0;
+	double compliance_scale = 1.0;
+	if(es->parameters.get<bool>("nondimensionalised") && !es->parameters.get<bool>("output_nondim"))
+	{
+		length_scale = es->parameters.get<double>("length_scale");
+		volume_scale = pow(length_scale,3.0);
+		pressure_scale = es->parameters.get<double>("density") *
+														pow(es->parameters.get<double>("velocity_scale"),2.0);
+		compliance_scale = volume_scale/pressure_scale;
+	}
+
+	
+	unsigned int v_var = system->variable_number ("V");
+	// acinar stuff
+	const double total_acinar_compliance = es->parameters.get<double>("total_acinar_compliance");
+	const double total_terminal_area = es->parameters.get<double>("total_terminal_area");
+	double pl = ns_assembler->calculate_pleural_pressure(es->parameters.get<double>("time"));
+  const DofMap & dof_map = system->get_dof_map();
+  std::vector<dof_id_type> dof_indices_v;
+
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+		unsigned int subdomain_id = elem->subdomain_id();
+	
+		if(std::find(subdomains_acinar.begin(), subdomains_acinar.end(), subdomain_id) != subdomains_acinar.end())
+		{
+			// acinar to airway takes us to the airway_data idx
+			unsigned int airway_id = acinar_to_airway[elem_to_acinar[elem->id()]];
+	
+			
+			double local_acinar_compliance = airway_data[airway_id].get_area()/total_terminal_area * total_acinar_compliance * compliance_scale;	// dimensional
+			
+			//std::cout << "compliance_ratio = "<< airway_data[airway_id].get_area()/total_terminal_area * compliance_scale << std::endl;
+
+      dof_map.dof_indices (elem, dof_indices_v, v_var);
+			system->solution->set(dof_indices_v[0],-local_acinar_compliance*pl);
+			system->old_local_solution->set(dof_indices_v[0],-local_acinar_compliance*pl);
+		}
+	}
+
+	std::cout << "hi" << std::endl;
+
+	system->solution->close();
+	//system->solution->print();
+
+}
+
+
+
+
+// calculate the terminal surface area so we can split the compliance correctly
+// and return the total surface area
+double NavierStokesCoupled::calculate_total_terminal_area()
+{
+
+	std::cout << "Calculating terminal surface area." << std::endl;
+
+	double total_terminal_area = 0.;
+
+	// we can loop over the airway_data object because it has all the info we need
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		// check if terminal
+		if(!airway_data[i].has_daughter_1())
+		{
+			total_terminal_area += airway_data[i].get_area();
+		}
+	}
+
+	std::cout << "Total terminal surface area = " << total_terminal_area << std::endl;
+
+	return total_terminal_area;
+
+}
+
+
+
+
+// calculate the average terminal pressure weighted by area
+double NavierStokesCoupled::calculate_average_terminal_pressure()
+{
+
+	std::cout << "Calculating average terminal pressure." << std::endl;
+
+	double average_terminal_pressure = 0;
+
+  // Get a constant reference to the mesh object.
+  const MeshBase& mesh = es->get_mesh();
+
+	TransientLinearImplicitSystem * system;
+  // Get a reference to the Stokes system object.
+	if(sim_type == 5)
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns1d");
+	}
+
+	
+	unsigned int p_var = system->variable_number ("P");
+	// acinar stuff
+	const double total_terminal_area = es->parameters.get<double>("total_terminal_area");
+	double pl = ns_assembler->calculate_pleural_pressure(es->parameters.get<double>("time"));
+  const DofMap & dof_map = system->get_dof_map();
+  std::vector<dof_id_type> dof_indices_p;
+
+  MeshBase::const_element_iterator       el     = mesh.active_local_elements_begin();
+  const MeshBase::const_element_iterator end_el = mesh.active_local_elements_end();
+
+  for ( ; el != end_el; ++el)
+  {
+		const Elem* elem = *el;
+		unsigned int subdomain_id = elem->subdomain_id();
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), subdomain_id) != subdomains_1d.end())
+		{
+			
+			const int current_el_idx = elem->id();
+			//unsigned int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			unsigned int current_1d_el_idx = elem_to_airway[current_el_idx];// -	n_initial_3d_elem;
+			
+			// check if terminal
+			if(!airway_data[current_1d_el_idx].has_daughter_1())
+			{
+	      dof_map.dof_indices (elem, dof_indices_p, p_var);
+				double local_area = airway_data[current_1d_el_idx].get_area();
+				double local_pressure = (*system->solution)(dof_indices_p[1]);
+
+				average_terminal_pressure += local_pressure*local_area;
+
+			}
+		}
+	}
+
+	average_terminal_pressure /= es->parameters.get<double>("total_terminal_area");
+
+	return average_terminal_pressure;
+
+}
+
+
+
+void NavierStokesCoupled::set_resistance()
+{
+
+	std::cout << "Setting resistance." << std::endl;
+
+	//add the radius variable
+	// i'm sure we only need to do this once!
+	//create an equation system to hold data like the radius of the element
+
+	
+	const DofMap& dof_map = extra_1d_data_system->get_dof_map();
+
+	MeshBase::const_element_iterator       el     =
+		extra_1d_data_system->get_mesh().active_local_elements_begin();
+	const MeshBase::const_element_iterator end_el =
+		extra_1d_data_system->get_mesh().active_local_elements_end();
+
+	std::vector<dof_id_type> dof_indices;
+	const unsigned int resistance_var = extra_1d_data_system->variable_number ("resistance");
+
+	for ( ; el != end_el; ++el)
+	{
+		const Elem* elem = *el;
+		if(std::find(subdomains_1d.begin(), subdomains_1d.end(), elem->subdomain_id()) != subdomains_1d.end())
+		{
+			dof_map.dof_indices (elem, dof_indices,resistance_var);
+			const dof_id_type elem_id = elem->id();
+
+			for(unsigned int i=0; i < dof_indices.size(); i++)
+			{
+//				std::cout << "resistance = " << airway_data[elem_id].get_resistance() << std::endl;
+				extra_1d_data_system->solution->set(dof_indices[i], airway_data[elem_id].get_resistance());
+			}
+		}
+	}
+
+	//must close the vector after editing it
+
+	extra_1d_data_system->solution->close();
+}
+
+
+// init some constant airway parameters, e.g. compliance, inertance, poiseuille resistance
+void NavierStokesCoupled::init_1d_airway_parameters()
+{
+	std::cout << "Initing 1d airway parameters." << std::endl;
+
+	// some global parameters
+  const double reynolds_number = es->parameters.get<double>("reynolds_number");
+  double viscosity = es->parameters.get<double>("viscosity");
+  const double density = es->parameters.get<double>("density");
+
+  const double zeta_1 = es->parameters.get<double>("zeta_1");
+  const double zeta_2 = es->parameters.get<double>("zeta_2");
+  const double zeta_3 = es->parameters.get<double>("zeta_2");
+  //const double period = es->parameters.get<double>("period");	// unused
+  const double E = es->parameters.get<double>("E");
+	const double total_terminal_area = es->parameters.set<double>("total_terminal_area");
+  const double total_acinar_compliance = es->parameters.get<double>("total_acinar_compliance");
+	
+	
+
+
+	// airway data is all dimensionalised
+	for(unsigned int i=0; i<airway_data.size(); i++)
+	{
+		// get some of the data we need
+		double l = airway_data[i].get_length();
+		double r = airway_data[i].get_radius();
+
+		// set the parameters		
+		// poiseuille resistance
+		double poiseuille_resistance = 8*l*viscosity/(M_PI*pow(r,4.0));
+		airway_data[i].set_poiseuille_resistance(poiseuille_resistance);
+
+		// wall thickness
+		const double wall_thickness = zeta_1*pow(r,2) + zeta_2*(r) + zeta_3;	//dimensionalised thickness
+		airway_data[i].set_wall_thickness(wall_thickness);
+		
+		// compliance
+		double airway_compliance = 2*l*pow(r,3.0)/(E*wall_thickness);
+		airway_data[i].set_airway_compliance(airway_compliance);
+
+		// inertance
+		double inertance = l*density/(M_PI*r*r);
+		airway_data[i].set_inertance(inertance);
+
+		// acinar compliance - just set it for all of them anyway
+		const double	local_acinar_compliance = airway_data[i].get_area()/total_terminal_area * total_acinar_compliance;
+		airway_data[i].set_local_acinar_compliance(local_acinar_compliance);
+
+		
+	
+
+
+	}
+}
 
 

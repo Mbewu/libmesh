@@ -37,6 +37,11 @@ data          = lid_driven_cavity_boundary_function.h  \
 								coupled_navier_stokes_petsc_solver_routines.C \
 								coupled_navier_stokes_particle_deposition_functions.C \
 								james_particle_deposition.C \
+								augment_sparsity_moghadam.h \
+								augment_sparsity_moghadam.C \
+								augment_sparsity_acinar.h \
+								augment_sparsity_acinar.C \
+								augment_sparsity_combined.h \
 								run.sh
 sources       = $(data) run.sh
 

@@ -14,9 +14,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 {
 
   if (threed)
-    std::cout << "Beginning 3D efficient assembly... " << std::endl;
+    std::cout << "\nBeginning 3D efficient assembly... " << std::endl;
   else
-    std::cout << "Beginning 2D efficient assembly... " << std::endl;
+    std::cout << "\nBeginning 2D efficient assembly... " << std::endl;
 
   TransientLinearImplicitSystem *system;
 
@@ -31,6 +31,26 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
     }
 
 
+	if(es->parameters.get <bool> ("residual_formulation"))
+	{
+		// zero this first just in case
+		system->get_vector("Forcing Vector").close();
+		system->get_vector("Forcing Vector").zero();
+
+		if(es->parameters.get<bool>("increment_boundary_conditions"))
+		{
+			system->get_vector("Forcing Vector BC").close();
+			system->get_vector("Forcing Vector BC").zero();
+		}
+	}
+
+	// DEBUGGING
+	
+	// only update the constraints after the solution has been calculated
+	//system->get_dof_map().enforce_constraints_exactly(*system);	
+	//std::cout << "solution_norm before assembly = " << system->solution->l2_norm() << std::endl;	
+	//std::cout << "old_solution_norm before assembly = " << system->old_local_solution->l2_norm() << std::endl;
+
   // Parameters to avoid parameter lookups in the loop
 
   // general
@@ -38,6 +58,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   const unsigned int problem_type = es->parameters.get <unsigned int >("problem_type");
   const unsigned int geometry_type = es->parameters.get < unsigned int >("geometry_type");
   unsigned int unsteady = es->parameters.get < unsigned int >("unsteady");
+  unsigned int nonlinear_iteration = es->parameters.get < unsigned int >("nonlinear_iteration");
+  bool increment_boundary_conditions = es->parameters.get < bool >("increment_boundary_conditions");
 
   // convection stabilisation
   const bool streamline_diffusion = es->parameters.get < bool > ("streamline_diffusion");
@@ -57,7 +79,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   const bool supg_laplacian = es->parameters.get < bool > ("supg_laplacian");
 
   // boundary
-  const bool moghadam_coupling = es->parameters.get <bool>("moghadam_coupling");
+  const unsigned int moghadam_coupling = es->parameters.get <unsigned int>("moghadam_coupling");
   const bool known_boundary_conditions = es->parameters.get <bool>("known_boundary_conditions");
   const bool neumann_stabilised = es->parameters.get < bool > ("neumann_stabilised");
   const bool bertoglio_stabilisation = es->parameters.get < bool > ("bertoglio_stabilisation");
@@ -66,7 +88,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   const bool neumann_stabilised_adjusted_interpolated = es->parameters.get < bool > ("neumann_stabilised_adjusted_interpolated");
   const double backflow_stab_param = es->parameters.get < double >("backflow_stab_param");
   const double bertoglio_stab_param = es->parameters.get < double >("bertoglio_stab_param");
+  const bool nondimensionalised = es->parameters.get < bool >("nondimensionalised");
 
+	std::cout << "bertoglio_stab_param = " << es->parameters.set<double> ("bertoglio_stab_param") << std::endl;
   // preconditioners
   const unsigned int preconditioner_type_3d = es->parameters.get <unsigned int >("preconditioner_type_3d");
   const unsigned int preconditioner_type_3d1d = es->parameters.get <unsigned int >("preconditioner_type_3d1d");
@@ -84,7 +108,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   const Real Re = es->parameters.get < Real > ("reynolds_number");
 
   // problem parameters
-  const Real dt = es->parameters.get < Real > ("dt");
+  const Real dt = es->parameters.get < Real > ("dt") * es->parameters.get < double >("time_scale_factor");
   const Real time = system->time;
   const double velocity_scale = es->parameters.get <double>("velocity_scale");
   const double length_scale = es->parameters.get < double >("length_scale");
@@ -94,6 +118,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   const bool symmetric_gradient = es->parameters.get < bool > ("symmetric_gradient");
   const bool multiply_system_by_dt = es->parameters.get < bool > ("multiply_system_by_dt");
   const bool convective_form = es->parameters.get < bool > ("convective_form");
+  const bool residual_formulation = es->parameters.get <bool> ("residual_formulation");
 
   // stokes stabilisation
   const bool mesh_dependent_stab_param = es->parameters.get < bool > ("mesh_dependent_stab_param");
@@ -104,12 +129,43 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   // misc
   const bool gravemeier_element_length = es->parameters.get < bool > ("gravemeier_element_length");
   const double element_length_scaling = es->parameters.get < double >("element_length_scaling");
+	const bool twod_oned_tree = es->parameters.get<bool> ("twod_oned_tree");
+	const bool twod_oned_tree_pressure = es->parameters.get<bool> ("twod_oned_tree_pressure");
   //const Real period     = es->parameters.get<Real>("period");
 
+	const unsigned int total_pressure_bc = es->parameters.get<unsigned int> ("total_pressure_bc");
+
+	// mono flow rate penalty param
+  double mono_flow_rate_penalty_param = 1.;
+	if(es->parameters.get <bool> ("mono_flow_rate_penalty"))
+		mono_flow_rate_penalty_param = es->parameters.get <double> ("mono_flow_rate_penalty_param");
+
+	// Dimensional calculation fixes
+	double density_scale = 1.0;
+	double viscosity_scale = 1.0/Re;
+	if(es->parameters.get < bool > ("dimensional_calculation_fix"))
+	{
+		// constant for the density, to go on the unsteady and convection terms
+		// - if reynolds number calculation, this is 1.0
+		// - if dimensional calculation this is \rho
+		if(!nondimensionalised)
+			density_scale = rho;
+
+		// constant for viscosity, to go on the diffusion term
+		// - if reynolds number calculation, this is 1/Re
+		// - if dimensional calculation this is \mu
+		if(!nondimensionalised)
+			viscosity_scale = mu;
+
+		//std::cout << "doing dimensional calculation fix" << std::endl;
+		//std::cout << "using mu = " << viscosity_scale << " instead of 1/Re = " << 1.0/Re << std::endl;
+	}
 
   // Problem parameters
   double sd_param = 0.;
 
+	/*
+	std::cout << "moghadam_coupling = " << moghadam_coupling << std::endl;
 
   std::cout << "convective_form = " << convective_form << std::endl;
   std::cout << "neumann_stabilised = " << neumann_stabilised << std::endl;
@@ -119,6 +175,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   std::cout << "nonlin iteration = " << es->parameters.get < unsigned int >("nonlinear_iteration") << std::endl;
   std::cout << "max initial picard = " << es->parameters.get < unsigned int >("max_initial_picard") << std::endl;
 
+	*/
   // if doing stokes initial condition calc then we need to do some clever stuff
   if(es->parameters.get < bool > ("stokes_ic") && es->parameters.get < unsigned int >("t_step") == 0)
   {
@@ -146,7 +203,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
     }
   }
 
-  std::cout << "newton = " << newton << std::endl;
+  //std::cout << "newton = " << newton << std::endl;
 
   //for the first time step we solve stokes - so that easy
   // in any case the system is stokes by default
@@ -197,7 +254,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
   int default_quad_order =
     static_cast < int >(fe_vel_type.default_quadrature_order ());
-  std::cout << "quad_order = " << default_quad_order << std::endl;
+  //std::cout << "quad_order = " << default_quad_order << std::endl;
   //QGauss qrule(dim, static_cast<Order>(default_quad_order));
 
   QGauss qrule (dim, static_cast < Order > (default_quad_order + 2));
@@ -247,10 +304,14 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
   // Local element matrix
   DenseMatrix < Number > Ke;
-  DenseVector < Number > Fe;
+  DenseVector < Number > Fe;	// this contains the true forcing terms
   DenseVector < Number > Fe_coupled_p;
   DenseVector < Number > Fe_coupled_u;
   DenseVector < Number > Fe_moghadam;
+	// residual formulation
+  DenseVector < Number > Fe_newton;	// this contains the newton terms
+  //DenseVector < Number > Fe_residual_lhs;
+  DenseVector < Number > Fe_bc;	// this contains the bcs
 
   DenseMatrix < Number > Ke_pre_mass;
   DenseMatrix < Number > Ke_pre_laplacian;
@@ -293,7 +354,12 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
   DenseSubVector < Number > Fu_coupled_u (Fe_coupled_u), Fv_coupled_u (Fe_coupled_u), Fw_coupled_u (Fe_coupled_u), Fp_coupled_u (Fe_coupled_u);	//unnecessary
 
-  DenseSubVector < Number > Fu_moghadam (Fe_moghadam), Fv_moghadam (Fe_moghadam), Fw_moghadam (Fe_moghadam);
+  DenseSubVector < Number > Fu_moghadam (Fe_moghadam), Fv_moghadam (Fe_moghadam), Fw_moghadam (Fe_moghadam), Fp_moghadam (Fe_moghadam);
+
+  DenseSubVector < Number > Fu_newton (Fe_newton), Fv_newton (Fe_newton), Fw_newton (Fe_newton), Fp_newton (Fe_newton);
+
+ // DenseSubVector < Number > Fu_residual_lhs (Fe_residual_lhs), Fv_residual_lhs (Fe_residual_lhs), Fw_residual_lhs (Fe_residual_lhs), Fp_residual_lhs (Fe_residual_lhs);
+
 
 
 
@@ -349,6 +415,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
   double tau_sum = 0.;
   double alpha_factor_sum = 0;
   unsigned int count = 0;
+	double max_global_velocity_mag = 0.;
+
+
 
 
 	for (; el != end_el; ++el)
@@ -416,6 +485,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			Fe_coupled_p.resize (n_dofs);
 			Fe_coupled_u.resize (n_dofs);
 			Fe_moghadam.resize (n_dofs);
+			Fe_newton.resize (n_dofs);
+			Fe_bc.resize (n_dofs);
 
 			// Reposition the submatrices
 			Kuu.reposition (u_var * n_u_dofs, u_var * n_u_dofs, n_u_dofs,	n_u_dofs);
@@ -509,8 +580,23 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 			Fu_moghadam.reposition (u_var * n_u_dofs, n_u_dofs);
 			Fv_moghadam.reposition (v_var * n_u_dofs, n_v_dofs);
+			Fp_moghadam.reposition (p_var * n_u_dofs, n_p_dofs);
 			if (threed)
 			  Fw_moghadam.reposition (w_var * n_u_dofs, n_w_dofs);
+
+			Fu_newton.reposition (u_var * n_u_dofs, n_u_dofs);
+			Fv_newton.reposition (v_var * n_u_dofs, n_v_dofs);
+			Fp_newton.reposition (p_var * n_u_dofs, n_p_dofs);
+			if (threed)
+			  Fw_newton.reposition (w_var * n_u_dofs, n_w_dofs);
+
+			/*
+			Fu_residual_lhs.reposition (u_var * n_u_dofs, n_u_dofs);
+			Fv_residual_lhs.reposition (v_var * n_u_dofs, n_v_dofs);
+			Fp_residual_lhs.reposition (p_var * n_u_dofs, n_p_dofs);
+			if (threed)
+			  Fw_moghadam.reposition (w_var * n_u_dofs, n_w_dofs);
+			*/
 
 			std::vector < Real > JxW = JxW_elem;
 			//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
@@ -536,8 +622,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			double max_velocity_mag = 0.;
 			for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
 			{
-			  	// Values to hold the solution & its gradient at the previous timestep.
-			  	Number u = 0., v = 0., w = 0.;
+		  	// Values to hold the solution & its gradient at the previous timestep.
+		  	Number u = 0., v = 0., w = 0.;
 
 				// Compute the velocity & its gradient from the previous timestep
 				// and the old Newton iterate or (semi-implicit) old time step
@@ -572,6 +658,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 				}
 			}
 
+			if(max_velocity_mag > max_global_velocity_mag)
+				max_global_velocity_mag = max_velocity_mag;
+
 			// ****************************************************************** //
 			// ***************** CALCULATE THE STREAMLINE DIFFUSION PARAM ******* //
 
@@ -583,7 +672,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			{
 
 			  //max_velocity_mag = 1.0;
-			  double Pe_k = Re / velocity_scale * max_velocity_mag * h_T;
+				// doubt i need velocity scale
+			  //double Pe_k = Re / velocity_scale * max_velocity_mag * h_T;
+				double Pe_k = density_scale * h_T / (viscosity_scale * 2);
 			  //std::cout << "hi Pe_k = " << Pe_k << std::endl;
 			  if (Pe_k > 1.)
 			  {
@@ -623,10 +714,14 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 
 	      			double m_k = 1. / 3.;
-	      			double Pe_k_1 = 4. * dt / (Re * m_k * h_T * h_T);
+	      			//double Pe_k_1 = 4. * dt / (Re * m_k * h_T * h_T);
+							double Pe_k_1 = 4. * dt * viscosity_scale / (m_k * h_T * h_T);
 	      			double Pe_k_2 = 0.;
 				if(!stokes)
-				  Pe_k_2 = Re * m_k * max_velocity_mag * h_T / 2.;
+				{
+				  //Pe_k_2 = Re * m_k * max_velocity_mag * h_T / 2.;
+					Pe_k_2 = m_k * max_velocity_mag * h_T / (viscosity_scale * 2.);
+				}
 	      
 				double xi_1 = Pe_k_1;	//will always be the max cause dt is "infinite"
 			  
@@ -636,18 +731,21 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 				double xi_2 = std::max (Pe_k_2, 1.);
 
 			  	// take out factor of h_T
-			  	alpha = 1. / (1. / dt * xi_1 + 4. / m_k / Re / (h_T * h_T) * xi_2);
+			  	//alpha = 1. / (1. / dt * xi_1 + 4. / m_k / Re / (h_T * h_T) * xi_2);
+					alpha = 1. / (1. / dt * xi_1 + 4. / m_k * viscosity_scale / (h_T * h_T) * xi_2);
 
 			  	//std::cout << " using stab_param alpha = " << alpha << std::endl;                 
 
 			}
 			else
 			{
-			  	alpha = alpha_parameter * Re * h_T * h_T;
+			  	//alpha = alpha_parameter * Re * h_T * h_T;
+					alpha = alpha_parameter / viscosity_scale * h_T * h_T;
 			}
 
 			// debugging
-			alpha_factor_sum += alpha / (Re * h_T * h_T);
+			//alpha_factor_sum += alpha / (Re * h_T * h_T);
+			alpha_factor_sum += alpha * viscosity_scale / (h_T * h_T);
 
 			// *************************************************************************** //
 
@@ -657,40 +755,39 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			// *************************************************************************** //
 			// ******** BUILD VOLUME CONTRIBUTION TO ELEMENT MATRIX AND RHS ************* //
 			for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
-	    		{
+  		{
 
+  			// ************* SET UP VARIABLES FROM PREVIOUS ITERATE/TIMESTEP ************* //
 
+  			// Values to hold the solution & its gradient at the previous timestep.
+  			Number u = 0., u_old = 0., v = 0., v_old = 0., w = 0., w_old = 0.;
+  			Gradient grad_u, grad_v, grad_w, grad_p, grad_u_old, grad_v_old, grad_w_old;
+  			Number lap_u = 0., lap_v = 0., lap_w = 0.;
 
-
-	      			// ************* SET UP VARIABLES FROM PREVIOUS ITERATE/TIMESTEP ************* //
-
-	      			// Values to hold the solution & its gradient at the previous timestep.
-	      			Number u = 0., u_old = 0., v = 0., v_old = 0., w = 0., w_old = 0.;
-	      			Gradient grad_u, grad_v, grad_w, grad_p, grad_u_old, grad_v_old, grad_w_old;
-	      			Number lap_u = 0., lap_v = 0., lap_w = 0.;
-
-	      			// Compute the velocity & its gradient from the previous timestep
-      				// and the old Newton iterate.
-	      			for (unsigned int l = 0; l < n_u_dofs; l++)
+  			// Compute the velocity & its gradient from the previous timestep
+				// and the old Newton iterate.
+  			for (unsigned int l = 0; l < n_u_dofs; l++)
 				{
 					// From the old timestep:
 					u_old += phi[l][qp] * system->old_solution (dof_indices_u[l]);
 					v_old += phi[l][qp] * system->old_solution (dof_indices_v[l]);
 					if (threed)
-					  w_old += phi[l][qp] * system->old_solution (dof_indices_w[l]);
+						w_old += phi[l][qp] * system->old_solution (dof_indices_w[l]);
 
 
-					// From the previous Newton iterate:
+					// From the previous Newton iterate (actually, the previously calculated solution):
 					u += phi[l][qp] * system->current_solution (dof_indices_u[l]);
 					v += phi[l][qp] * system->current_solution (dof_indices_v[l]);
 					if (threed)
-					  w += phi[l][qp] * system->current_solution (dof_indices_w[l]);
+						w += phi[l][qp] * system->current_solution (dof_indices_w[l]);
 
 					grad_u.add_scaled (dphi[l][qp],system->current_solution (dof_indices_u[l]));
 					grad_v.add_scaled (dphi[l][qp],system->current_solution (dof_indices_v[l]));
 					if (threed)
-					  grad_w.add_scaled (dphi[l][qp],system->current_solution (dof_indices_w[l]));
+						grad_w.add_scaled (dphi[l][qp],system->current_solution (dof_indices_w[l]));
 				}
+
+
 
 				if (supg || pspg || lsic)
 				{
@@ -699,17 +796,17 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 						grad_u_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_u[l]));
 						grad_v_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_v[l]));
 						if (threed)
-						  grad_w_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_w[l]));
+							grad_w_old.add_scaled (dphi[l][qp],system->old_solution (dof_indices_w[l]));
 
 						double laplacian_operator = 0;
 						laplacian_operator += d2phi[l][qp] (0, 0) + d2phi[l][qp] (1, 1);
 						if (threed)
-						  laplacian_operator += d2phi[l][qp] (2, 2);
+							laplacian_operator += d2phi[l][qp] (2, 2);
 
 						lap_u += laplacian_operator * system->current_solution (dof_indices_u[l]);
 						lap_v += laplacian_operator * system->current_solution (dof_indices_v[l]);
 						if (threed)
-						  lap_w += laplacian_operator * system->current_solution (dof_indices_w[l]);
+							lap_w += laplacian_operator * system->current_solution (dof_indices_w[l]);
 
 					}
 
@@ -717,25 +814,29 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					{
 						grad_p.add_scaled (dpsi[l][qp],system->current_solution (dof_indices_p[l]));
 					}
+
 				}
 
-			  	// vector forms of velocities
-			  	NumberVectorValue U_old;
-			  	if (threed)
-				  U_old = NumberVectorValue (u_old, v_old, w_old);
-			  	else
-				  U_old = NumberVectorValue (u_old, v_old);
+		  	// vector forms of velocities
+		  	NumberVectorValue U_old;
+		  	if (threed)
+			  	U_old = NumberVectorValue (u_old, v_old, w_old);
+		  	else
+			  	U_old = NumberVectorValue (u_old, v_old);
 
 
-			  	NumberVectorValue U;
-			  	if (threed)
-				  U = NumberVectorValue (u, v, w);
-			  	else
-				  U = NumberVectorValue (u, v);
+		  	NumberVectorValue U;
+		  	if (threed)
+			  	U = NumberVectorValue (u, v, w);
+		  	else
+			  	U = NumberVectorValue (u, v);
+
+
+				//std::cout << "U_old = " << U_old << std::endl;
 
 
 
-			  	// SOME DEBUGGING
+			  // SOME DEBUGGING
 				/*
 			  	if (pow (pow (u, 2.0) + pow (v, 2.0), 0.5) > max_u)
 					max_u = pow (pow (u, 2.0) + pow (v, 2.0), 0.5);
@@ -755,17 +856,18 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 
 				// done setup of previous values
-	      			// *************************************************************** //
+	      // *************************************************************** //
 
 
 
 
 
-			  	// *************************************************************************** //
-			  	// ********************* REGULAR NAVIER STOKES TERMS ************************* //
+		  	// *************************************************************************** //
+		  	// ********************* REGULAR NAVIER STOKES TERMS ************************* //
 
-			  	// First, an i-loop over the velocity degrees of freedom.
-			  	for (unsigned int i = 0; i < n_u_dofs; i++)
+
+		  	// First, an i-loop over the velocity degrees of freedom.
+		  	for (unsigned int i = 0; i < n_u_dofs; i++)
 				{
 
 					// ********** Forcing term ************** //
@@ -785,10 +887,10 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					// *********** Unsteady term ************* //
 					if (unsteady)
 					{
-						Fu (i) -= -JxW[qp] / dt * (u_old * phi[i][qp]);
-						Fv (i) -= -JxW[qp] / dt * (v_old * phi[i][qp]);
+						Fu (i) -= -JxW[qp] * density_scale / dt * (u_old * phi[i][qp]);
+						Fv (i) -= -JxW[qp] * density_scale / dt * (v_old * phi[i][qp]);
 						if (threed)
-						  Fw (i) -= -JxW[qp] / dt * (w_old * phi[i][qp]);
+							Fw (i) -= -JxW[qp] * density_scale / dt * (w_old * phi[i][qp]);
 					}
 
 
@@ -799,10 +901,10 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 						// *************** Unsteady term i.e. mass matrix ************ //
 						if (unsteady)
 						{
-							Kuu (i, j) += JxW[qp] / dt * (phi[i][qp] * phi[j][qp]);	// mass matrix term
-							Kvv (i, j) += JxW[qp] / dt * (phi[i][qp] * phi[j][qp]);	// mass matrix term
+							Kuu (i, j) += JxW[qp] * density_scale / dt * (phi[i][qp] * phi[j][qp]);	// mass matrix term
+							Kvv (i, j) += JxW[qp] * density_scale / dt * (phi[i][qp] * phi[j][qp]);	// mass matrix term
 							if (threed)
-							  Kww (i, j) += JxW[qp] / dt * (phi[i][qp] * phi[j][qp]); // mass matrix term
+							  Kww (i, j) += JxW[qp] * density_scale / dt * (phi[i][qp] * phi[j][qp]); // mass matrix term
 						}
 
 
@@ -810,33 +912,33 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 						// We can use the nonsymmetric gradient or the symmetrised gradient
 						if (!symmetric_gradient)
 						{
-							Kuu (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
-							Kvv (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+							Kuu (i, j) += JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+							Kvv (i, j) += JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
 							if (threed)
-							  Kww (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+							  Kww (i, j) += JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
 						}
 						else
 						{
-							Kuu (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
-							Kvv (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+							Kuu (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+							Kvv (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
 							if (threed)
-							  Kww (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));  // diffusion
+							  Kww (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] * dphi[j][qp]));  // diffusion
 
-							Kuu (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) * dphi[j][qp] (0)));	// diffusion
-							Kuv (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) * dphi[j][qp] (1)));	// diffusion
+							Kuu (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (0) * dphi[j][qp] (0)));	// diffusion
+							Kuv (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (0) * dphi[j][qp] (1)));	// diffusion
 							if (threed)
-							  Kuw (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) * dphi[j][qp] (2)));  // diffusion
+							  Kuw (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (0) * dphi[j][qp] (2)));  // diffusion
 				
-							Kvu (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (0)));	// diffusion
-							Kvv (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (1)));	// diffusion
+							Kvu (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (0)));	// diffusion
+							Kvv (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (1)));	// diffusion
 							if (threed)
-							  Kvw (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (2)));  // diffusion
+							  Kvw (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (2)));  // diffusion
 				
 							if (threed)
 							{
-							  Kwu (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (2) * dphi[j][qp] (0)));	// diffusion
-							  Kwv (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (2) * dphi[j][qp] (1)));	// diffusion
-							  Kww (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (2) * dphi[j][qp] (2)));	// diffusion
+							  Kwu (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (2) * dphi[j][qp] (0)));	// diffusion
+							  Kwv (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (2) * dphi[j][qp] (1)));	// diffusion
+							  Kww (i, j) += 0.5 * JxW[qp] * (viscosity_scale * (dphi[i][qp] (2) * dphi[j][qp] (2)));	// diffusion
 							}	
 						}
 					}// end j velocity dof loop
@@ -849,19 +951,42 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 				
 					if (!stokes && (newton > 0 && newton < 3))
 					{
-						if (convective_form)
+						// in the residual formulation, we put the newton terms in their own vector
+						// in residual formulation 2 there are no newton but whatever, we just won't use them
+						if(residual_formulation)
 						{
-							Fu (i) += JxW[qp] * ((U * grad_u) * phi[i][qp]);
-							Fv (i) += JxW[qp] * ((U * grad_v) * phi[i][qp]);
-							if (threed)
-							  Fw (i) += JxW[qp] * ((U * grad_w) * phi[i][qp]);
+							if (convective_form)
+							{
+								Fu_newton (i) += JxW[qp] * density_scale * ((U * grad_u) * phi[i][qp]);
+								Fv_newton (i) += JxW[qp] * density_scale * ((U * grad_v) * phi[i][qp]);
+								if (threed)
+									Fw_newton (i) += JxW[qp] * density_scale * ((U * grad_w) * phi[i][qp]);
+							}
+							else
+							{
+								Fu_newton (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * u;
+								Fv_newton (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * v;
+								if (threed)
+									Fw_newton (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * w;
+							}
+
 						}
 						else
 						{
-							Fu (i) += -JxW[qp] * (U * dphi[i][qp]) * u;
-							Fv (i) += -JxW[qp] * (U * dphi[i][qp]) * v;
-							if (threed)
-							  Fw (i) += -JxW[qp] * (U * dphi[i][qp]) * w;
+							if (convective_form)
+							{
+								Fu (i) += JxW[qp] * density_scale * ((U * grad_u) * phi[i][qp]);
+								Fv (i) += JxW[qp] * density_scale * ((U * grad_v) * phi[i][qp]);
+								if (threed)
+									Fw (i) += JxW[qp] * density_scale * ((U * grad_w) * phi[i][qp]);
+							}
+							else
+							{
+								Fu (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * u;
+								Fv (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * v;
+								if (threed)
+									Fw (i) += -JxW[qp] * density_scale * (U * dphi[i][qp]) * w;
+							}
 						}
 					}
 
@@ -878,25 +1003,25 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 							{
 								if(newton < 3) // implicit
 								{
-									Kuu (i, j) += JxW[qp] * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
-									Kvv (i, j) += JxW[qp] * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
+									Kuu (i, j) += JxW[qp] * density_scale * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
+									Kvv (i, j) += JxW[qp] * density_scale * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
 									if (threed)
-									  Kww (i, j) += JxW[qp] * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
+									  Kww (i, j) += JxW[qp] * density_scale * ((U * dphi[j][qp]) * phi[i][qp]);	// convection
 						    	}
 								else // semi-implicit
 								{
-									Kuu (i, j) += JxW[qp] * ((U_old * dphi[j][qp]) * phi[i][qp]);	// convection
-									Kvv (i, j) += JxW[qp] * ((U_old * dphi[j][qp]) * phi[i][qp]);	// convection
+									Kuu (i, j) += JxW[qp] * density_scale * ((U_old * dphi[j][qp]) * phi[i][qp]);	// convection
+									Kvv (i, j) += JxW[qp] * density_scale * ((U_old * dphi[j][qp]) * phi[i][qp]);	// convection
 									if (threed)
-									  Kww (i, j) += JxW[qp] * ((U_old * dphi[j][qp]) * phi[i][qp]);  	// convection
+									  Kww (i, j) += JxW[qp] * density_scale * ((U_old * dphi[j][qp]) * phi[i][qp]);  	// convection
 								}
 							}
 							else
 							{
-								Kuu (i, j) += -JxW[qp] * ((U * dphi[i][qp]) * phi[j][qp]);	// convection
-								Kvv (i, j) += -JxW[qp] * ((U * dphi[i][qp]) * phi[j][qp]);	// convection
+								Kuu (i, j) += -JxW[qp] * density_scale * ((U * dphi[i][qp]) * phi[j][qp]);	// convection
+								Kvv (i, j) += -JxW[qp] * density_scale * ((U * dphi[i][qp]) * phi[j][qp]);	// convection
 								if (threed)
-								  Kww (i, j) += -JxW[qp] * ((U * dphi[i][qp]) *	phi[j][qp]);	// convection
+								  Kww (i, j) += -JxW[qp] * density_scale * ((U * dphi[i][qp]) *	phi[j][qp]);	// convection
 							}
 
 
@@ -914,17 +1039,17 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 								if(newton < 3) // implicit
 								{
-									Kuu (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
-									Kvv (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
+									Kuu (i, j) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
+									Kvv (i, j) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
 									if (threed)
-									  Kww (i, j) += sd_param * JxW[qp] * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
+									  Kww (i, j) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * dphi[j][qp]));	// convection
 								}
 								else	// semi-implicit
 								{
-									Kuu (i, j) += sd_param * JxW[qp] * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
-									Kvv (i, j) += sd_param * JxW[qp] * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
+									Kuu (i, j) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
+									Kvv (i, j) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
 									if (threed)
-									  Kww (i, j) += sd_param * JxW[qp] * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
+									  Kww (i, j) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * dphi[j][qp]));	// convection
 								}
 							}
 
@@ -938,40 +1063,40 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 							{
 								if (convective_form)
 								{
-									Kuu (i, j) += JxW[qp] * (grad_u (0) * phi[i][qp] * phi[j][qp]);
-									Kuv (i, j) += JxW[qp] * (grad_u (1) * phi[i][qp] * phi[j][qp]);
+									Kuu (i, j) += JxW[qp] * density_scale * (grad_u (0) * phi[i][qp] * phi[j][qp]);
+									Kuv (i, j) += JxW[qp] * density_scale * (grad_u (1) * phi[i][qp] * phi[j][qp]);
 									if (threed)
-									  Kuw (i, j) += JxW[qp] * (grad_u (2) * phi[i][qp] * phi[j][qp]);
+									  Kuw (i, j) += JxW[qp] * density_scale * (grad_u (2) * phi[i][qp] * phi[j][qp]);
 
-									Kvu (i, j) += JxW[qp] * (grad_v (0) * phi[i][qp] * phi[j][qp]);
-									Kvv (i, j) += JxW[qp] * (grad_v (1) * phi[i][qp] * phi[j][qp]);
+									Kvu (i, j) += JxW[qp] * density_scale * (grad_v (0) * phi[i][qp] * phi[j][qp]);
+									Kvv (i, j) += JxW[qp] * density_scale * (grad_v (1) * phi[i][qp] * phi[j][qp]);
 									if (threed)
-									  Kvw (i, j) += JxW[qp] * (grad_v (2) * phi[i][qp] * phi[j][qp]);
+									  Kvw (i, j) += JxW[qp] * density_scale * (grad_v (2) * phi[i][qp] * phi[j][qp]);
 
 									if (threed)
 									{
-									  Kwu (i, j) += JxW[qp] * (grad_w (0) * phi[i][qp] * phi[j][qp]);
-									  Kwv (i, j) += JxW[qp] * (grad_w (1) * phi[i][qp] * phi[j][qp]);
-									  Kww (i, j) += JxW[qp] * (grad_w (2) * phi[i][qp] * phi[j][qp]);
+									  Kwu (i, j) += JxW[qp] * density_scale * (grad_w (0) * phi[i][qp] * phi[j][qp]);
+									  Kwv (i, j) += JxW[qp] * density_scale * (grad_w (1) * phi[i][qp] * phi[j][qp]);
+									  Kww (i, j) += JxW[qp] * density_scale * (grad_w (2) * phi[i][qp] * phi[j][qp]);
 									}
 								}
 								else
 								{
-									Kuu (i, j) += -JxW[qp] * (u * dphi[i][qp] (0) * phi[j][qp]);
-									Kuv (i, j) += -JxW[qp] * (u * dphi[i][qp] (1) * phi[j][qp]);
+									Kuu (i, j) += -JxW[qp] * density_scale * (u * dphi[i][qp] (0) * phi[j][qp]);
+									Kuv (i, j) += -JxW[qp] * density_scale * (u * dphi[i][qp] (1) * phi[j][qp]);
 									if (threed)
-									  Kuw (i, j) += -JxW[qp] * (u * dphi[i][qp] (2) * phi[j][qp]);
+									  Kuw (i, j) += -JxW[qp] * density_scale * (u * dphi[i][qp] (2) * phi[j][qp]);
 
-									Kvu (i, j) += -JxW[qp] * (v * dphi[i][qp] (0) * phi[j][qp]);
-									Kvv (i, j) += -JxW[qp] * (v * dphi[i][qp] (1) * phi[j][qp]);
+									Kvu (i, j) += -JxW[qp] * density_scale * (v * dphi[i][qp] (0) * phi[j][qp]);
+									Kvv (i, j) += -JxW[qp] * density_scale * (v * dphi[i][qp] (1) * phi[j][qp]);
 									if (threed)
-									  Kvw (i, j) += -JxW[qp] * (v * dphi[i][qp] (2) * phi[j][qp]);
+									  Kvw (i, j) += -JxW[qp] * density_scale * (v * dphi[i][qp] (2) * phi[j][qp]);
 
 									if(threed)
 									{
-									  Kwu (i, j) += -JxW[qp] * (w * dphi[i][qp] (0) * phi[j][qp]);
-									  Kwv (i, j) += -JxW[qp] * (w * dphi[i][qp] (1) * phi[j][qp]);
-									  Kww (i, j) += -JxW[qp] * (w * dphi[i][qp] (2) * phi[j][qp]);
+									  Kwu (i, j) += -JxW[qp] * density_scale * (w * dphi[i][qp] (0) * phi[j][qp]);
+									  Kwv (i, j) += -JxW[qp] * density_scale * (w * dphi[i][qp] (1) * phi[j][qp]);
+									  Kww (i, j) += -JxW[qp] * density_scale * (w * dphi[i][qp] (2) * phi[j][qp]);
 									}
 								}
 							} // end Newton Convection (Reaction) Tangent Terms
@@ -988,7 +1113,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 						Kvp (i, j) += -JxW[qp] * psi[j][qp] * dphi[i][qp] (1);
 						if (threed)
 						  Kwp (i, j) += -JxW[qp] * psi[j][qp] * dphi[i][qp] (2);
-		  			} // end j pressure dof loop
+		  		} // end j pressure dof loop
 		
 				} // end i velocity dof loop
 
@@ -997,7 +1122,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 
 
-	      			for (unsigned int i = 0; i < n_p_dofs; i++)
+	      for (unsigned int i = 0; i < n_p_dofs; i++)
 				{
 
 					
@@ -1005,32 +1130,33 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					// could possibly be NOT multiplied by negative.
 					for (unsigned int j = 0; j < n_u_dofs; j++)
 					{
-					  	Kpu (i, j) += -JxW[qp] * psi[i][qp] * dphi[j][qp] (0);
-					  	Kpv (i, j) += -JxW[qp] * psi[i][qp] * dphi[j][qp] (1);
-					  	if (threed)
-						  Kpw (i, j) +=	-JxW[qp] * psi[i][qp] * dphi[j][qp] (2);
-		    			}// end j velocity dof loop
+				  	Kpu (i, j) += -JxW[qp] * psi[i][qp] * dphi[j][qp] (0);
+				  	Kpv (i, j) += -JxW[qp] * psi[i][qp] * dphi[j][qp] (1);
+				  	if (threed)
+					  Kpw (i, j) +=	-JxW[qp] * psi[i][qp] * dphi[j][qp] (2);
+		    	}// end j velocity dof loop
 
 					// ************** Stabilisation term - should be opposite sign to continuity equation
 					// stabilisation depends on if using P1-P1 or P1-P0
 					// need stabilisation for first tstep of pspg because parameter is zero
 					if (stab || (max_velocity_mag < 1e-10	&& pspg) )
 					{
-					  	for (unsigned int j = 0; j < n_p_dofs; j++)
+					  for (unsigned int j = 0; j < n_p_dofs; j++)
 						{
 							//Kpp(i,j) += alpha*elem_volume*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
 							Kpp (i, j) += -alpha * JxW[qp] * dpsi[i][qp] * dpsi[j][qp];
 						} // end j pressure dof loop
-				  	}
+				  }
+
 
 
 
 					// ***************** Preconditioner terms ************************ //
 
 					for (unsigned int j = 0; j < n_p_dofs; j++)
-				  	{
+				  {
 						if(assemble_pressure_mass_matrix)
-					    	  Kpp_pre_mass (i, j) -=	JxW[qp] * psi[i][qp] * psi[j][qp];
+					    Kpp_pre_mass (i, j) -=	JxW[qp] * psi[i][qp] * psi[j][qp];
 
 						if(assemble_pressure_laplacian_matrix)
 						  Kpp_pre_laplacian (i, j) +=	JxW[qp] * dpsi[i][qp] * dpsi[j][qp];
@@ -1049,13 +1175,14 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								  Kpp_pre_convection_diffusion (i, j) += JxW[qp] * (U_old * dpsi[j][qp]) * psi[i][qp];
 							}
 
-						    	Kpp_pre_convection_diffusion (i, j) += JxW[qp] / Re * dpsi[i][qp] * dpsi[j][qp];
+				    	//Kpp_pre_convection_diffusion (i, j) += JxW[qp] / Re * dpsi[i][qp] * dpsi[j][qp];
+							Kpp_pre_convection_diffusion (i, j) += JxW[qp] * viscosity_scale * dpsi[i][qp] * dpsi[j][qp];
 
-						    	if (unsteady)
+				    	if (unsteady)
 							  Kpp_pre_convection_diffusion (i, j) += JxW[qp] / dt * psi[i][qp] * psi[j][qp];
 
 
-						    	if (streamline_diffusion && !stokes)
+				    	if (streamline_diffusion && !stokes)
 							{
 								if(newton < 3) // implicit
 								  Kpp_pre_convection_diffusion (i, j) += sd_param * JxW[qp] * (U * dpsi[i][qp]) * (U * dpsi[j][qp]);
@@ -1102,44 +1229,45 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 							// *************** Diffusion terms ************** //
 							// We can use the nonsymmetric gradient or the symmetrised gradient
+							// Note: (/ Re) replaced with (* viscosity_scale)
 							if (!symmetric_gradient)
 							{
-								Kuu_pre_velocity (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
-								Kvv_pre_velocity (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+								Kuu_pre_velocity (i, j) += JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+								Kvv_pre_velocity (i, j) += JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
 								if (threed)
 								{
-									Kww_pre_velocity (i, j) += JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));
+									Kww_pre_velocity (i, j) += JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));
 								}	// diffusion
 							}
 							else
 							{
-								Kuu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
-								Kvv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+								Kuu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
+								Kvv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));	// diffusion
 								if (threed)
 								{
-									Kww_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] * dphi[j][qp]));
+									Kww_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] * dphi[j][qp]));
 								}	// diffusion
 
-								Kuu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) * dphi[j][qp] (0)));	// diffusion
-								Kuv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) * dphi[j][qp] (1)));	// diffusion
+								Kuu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (0) * dphi[j][qp] (0)));	// diffusion
+								Kuv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (0) * dphi[j][qp] (1)));	// diffusion
 								if (threed)
 								{
-									Kuw_pre_velocity (i, j) +=	0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (0) *	dphi[j][qp] (2)));
+									Kuw_pre_velocity (i, j) +=	0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (0) *	dphi[j][qp] (2)));
 								}	// diffusion
 
-								Kvu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (0)));	// diffusion
-								Kvv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (1)));	// diffusion
+								Kvu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (0)));	// diffusion
+								Kvv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (1)));	// diffusion
 
 								if (threed)
 								{
-									Kvw_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (1) * dphi[j][qp] (2)));
+									Kvw_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (1) * dphi[j][qp] (2)));
 								}	// diffusion
 
 								if(threed)
 								{
-									Kwu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (2) * dphi[j][qp] (0)));	// diffusion
-									Kwv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re * (dphi[i][qp] (2) * dphi[j][qp] (1)));	// diffusion
-									Kww_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. / Re *	(dphi[i][qp] (2) *	dphi[j][qp] (2)));
+									Kwu_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (2) * dphi[j][qp] (0)));	// diffusion
+									Kwv_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale * (dphi[i][qp] (2) * dphi[j][qp] (1)));	// diffusion
+									Kww_pre_velocity (i, j) += 0.5 * JxW[qp] * (1. * viscosity_scale *	(dphi[i][qp] (2) *	dphi[j][qp] (2)));
 								}	// diffusion
 							} // end preconditioner diffusion terms
 						}	// end j velocity dof loop
@@ -1194,10 +1322,10 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 
 
-			  	// ************************** SUPG/PSPG/LSIC TERMS *************************** //
-			  	// we only want to apply this if there is a nonzero velocity
+		  	// ************************** SUPG/PSPG/LSIC TERMS *************************** //
+		  	// we only want to apply this if there is a nonzero velocity
 
-			  	if (supg || pspg || lsic)
+		  	if (supg || pspg || lsic)
 				{
 					//double time_scale = length_scale / velocity_scale;	// unused
 
@@ -1261,7 +1389,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					}
 					double h_rgn = 2. / grad_times_r;
 
-					double reynolds_supg = velocity_mag * h_rgn / (2 * mu / rho) * velocity_scale * length_scale;
+					//double reynolds_supg = velocity_mag * h_rgn / (2 * mu / rho) * velocity_scale * length_scale;
+					double reynolds_supg = velocity_mag * h_rgn / (2 * viscosity_scale / density_scale) * velocity_scale * length_scale;
 
 					//supg parameter
 					double tau_supg = 1.0 / sqrt (pow (2 * velocity_mag / h_T, 2.0) + 9.0 * pow (4 / (h_T * h_T * reynolds_supg), 2.0));
@@ -1301,17 +1430,27 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 							// in this method, we definitely use the actual reynolds number we use the calc, cause comes from viscosity
 							double m_k = 1. / 3.;	//for linearly interpolated elements
-							double xi_C =	std::min (m_k * velocity_mag * h_p * Re / 2., 1.);
+							//double xi_C =	std::min (m_k * velocity_mag * h_p * Re / 2., 1.);
+							double xi_C =	std::min (m_k * velocity_mag * h_p / viscosity_scale / 2., 1.);
 							double tau_C = velocity_mag * h_p / 2 * xi_C;
 
 							double f_T = 1.0;	// depends on time integration scheme
-							double xi_M1p = std::max (4 * f_T * dt / (Re * m_k * h_p * h_p), 1.);
-							double xi_M2p =	std::max (m_k * velocity_mag * h_p * Re / 2., 1.);
-							double tau_Mp =	1. / (1. / (f_T * dt) * xi_M1p + 4. / (Re * m_k * h_p * h_p) * xi_M2p);
+							//double xi_M1p = std::max (4 * f_T * dt / (Re * m_k * h_p * h_p), 1.);
+							double xi_M1p = std::max (4 * f_T * dt / (1./viscosity_scale * m_k * h_p * h_p), 1.);
+							//double xi_M2p =	std::max (m_k * velocity_mag * h_p * Re / 2., 1.);
+							double xi_M2p =	std::max (m_k * velocity_mag * h_p / viscosity_scale / 2., 1.);
+							//double tau_Mp =	1. / (1. / (f_T * dt) * xi_M1p + 4. / (Re * m_k * h_p * h_p) * xi_M2p);
+							double tau_Mp =	1. / (1. / (f_T * dt) * xi_M1p + 4. / (1./viscosity_scale * m_k * h_p * h_p) * xi_M2p);
 
+							/*
 							double xi_M1u =	std::max (4 * f_T * dt / (Re * m_k * h_u * h_u), 1.);
 							double xi_M2u =	std::max (m_k * velocity_mag * h_u * Re / 2., 1.);
 							double tau_Mu =	1. / (1. / (f_T * dt) * xi_M1u + 4. / (Re * m_k * h_p * h_p) * xi_M2u);
+							*/
+
+							double xi_M1u =	std::max (4 * f_T * dt / (1./viscosity_scale  * m_k * h_u * h_u), 1.);
+							double xi_M2u =	std::max (m_k * velocity_mag * h_u * 1./viscosity_scale  / 2., 1.);
+							double tau_Mu =	1. / (1. / (f_T * dt) * xi_M1u + 4. / (1./viscosity_scale  * m_k * h_p * h_p) * xi_M2u);
 
 							//std::cout << "tau old = " << tau_supg << std::endl;
 							tau_supg = tau_Mu;
@@ -1429,6 +1568,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 					// let us use the velocity from the previous
 					// there is a dt from the actual time derivative as well as from inside the residual
+					// Note: / Re replaced with * viscosity_scale
 					if (supg)
 					{
 					  if (supg_newton)
@@ -1494,25 +1634,25 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 									if (supg_laplacian)
 									{
-										Kuu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-										Kuv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+										Kuu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+										Kuv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 									 	if (threed)
 										{
-							 				Kuw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+							 				Kuw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										}
 								
-										Kvu (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-										Kvv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+										Kvu (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+										Kvv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kvw (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re *	velocity *dphi[i][qp]	*	laplacian_operator);
+											Kvw (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale *	velocity *dphi[i][qp]	*	laplacian_operator);
 										}
 								
 										if (threed)
 										{
-											Kwu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-											Kwv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-											Kww (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+											Kwu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+											Kwv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+											Kww (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										}
 
 									}
@@ -1620,23 +1760,23 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 									if (supg_laplacian)
 									{
-										Kuu (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-										Kuv (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+										Kuu (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+										Kuv (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kuw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kuw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
-										Kvu (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-										Kvv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+										Kvu (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+										Kvv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kvw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kvw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
 										if (threed)
 										{
-											Kwu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re *	U *	dphi[i][qp] *	laplacian_operator);
-											Kwv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-											Kww (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kwu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale *	U *	dphi[i][qp] *	laplacian_operator);
+											Kwv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+											Kww (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
 									}
 
@@ -1744,24 +1884,24 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									}
 									if (supg_laplacian)
 									{
-										Kuu (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-										Kuv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+										Kuu (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+										Kuv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kuw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kuw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
 								
-										Kvu (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-										Kvv (i, j) +=	tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+										Kvu (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+										Kvv (i, j) +=	tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kvw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kvw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
 										if (threed)
 										{
-											Kwu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-											Kwv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
-											Kww (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * U * dphi[i][qp] * laplacian_operator);
+											Kwu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+											Kwv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
+											Kww (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * U * dphi[i][qp] * laplacian_operator);
 										}
 									}
 
@@ -1853,24 +1993,24 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									}
 									if (supg_laplacian)
 									{
-										Kuu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-										Kuv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+										Kuu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+										Kuv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kuw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+											Kuw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										}
-										Kvu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-										Kvv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+										Kvu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+										Kvv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										if (threed)
 										{
-											Kvw (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+											Kvw (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										}
 
 										if (threed)
 										{
-		 									Kwu (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-											Kwv (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
-											Kww (i, j) += tau_supg * JxW[qp] * (-1.0 / Re * velocity * dphi[i][qp] * laplacian_operator);
+		 									Kwu (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+											Kwv (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
+											Kww (i, j) += tau_supg * JxW[qp] * (-viscosity_scale * velocity * dphi[i][qp] * laplacian_operator);
 										}
 									}
 
@@ -1994,11 +2134,11 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 									if (supg_laplacian)
 									{
-										Kpu (i, j) += -tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp] (0) * laplacian_operator);
-										Kpv (i, j) +=	-tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp] (1) * laplacian_operator);
+										Kpu (i, j) += -tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp] (0) * laplacian_operator);
+										Kpv (i, j) +=	-tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp] (1) * laplacian_operator);
 										if (threed)
 										{
-											Kpw (i, j) += -tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp] (2) *laplacian_operator);
+											Kpw (i, j) += -tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp] (2) *laplacian_operator);
 										}
 									}
 
@@ -2052,11 +2192,11 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									}
 									if (supg_laplacian)
 									{
-										Kpu (i, j) += -tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp] (0) * laplacian_operator);
-										Kpv (i, j) +=	-tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp] (1) * laplacian_operator);
+										Kpu (i, j) += -tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp] (0) * laplacian_operator);
+										Kpv (i, j) +=	-tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp] (1) * laplacian_operator);
 										if (threed)
 										{
-											Kpw (i, j) += -tau_pspg * JxW[qp] * (-1.0 / Re * dpsi[i][qp](2) * laplacian_operator);
+											Kpw (i, j) += -tau_pspg * JxW[qp] * (-viscosity_scale * dpsi[i][qp](2) * laplacian_operator);
 										}
 									}
 
@@ -2175,7 +2315,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 												if (threed)
 													w_old += phi_face[l][qp] * system->old_solution (dof_indices_w[l]);
 											}
-							  			}
+							  		}
 
 										NumberVectorValue U;
 										NumberVectorValue U_old;
@@ -2207,12 +2347,12 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 													else // semi-implict
 														Kpp_pre_convection_diffusion (i,j) -= JxW_face[qp] * (U_old * qface_normals[qp]) * psi_face[i][qp] * psi_face[j][qp];
 												}
-										  	}
+										  }
 										}
 									}
-							  	}
+							  }
 							}
-					  	}
+					  }
 
 
 						// *********** STRESS BOUNDARY CONDITIONS/TERMS **************** //
@@ -2220,34 +2360,114 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 						// otherwise we put these contributions in the off diagonal block.
 						// will have to think about this wrt the stabilisation term on the boundary
 
-						if (!pressure_coupled)
-					  	{
-							// mean pressure conditions/terms
-							if (bc_type[boundary_id].compare ("pressure") == 0
-									|| bc_type[boundary_id].compare ("stress") == 0
-									|| bc_type[boundary_id].compare ("neumann") == 0)
-							{
+						//std::cout << "boundary_id = " << boundary_id << std::endl;
 
+
+						// mean pressure conditions/terms
+						if (bc_type[boundary_id].compare ("pressure") == 0
+								|| bc_type[boundary_id].compare ("stress") == 0
+								|| bc_type[boundary_id].compare ("neumann") == 0)
+						{
+
+
+							// init the face shape fucntions
+							fe_vel_face->reinit (elem, s);
+							fe_pres_face->reinit (elem, s);
+
+							std::vector < Real > JxW_face = JxW_face_elem;
+							//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+							if (geometry_type == 5)
+							{
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+									JxW_face[qp] *= qpoint_face[qp] (1);
+							}
+
+
+							if (multiply_system_by_dt)
+						  {
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+									JxW_face[qp] *= dt;
+								}
+						  }
+
+
+
+							// ****** APPLY PRESSURE BCS ******** //
+
+							// only apply bc if not on coupling boundaries (if mono pressure_coupled)
+							if (!pressure_coupled || boundary_id == 0)
+							{
 
 								// mean pressure or moghadam resistance
 								double mean_pressure = bc_value[boundary_id];
-								double resistance = bc_value[boundary_id];
 								double stress_mag = bc_value[boundary_id];
+
+								double pressure_deriv = bc_value[boundary_id];
+								double resistance = bc_value_resistance[boundary_id];
+								double flow_rate = bc_value_flow_rate[boundary_id];
+								double pressure_1d = bc_value_pressure_1d[boundary_id];
+								double dynamic_pressure = bc_value_dynamic_pressure[boundary_id];
+
+								//std::cout << "dynamic_pressure = " << dynamic_pressure << std::endl;
+
+								// scale the pressure accordingly
+								// for moghadam only
+								double pressure_scaling = 1.0;
+								
+								if(twod_oned_tree_pressure)
+								{
+									pressure_scaling = 12./32.;
+									
+								}
+
+								// scale the flow rate accordingly
+								// for moghadam only
+								double flow_rate_scaling = 1.0;
+								
+								if(twod_oned_tree)
+								{
+									// NONONONO - the scaling factor should be based on the inflow boundary, where the conversion took place
+									//double diameter_3d = es->parameters.get<double> ("trachea_diameter");	
+									//double diameter_3d = (*surface_boundaries)[boundary_id]->get_max_radius() * 2.0;
+									//flow_rate_scaling = 3.*M_PI/16.*diameter_3d;
+
+									// this should conserve the mean 3D velocity across the boundary
+									//double radius_3d = (*surface_boundaries)[boundary_id]->get_max_radius();
+									double radius_3d = (*surface_boundaries)[0]->get_max_radius();
+									flow_rate_scaling = M_PI*radius_3d/2.;
+									
+								}
 								//mean_pressure = 2.;
 
-								// DEBUGGING
+								//std::cout << "mean_pressure = " << mean_pressure << std::endl;
 								/*
-								if(moghadam_coupling)
-								  std::cout << "resistance = " << resistance << std::endl;
-								*/									
+								std::cout << "bdy id = "  << boundary_id << std::endl;
+								std::cout << "mean_pressure = " << mean_pressure << std::endl;
+								std::cout << "pressure_1d = " << pressure_1d << std::endl;
+								*/
+
+								// DEBUGGING
+								
+								/*
+								std::cout << "pressure_deriv = " << pressure_deriv << std::endl;
+								std::cout << "flow_rate = " << flow_rate << std::endl;
+								
+								std::cout << "pressure_deriv * flow_rate = " << pressure_deriv * flow_rate << std::endl;
+								std::cout << "pressure_1d = " << pressure_1d << std::endl;
+								*/
+																	
 
 								if (bc_type[boundary_id].compare ("neumann") == 0)
 								  mean_pressure = 0;
 
-								// if coupled then we want the inflow to possibly be timeflow controlled, but future work
-								if (sim_type == 0 || (sim_type == 2 && !known_boundary_conditions) )
+								// we only want to scale the pressure if we're not doing a coupled simulation
+								/*
+								if ((sim_type == 0 && !known_boundary_conditions) || (sim_type == 2 && !known_boundary_conditions) )
 								  mean_pressure *= time_scaling;
+								*/
 
+								//std::cout << "boundary_id " << boundary_id << ", value = " << mean_pressure << std::endl;
 
 								DenseMatrix < Number > stress;
 								DenseVector < Number > normal_stress;
@@ -2274,13 +2494,13 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								}
 
 
-								if(moghadam_coupling)
+								// don't want to do this if we are on the inlet
+								if(moghadam_coupling && boundary_id != 0)
 								{
 									std::vector <unsigned int >velocity_dofs_on_side;
 									FEInterface::dofs_on_side (elem, dim,fe_vel_type, s,velocity_dofs_on_side);
 									// presumably this returns their place in dof_indices_p
 									// will get some overlap for cts elements but this doesn't matter for later on
-
 
 									for (unsigned int i = 0; i < velocity_dofs_on_side.size (); i++)
 									{
@@ -2294,27 +2514,6 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								}
 
 
-
-								// init the face shape fucntions
-								fe_vel_face->reinit (elem, s);
-								fe_pres_face->reinit (elem, s);
-
-								std::vector < Real > JxW_face = JxW_face_elem;
-								//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
-								if (geometry_type == 5)
-								{
-									for (unsigned int qp = 0; qp < qface.n_points (); qp++)
-										JxW_face[qp] *= qpoint_face[qp] (1);
-								}
-
-
-								if (multiply_system_by_dt)
-							  	{
-									for (unsigned int qp = 0; qp < qface.n_points (); qp++)
-									{
-										JxW_face[qp] *= dt;
-									}
-							  	}
 
 								// DEBUGGING
 								/*
@@ -2354,431 +2553,657 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									}
 
 
-									if (!moghadam_coupling)
-									{
-										for (unsigned int i = 0; i < n_u_dofs; i++)
-										{
 
-											Fu (i) += -JxW_face[qp] * (((normal_stress (0)) * phi_face[i][qp]));
-											Fv (i) += -JxW_face[qp] * (((normal_stress (1)) * phi_face[i][qp]));
+									// calculate the dynamic pressure to subtract
+									// unstable
+									
+									double dynamic_pressure = 0.;
+									double u=0.,v=0.,w=0.,u_old=0.,v_old=0.,w_old=0.;
+									NumberVectorValue U,U_old;
+									if(total_pressure_bc)
+									{										
+
+										for (unsigned int l = 0; l < n_u_dofs; l++)
+										{
+											// From the previous Newton iterate:
+											u +=	phi[l][qp] * system->current_solution (dof_indices_u[l]);
+											v +=	phi[l][qp] * system->current_solution (dof_indices_v[l]);
 											if (threed)
-											  Fw (i) += -JxW_face[qp] * (((normal_stress (2)) * phi_face[i][qp]));
+												w +=  phi[l][qp] * system->current_solution (dof_indices_w[l]);
+
+											// From the previous time step:
+											u_old +=	phi[l][qp] * system->old_solution (dof_indices_u[l]);
+											v_old +=	phi[l][qp] * system->old_solution (dof_indices_v[l]);
+											if (threed)
+												w_old +=  phi[l][qp] * system->old_solution (dof_indices_w[l]);
 										}
+
+										// vector forms of velocities
+										if (threed)
+											U_old = NumberVectorValue (u_old, v_old, w_old);
+										else
+											U_old = NumberVectorValue (u_old, v_old);
+
+
+										if (threed)
+											U = NumberVectorValue (u, v, w);
+										else
+											U = NumberVectorValue (u, v);
+
+									}
+
+									if(total_pressure_bc == 1)
+									{
+										double velocity_mag_squared = pow(u_old,2.0) + pow(v_old,2.0) + pow(w_old,2.0);
+										dynamic_pressure = 0.5 *  density_scale * velocity_mag_squared;
+									}
+									
+
+
+
+
+
+
+									// add terms to vectors
+									// want to do this if we are on the inlet and moghadam
+
+									if(residual_formulation)
+									{
+										// in the residual formulation, we put the newton terms in a separate vector
+										if (!moghadam_coupling || boundary_id == 0)
+										{
+											//std::cout << "hi" << std::endl;
+											for (unsigned int i = 0; i < n_u_dofs; i++)
+											{
+
+												Fu (i) += -JxW_face[qp] * (pressure_scaling * normal_stress (0) - dynamic_pressure) * phi_face[i][qp];
+												Fv (i) += -JxW_face[qp] * (pressure_scaling * normal_stress (1) - dynamic_pressure) * phi_face[i][qp];
+												if (threed)
+													Fw (i) += -JxW_face[qp] * (normal_stress (2) - dynamic_pressure) * phi_face[i][qp];
+											}
+										}
+										else
+										{
+											// construct the moghadam vector from which we'll construct the additional term for the tangent matrix
+
+											for (unsigned int i = 0; i < n_u_dofs; i++)
+											{
+
+												Fu_moghadam (i) += JxW_face[qp] * sqrt(pressure_scaling) * sqrt(flow_rate_scaling) * sqrt(pressure_deriv) * qface_normals[qp] (0) * phi_face[i][qp];
+												Fv_moghadam (i) += JxW_face[qp] * sqrt(pressure_scaling) * sqrt(flow_rate_scaling) * sqrt(pressure_deriv) * qface_normals[qp] (1) * phi_face[i][qp];
+												if (threed)
+												{
+													Fw_moghadam (i) += JxW_face[qp] * sqrt(pressure_deriv) * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+
+											// add the newton components to the rhs when doing moghadam nonlinear
+											// in the residual formulation, we put the newton terms in a separate vector
+											// these need to be in whether newton or not, because of the pressure constant
+											if(moghadam_coupling == 2)
+											{
+												for (unsigned int i = 0; i < n_u_dofs; i++)
+												{
+
+													/*
+													Fu (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (0) * phi_face[i][qp];
+													Fv (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (1) * phi_face[i][qp];
+													if (threed)
+													{
+														Fw (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (2) * phi_face[i][qp];
+													}
+													*/
+													/*
+													Fu_newton (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (0) * phi_face[i][qp];
+													Fv_newton (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (1) * phi_face[i][qp];
+													if (threed)
+													{
+														Fw_newton (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (2) * phi_face[i][qp];
+													}
+													*/
+												}
+
+											}
+
+										}// done adding terms to vectors
+		
 									}
 									else
 									{
-										// construct the moghadam vector from which we'll construct the additional term for the tangent matrix
-
-										for (unsigned int i = 0; i < n_u_dofs; i++)
+										if (!moghadam_coupling || boundary_id == 0)
 										{
-
-											Fu_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (0) * phi_face[i][qp];
-											Fv_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (1) * phi_face[i][qp];
-											if (threed)
+											for (unsigned int i = 0; i < n_u_dofs; i++)
 											{
-												Fw_moghadam (i) += JxW_face[qp] * sqrt(resistance) * qface_normals[qp] (2) * phi_face[i][qp];
+
+												Fu (i) += -JxW_face[qp] * (pressure_scaling * normal_stress (0) - dynamic_pressure) * phi_face[i][qp];
+												Fv (i) += -JxW_face[qp] * (pressure_scaling * normal_stress (1) - dynamic_pressure) * phi_face[i][qp];
+												if (threed)
+													Fw (i) += -JxW_face[qp] * (normal_stress (2) - dynamic_pressure) * phi_face[i][qp];
 											}
 										}
+										else
+										{
+											// construct the moghadam vector from which we'll construct the additional term for the tangent matrix
+
+											for (unsigned int i = 0; i < n_u_dofs; i++)
+											{
+
+												Fu_moghadam (i) += JxW_face[qp] * sqrt(pressure_scaling) * sqrt(flow_rate_scaling) * sqrt(pressure_deriv) * qface_normals[qp] (0) * phi_face[i][qp];
+												Fv_moghadam (i) += JxW_face[qp] * sqrt(pressure_scaling) * sqrt(flow_rate_scaling) * sqrt(pressure_deriv) * qface_normals[qp] (1) * phi_face[i][qp];
+												if (threed)
+												{
+													Fw_moghadam (i) += JxW_face[qp] * sqrt(pressure_deriv) * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+
+											// add the newton components to the rhs when doing moghadam nonlinear
+											if(moghadam_coupling == 2)
+											{
+												//std::cout << "boo" << std::endl;
+												for (unsigned int i = 0; i < n_u_dofs; i++)
+												{
+													// scale it
+													Fu (i) += JxW_face[qp] * pressure_scaling * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (0) * phi_face[i][qp];
+													Fv (i) += JxW_face[qp] * pressure_scaling * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (1) * phi_face[i][qp];
+													if (threed)
+													{
+														Fw (i) += JxW_face[qp] * ((pressure_deriv)*flow_rate - pressure_1d) * qface_normals[qp] (2) * phi_face[i][qp];
+													}
+												}
+
+											}
+
+										}// done adding terms to vectors
 
 									}
 
 
-
-									// ********* DO BOUNDARY STABILISATION ****************** //
-									if (!convective_form || neumann_stabilised || bertoglio_stabilisation)
+									// add total pressure terms
+									// implicit picard
+									if(total_pressure_bc == 3)
 									{
-										std::cout << "in the wrong place..." << std::endl;
-
-										//let us calculate the inflow normal velocity
-										double normal_velocity = 0.0;
-										double previous_normal_velocity = 0.0;
-										double inflow_normal_velocity_bdy = 0.0;
-										double outflow_normal_velocity_bdy = 0.0;
-										double approx_inflow_normal_velocity_bdy = 0.0;	// either interpolation or from prev timestep
-										//double approx_outflow_normal_velocity_bdy = 0.0;
-										Number u = 0., v = 0., w = 0.;
-										Number previous_u = 0., previous_v = 0., previous_w = 0.;
-										Number previous_previous_u = 0., previous_previous_v = 0., previous_previous_w = 0.;
-										Number approx_u = 0., approx_v = 0., approx_w = 0.;
-										double approx_normal_velocity = 0.0;
-
-										Gradient grad_u, grad_v, grad_w;
-
-										for (unsigned int l = 0; l < n_u_dofs; l++)
-						 				{
-											// From the previous Newton iterate:
-											u += phi_face[l][qp] * system->current_solution (dof_indices_u[l]);
-											v += phi_face[l][qp] * system->current_solution (dof_indices_v[l]);
-											if (threed)
-											{
-												w += phi_face[l][qp] * system->current_solution (dof_indices_w[l]);
-											}
-
-											grad_u.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_u[l]));
-											grad_v.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_v[l]));
-											if (threed)
-												grad_w.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_w[l]));
-
-											// From the previous time_step:
-											previous_u += phi_face[l][qp] * system->old_solution (dof_indices_u[l]);
-											previous_v += phi_face[l][qp] * system->old_solution (dof_indices_v[l]);
-											if (threed)
-											{
-												previous_w += phi_face[l][qp] * system->old_solution (dof_indices_w[l]);
-											}
-
-											// From the previous previous time_step:
-											previous_previous_u += phi_face[l][qp] * system->older_solution (dof_indices_u[l]);
-											previous_previous_v += phi_face[l][qp] * system->older_solution (dof_indices_v[l]);
-											if (threed)
-											{
-												previous_previous_w += phi_face[l][qp] * system->older_solution (dof_indices_w[l]);
-											}
-									  }
-
-										// linearly interpolate
-									
-										if (false)	//es->parameters.get<bool>("neumann_stabilised_adjusted_interpolated"))
-									  {
-											approx_u = previous_u + (previous_u - previous_previous_u) / dt * dt;
-											approx_v = previous_v + (previous_v - previous_previous_v) / dt * dt;
-											if (threed)
-											{
-						 	 					approx_w = previous_w + (previous_w - previous_previous_w)/ dt * dt;
-											}
-						  			}
-										else
-						  			{
-											approx_u = previous_u;
-											approx_v = previous_v;
-											if (threed)
-											{
-												approx_w = previous_w;
-											}
-						  			}
-
-										normal_velocity += qface_normals[qp] (0) * u;
-										normal_velocity += qface_normals[qp] (1) * v;
-										if (threed)
-									  {
-											normal_velocity += qface_normals[qp] (2) * w;
-									  }
-
-
-										previous_normal_velocity +=	qface_normals[qp] (0) * previous_u;
-										previous_normal_velocity +=	qface_normals[qp] (1) * previous_v;
-										if (threed)
-										{
-											previous_normal_velocity +=	qface_normals[qp] (2) * previous_w;
-										}
-
-										approx_normal_velocity +=	qface_normals[qp] (0) * approx_u;
-										approx_normal_velocity +=	qface_normals[qp] (1) * approx_v;
-										if (threed)
-										{
-											approx_normal_velocity +=	qface_normals[qp] (2) * approx_w;
-										}
-										//std::cout << "normal = (" << qface_normals[qp](0) << "," << qface_normals[qp](1) << "," << qface_normals[qp](2) << ")" << std::endl;
-
-										inflow_normal_velocity_bdy = (normal_velocity - fabs (normal_velocity)) / 2.0;
-										outflow_normal_velocity_bdy =	(normal_velocity + fabs (normal_velocity)) / 2.0;
-
-
-										approx_inflow_normal_velocity_bdy = (approx_normal_velocity - fabs (approx_normal_velocity)) / 2.0;
-										//approx_outflow_normal_velocity_bdy = (approx_normal_velocity + fabs(approx_normal_velocity))/2.0;
-
-										//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
-										int bdy_bool = 0;
-										if (fabs (normal_velocity) > 1e-10)
-										{
-											if (convective_form)
-												bdy_bool = ((-inflow_normal_velocity_bdy / fabs (normal_velocity)) + 0.5);
-											else
-												bdy_bool = (outflow_normal_velocity_bdy / fabs (normal_velocity) + 0.5);
-										}
-
-										//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
-										int previous_bdy_bool = 0;
-										if (fabs (previous_normal_velocity) >	1e-10)
-										{
-											previous_bdy_bool = ((-(previous_normal_velocity - fabs (previous_normal_velocity)) / 2.0 / fabs (previous_normal_velocity)) + 0.5);
-									  }
-										int approx_inflow_bdy_bool = 0;
-										if (fabs (approx_normal_velocity) > 1e-10)
-									  {
-											approx_inflow_bdy_bool = ((-approx_inflow_normal_velocity_bdy / fabs (approx_normal_velocity)) + 0.5);
-						  			}
-
-										//if conservative and not neumann stabilised then we always have the terms from int by parts
-										if (!convective_form && !neumann_stabilised)
-										{
-											bdy_bool = 1;
-										}
-
-
-										double r = (*surface_boundaries)[boundary_id]->get_normalised_distance_from_centroid(qpoint_face[qp]);
-										//double r = 1.0;//
-										double normalisation_constant =	(*surface_boundaries)[boundary_id]->get_unit_parabola_integral ();
-										//double normalisation_constant = 1.0;//
-										double radius = 1.0;
-
-										//approx_u = 20.;
-										//approx_v = 0.;
-										//approx_w = 0.;
-										//approx_normal_velocity = 20.;
-
-										//std::cout << "approx normal velocity = " <<  approx_normal_velocity << std::endl;
-
-
-										// hmmm small value changes appear to be making a difference
+										// in the residual formulation, we put the newton terms in a separate vector
+										//std::cout << "hi" << std::endl;
 										for (unsigned int i = 0; i < n_u_dofs; i++)
 										{
-											if (convective_form)
-											{
-												// if in convective form we only add a term if doing the inflow stabilisation
-												if (neumann_stabilised)
-							  				{
-													for (unsigned int j = 0; j < n_u_dofs; j++)
-													{
-														// - \int u_n^{in} * w * u
-														if (!neumann_stabilised_linear)
-														{
-															Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															if (threed)
-															{
-																Kww (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															}
-								  					}
-														else
-														{
-															Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															if (threed)
-															{
-																Kww (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-															}
-								  					}
 
-														if (newton && !neumann_stabilised_linear)
-														{
-															Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (0) * phi_face [i][qp] * phi_face [j][qp]);
-															Kuv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (1) * phi_face [i][qp] * phi_face [j][qp]);
-															if (threed)
-															{
-																Kuw (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j][qp]);
-															}
-				
-															Kvu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (0) * phi_face[i][qp] * phi_face[j][qp]);
-															Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (1) * phi_face[i][qp] * phi_face[j][qp]);
-															if (threed)
-															{
-																Kvw (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (2) * phi_face [i][qp] * phi_face[j][qp]);
-															}
+											for (unsigned int j = 0; j < n_u_dofs; j++)
+											{
 											
-															if (threed)
-															{
-																Kwu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](0) * phi_face [i][qp] * phi_face[j][qp]);
-																Kwv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](1) * phi_face [i][qp] * phi_face[j][qp]);
-																Kww (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](2) * phi_face [i][qp] * phi_face[j][qp]);
-															}
-														}
-													}
-
-													// another newton term
-													if (newton && !neumann_stabilised_linear)
-													{
-														// \int (u_old \cdot w) * (u_n^{in})
-														Fu (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * u * phi_face[i][qp];
-														Fv (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * v * phi_face[i][qp];
-														if (threed)
-														{
-															Fw (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * w * phi_face[i][qp];
-														}
-													}
-
-													//we may also want to adjust the mean pressure boundary condition based on the normal velocity
-													//well, of the previous timestep to be easy and avoid issues
-													if ((neumann_stabilised_adjusted
-															 || neumann_stabilised_adjusted_interpolated)
-															&& approx_inflow_bdy_bool > 0)
-													{
-
-														Fu (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] * qface_normals[qp] (0) * approx_inflow_bdy_bool * phi_face[i][qp];
-														Fv (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] *
-		qface_normals[qp] (1) * approx_inflow_bdy_bool * phi_face[i][qp];
-														if (threed)
-														{
-															Fw (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] *
-		qface_normals[qp](2) * approx_inflow_bdy_bool * phi_face[i][qp];
-														}
-													}
-													//Fu(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](0))*mean_pressure));
-													//Fv(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](1))*mean_pressure));
-													//Fw(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](2))*mean_pressure));
-												}
-												else if (bertoglio_stabilisation)
+												Kuu (i,j) += -JxW_face[qp] * 0.5 * density_scale * u * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												Kuv (i,j) += -JxW_face[qp] * 0.5 * density_scale * u * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												Kvu (i,j) += -JxW_face[qp] * 0.5 * density_scale * v * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												Kvv (i,j) += -JxW_face[qp] * 0.5 * density_scale * v * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												if(threed)
 												{
-													//std::cout << "holla, num_tangents = " << qface_tangents[qp].size() << std::endl;
-													//std::cout << "tan 1 = " << qface_tangents[qp][0] << std::endl;
-													//std::cout << "tan 2 = " << qface_tangents[qp][1] << std::endl;
-													//std::cout << "bertoglio_stab_param = " << bertoglio_stab_param << std::endl;
+													Kuw (i,j) += -JxW_face[qp] * 0.5 * density_scale * u * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kvw (i,j) += -JxW_face[qp] * 0.5 * density_scale * v * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kwu (i,j) += -JxW_face[qp] * 0.5 * density_scale * w * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+													Kwv (i,j) += -JxW_face[qp] * 0.5 * density_scale * w * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+													Kww (i,j) += -JxW_face[qp] * 0.5 * density_scale * w * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+										}
 
-													// weird, in 2D there are still 2 tangents, but we only want the first one
-													unsigned int num_tangents =	qface_tangents[qp].size ();
-													if (!threed)
-														num_tangents = 1;
+									}
+									else if(total_pressure_bc == 4)
+									{
+										// in the residual formulation, we put the newton terms in a separate vector
+										//std::cout << "hi" << std::endl;
+										/*
+										for (unsigned int i = 0; i < n_u_dofs; i++)
+										{
 
-													for (unsigned int k = 0; k < num_tangents; k++)
-													{
-														for (unsigned int j = 0; j < n_u_dofs; j++)
-														{
-															// - \int u_n^{in} * w * u
-
-															// gradients in tangential directions
-															/*
-																Kuu(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																						*dphi_face[j][qp]*qface_tangents[qp][k]);
-																Kvv(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																						*dphi_face[j][qp]*qface_tangents[qp][k]);
-																if(threed) { Kww(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																							*dphi_face[j][qp]*qface_tangents[qp][k]); }
-															*/
-
-															// velocities in tangential directions
-															Kuu (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp] [k] (0) * dphi_face[j][qp] * qface_tangents[qp][k] (0));
-															Kvv (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp] [k] (1) * dphi_face[j][qp] * qface_tangents[qp][k] (1));
-															if (threed)
-															{
-																Kww (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp][k] (2) * dphi_face[j]
-		[qp] * qface_tangents[qp][k] (2));
-															}
-
-
-
-		/*
-															Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
-															Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
-															if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
-																																																						*dphi_face[j][qp]*qface_tangents[qp][k]); }
-		*/
-
-		/*
-															if(newton)
-															{
-																Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]);
-																Kuv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]);                
-																if(threed) { Kuw(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
-																Kvu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]);
-																Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]);                
-																if(threed) { Kvw(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]); }             
-																if(threed) { Kwu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](0)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]); }              
-																if(threed) { Kwv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](1)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
-																if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
-																						* (qface_normals[qp](2)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
-																							* dphi_face[i][qp]*qface_tangents[qp][k]); }
-															}*/
-
-														}
-
-														// another newton term
-														if (newton)
-														{
-		/*
-											// \int (u_old \cdot w) * (u_n^{in})
-											Fu(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_u*qface_tangents[qp][k]
-																			* dphi_face[i][qp]*qface_tangents[qp][k];
-											Fv(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_v*qface_tangents[qp][k]
-																			* dphi_face[i][qp]*qface_tangents[qp][k];
-											if(threed) { Fw(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_w*qface_tangents[qp][k]
-																			* dphi_face[i][qp]*qface_tangents[qp][k]; }
-		*/
-														}	// end newton bertoglio terms
-													}
-												}	// end bertoglio stabilisation
-											} // end convective navier stokes neumann stabilisation option
-											else
+											for (unsigned int j = 0; j < n_u_dofs; j++)
 											{
+											
+												Kuu (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * u * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												Kuv (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * u * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												Kvu (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * v * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												Kvv (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * v * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												if(threed)
+												{
+													Kuw (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * u * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kvw (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * v * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kwu (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+													Kwv (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+													Kww (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+										}
+										*/
 
-												//always add these terms stabilised or not - actually add 1.0 * stab terms if on bdy and (1.0 - stab_param) * stab terms if not
-												// fix this another time though
+										for (unsigned int i = 0; i < n_u_dofs; i++)
+										{
+
+											for (unsigned int j = 0; j < n_u_dofs; j++)
+											{
+											
+												Kuu (i,j) += -JxW_face[qp] * 0.5 * density_scale * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												//Kuv (i,j) += -JxW_face[qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												//Kvu (i,j) += -JxW_face[qp] * qface_normals[qp] (0) * phi_face[i][qp];
+												Kvv (i,j) += -JxW_face[qp] * 0.5 * density_scale * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+												if(threed)
+												{
+													Kuw (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * u * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kvw (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * v * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+													Kwu (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (0) * phi_face[i][qp];
+													Kwv (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (1) * phi_face[i][qp];
+													Kww (i,j) += -JxW_face[qp] * 0.5 * density_scale * 2. * w * phi_face[j][qp] * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+										}
+
+									}// done adding terms to vectors
+
+								}	// end quad loop
+							}	// end pressure bcs
+
+									//std::cout << "hey" << std::endl;
+
+							// ********* DO BOUNDARY STABILISATION ****************** //
+							if (convective_form || neumann_stabilised || bertoglio_stabilisation)
+							{
+								//std::cout << "in the wrong place..." << std::endl;
+
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+									//let us calculate the inflow normal velocity
+									double normal_velocity = 0.0;
+									double previous_normal_velocity = 0.0;
+									double inflow_normal_velocity_bdy = 0.0;
+									double outflow_normal_velocity_bdy = 0.0;
+									double approx_inflow_normal_velocity_bdy = 0.0;	// either interpolation or from prev timestep
+									//double approx_outflow_normal_velocity_bdy = 0.0;
+									Number u = 0., v = 0., w = 0.;
+									Number previous_u = 0., previous_v = 0., previous_w = 0.;
+									Number previous_previous_u = 0., previous_previous_v = 0., previous_previous_w = 0.;
+									Number approx_u = 0., approx_v = 0., approx_w = 0.;
+									double approx_normal_velocity = 0.0;
+
+									Gradient grad_u, grad_v, grad_w;
+
+									for (unsigned int l = 0; l < n_u_dofs; l++)
+					 				{
+										// From the previous Newton iterate:
+										u += phi_face[l][qp] * system->current_solution (dof_indices_u[l]);
+										v += phi_face[l][qp] * system->current_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											w += phi_face[l][qp] * system->current_solution (dof_indices_w[l]);
+										}
+
+										grad_u.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_u[l]));
+										grad_v.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_v[l]));
+										if (threed)
+											grad_w.add_scaled (dphi_face[l][qp],system->current_solution(dof_indices_w[l]));
+
+										// From the previous time_step:
+										previous_u += phi_face[l][qp] * system->old_solution (dof_indices_u[l]);
+										previous_v += phi_face[l][qp] * system->old_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											previous_w += phi_face[l][qp] * system->old_solution (dof_indices_w[l]);
+										}
+
+										// From the previous previous time_step:
+										previous_previous_u += phi_face[l][qp] * system->older_solution (dof_indices_u[l]);
+										previous_previous_v += phi_face[l][qp] * system->older_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											previous_previous_w += phi_face[l][qp] * system->older_solution (dof_indices_w[l]);
+										}
+								  }
+
+									// linearly interpolate
+								
+									if (false)	//es->parameters.get<bool>("neumann_stabilised_adjusted_interpolated"))
+								  {
+										approx_u = previous_u + (previous_u - previous_previous_u) / dt * dt;
+										approx_v = previous_v + (previous_v - previous_previous_v) / dt * dt;
+										if (threed)
+										{
+					 	 					approx_w = previous_w + (previous_w - previous_previous_w)/ dt * dt;
+										}
+					  			}
+									else
+					  			{
+										approx_u = previous_u;
+										approx_v = previous_v;
+										if (threed)
+										{
+											approx_w = previous_w;
+										}
+					  			}
+
+									normal_velocity += qface_normals[qp] (0) * u;
+									normal_velocity += qface_normals[qp] (1) * v;
+									if (threed)
+								  {
+										normal_velocity += qface_normals[qp] (2) * w;
+								  }
+
+
+									previous_normal_velocity +=	qface_normals[qp] (0) * previous_u;
+									previous_normal_velocity +=	qface_normals[qp] (1) * previous_v;
+									if (threed)
+									{
+										previous_normal_velocity +=	qface_normals[qp] (2) * previous_w;
+									}
+
+									approx_normal_velocity +=	qface_normals[qp] (0) * approx_u;
+									approx_normal_velocity +=	qface_normals[qp] (1) * approx_v;
+									if (threed)
+									{
+										approx_normal_velocity +=	qface_normals[qp] (2) * approx_w;
+									}
+									//std::cout << "normal = (" << qface_normals[qp](0) << "," << qface_normals[qp](1) << "," << qface_normals[qp](2) << ")" << std::endl;
+
+									inflow_normal_velocity_bdy = (normal_velocity - fabs (normal_velocity)) / 2.0;
+									outflow_normal_velocity_bdy =	(normal_velocity + fabs (normal_velocity)) / 2.0;
+
+
+									approx_inflow_normal_velocity_bdy = (approx_normal_velocity - fabs (approx_normal_velocity)) / 2.0;
+									//approx_outflow_normal_velocity_bdy = (approx_normal_velocity + fabs(approx_normal_velocity))/2.0;
+
+									//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
+									int bdy_bool = 0;
+									if (fabs (normal_velocity) > 1e-10)
+									{
+										if (convective_form)
+											bdy_bool = ((-inflow_normal_velocity_bdy / fabs (normal_velocity)) + 0.5);
+										else
+											bdy_bool = (outflow_normal_velocity_bdy / fabs (normal_velocity) + 0.5);
+									}
+
+									//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
+									int previous_bdy_bool = 0;
+									//std::cout << "huh = " << previous_normal_velocity << std::endl;
+									if (fabs (previous_normal_velocity) >	1e-10)
+									{
+										previous_bdy_bool = ((-(previous_normal_velocity - fabs (previous_normal_velocity)) / 2.0 / fabs (previous_normal_velocity)) + 0.5);
+
+										//std::cout << "previous_bdy_bool = " << previous_bdy_bool << std::endl;
+								  }
+									int approx_inflow_bdy_bool = 0;
+									if (fabs (approx_normal_velocity) > 1e-10)
+								  {
+										approx_inflow_bdy_bool = ((-approx_inflow_normal_velocity_bdy / fabs (approx_normal_velocity)) + 0.5);
+					  			}
+
+									//if conservative and not neumann stabilised then we always have the terms from int by parts
+									if (!convective_form && !neumann_stabilised)
+									{
+										bdy_bool = 1;
+									}
+
+
+									double r = (*surface_boundaries)[boundary_id]->get_normalised_distance_from_centroid(qpoint_face[qp]);
+									//double r = 1.0;//
+									double normalisation_constant =	(*surface_boundaries)[boundary_id]->get_unit_parabola_integral ();
+									//double normalisation_constant = 1.0;//
+									double radius = 1.0;
+
+									//approx_u = 20.;
+									//approx_v = 0.;
+									//approx_w = 0.;
+									//approx_normal_velocity = 20.;
+
+									//std::cout << "approx normal velocity = " <<  approx_normal_velocity << std::endl;
+
+
+									// hmmm small value changes appear to be making a difference
+									for (unsigned int i = 0; i < n_u_dofs; i++)
+									{
+										if (convective_form)
+										{
+											// if in convective form we only add a term if doing the inflow stabilisation
+											if (neumann_stabilised)
+						  				{
 												for (unsigned int j = 0; j < n_u_dofs; j++)
 												{
-													// + \int u_n^{out} * w * u
-													Kuu (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-													Kvv (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-													if (threed)
+													// - \int u_n^{in} * w * u
+													if (!neumann_stabilised_linear)
 													{
-														Kww (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
-													}
-
-													if (newton)
-													{
-														Kuu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (0) * phi_face[i] [qp] * phi_face[j] [qp]);
-														Kuv (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (1) * phi_face[i] [qp] * phi_face[j] [qp]);
+														Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+														Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
 														if (threed)
 														{
-															Kuw (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j] [qp]);
+															Kww (i, j) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
 														}
-														Kvu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (0) * phi_face[i] [qp] * phi_face[j] [qp]);
-														Kvv (i, j) +=	backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (1) * phi_face[i] [qp] * phi_face[j] [qp]);
+							  					}
+													else
+													{
+														Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+														Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
 														if (threed)
 														{
-															Kvw (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (2) * phi_face [i][qp] * phi_face[j][qp]);
+															Kww (i, j) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+														}
+							  					}
+
+													if (newton && !neumann_stabilised_linear)
+													{
+														Kuu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (0) * phi_face [i][qp] * phi_face [j][qp]);
+														Kuv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (1) * phi_face [i][qp] * phi_face [j][qp]);
+														if (threed)
+														{
+															Kuw (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j][qp]);
+														}
+			
+														Kvu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (0) * phi_face[i][qp] * phi_face[j][qp]);
+														Kvv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (1) * phi_face[i][qp] * phi_face[j][qp]);
+														if (threed)
+														{
+															Kvw (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (2) * phi_face [i][qp] * phi_face[j][qp]);
 														}
 										
 														if (threed)
 														{
-															Kwu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (0) * phi_face [i][qp] * phi_face [j][qp]);
-															Kwv (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (1) * phi_face [i][qp] * phi_face [j][qp]);
-															Kww (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j][qp]);
+															Kwu (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](0) * phi_face [i][qp] * phi_face[j][qp]);
+															Kwv (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](1) * phi_face [i][qp] * phi_face[j][qp]);
+															Kww (i, j) += -backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp](2) * phi_face [i][qp] * phi_face[j][qp]);
 														}
 													}
 												}
 
 												// another newton term
-												if (newton)
+												if (newton && !neumann_stabilised_linear)
 												{
 													// \int (u_old \cdot w) * (u_n^{in})
-													Fu (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * u * phi_face[i][qp];
-													Fv (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * v * phi_face[i][qp];
+													Fu (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * u * phi_face[i][qp];
+													Fv (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * v * phi_face[i][qp];
 													if (threed)
 													{
-														Fw (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * w * phi_face[i][qp];
+														Fw (i) += -backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * w * phi_face[i][qp];
 													}
 												}
 
 												//we may also want to adjust the mean pressure boundary condition based on the normal velocity
 												//well, of the previous timestep to be easy and avoid issues
-												if (neumann_stabilised_adjusted)
+												if ((neumann_stabilised_adjusted
+														 || neumann_stabilised_adjusted_interpolated)
+														&& approx_inflow_bdy_bool > 0)
 												{
-													Fu (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_u * approx_inflow_bdy_bool * phi_face[i][qp];
-													Fv (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_v * approx_inflow_bdy_bool * phi_face[i][qp];
+
+													Fu (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] * qface_normals[qp] (0) * approx_inflow_bdy_bool * phi_face[i][qp];
+													Fv (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] *
+	qface_normals[qp] (1) * approx_inflow_bdy_bool * phi_face[i][qp];
 													if (threed)
 													{
-														Fw (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_w * approx_inflow_bdy_bool * phi_face[i][qp];
+														Fw (i) += -backflow_stab_param * JxW_face[qp] * approx_normal_velocity * (pow (radius, 2) - pow (r,2)) / normalisation_constant * interp_flow_bc_value[boundary_id] *
+	qface_normals[qp](2) * approx_inflow_bdy_bool * phi_face[i][qp];
 													}
 												}
-											}	// end conservative navier stokes form neumann stabilisation
-										}
+												//Fu(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](0))*mean_pressure));
+												//Fv(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](1))*mean_pressure));
+												//Fw(i) += -JxW_face[qp]*(((phi_face[i][qp]*qface_normals[qp](2))*mean_pressure));
+											}
+											else if (bertoglio_stabilisation)
+											{
+												//std::cout << "holla, num_tangents = " << qface_tangents[qp].size() << std::endl;
+												//std::cout << "tan 1 = " << qface_tangents[qp][0] << std::endl;
+												//std::cout << "tan 2 = " << qface_tangents[qp][1] << std::endl;
+												//std::cout << "bertoglio_stab_param = " << bertoglio_stab_param << std::endl;
+
+												//std::cout << "previous_normal_velocity = " << previous_normal_velocity << std::endl;
+												//std::cout << "previous_bdy_bool = " << previous_bdy_bool << std::endl;
+												//previous_bdy_bool = 1
+												// weird, in 2D there are still 2 tangents, but we only want the first one
+												unsigned int num_tangents =	qface_tangents[qp].size ();
+												if (!threed)
+													num_tangents = 1;
+
+												for (unsigned int k = 0; k < num_tangents; k++)
+												{
+													for (unsigned int j = 0; j < n_u_dofs; j++)
+													{
+														// - \int u_n^{in} * w * u
+
+														//std::cout << "hi" << std::endl;
+														// gradients in tangential directions
+														/*
+															Kuu(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															Kvv(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]);
+															if(threed) { Kww(i,j) += -bertoglio_stab_param*JxW_face[qp]*previous_normal_velocity*previous_bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																						*dphi_face[j][qp]*qface_tangents[qp][k]); }
+														*/
+
+														// velocities in tangential directions
+														Kuu (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp] [k] (0) * dphi_face[j][qp] * qface_tangents[qp][k] (0));
+														Kvv (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp] [k] (1) * dphi_face[j][qp] * qface_tangents[qp][k] (1));
+														if (threed)
+														{
+															Kww (i, j) += -bertoglio_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (dphi_face[i][qp] * qface_tangents[qp][k] (2) * dphi_face[j]
+	[qp] * qface_tangents[qp][k] (2));
+														}
+
+
+
+	/*
+														Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																				*dphi_face[j][qp]*qface_tangents[qp][k]);
+														Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																				*dphi_face[j][qp]*qface_tangents[qp][k]);
+														if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool*(dphi_face[i][qp]*qface_tangents[qp][k]
+																																																					*dphi_face[j][qp]*qface_tangents[qp][k]); }
+	*/
+
+	/*
+														if(newton)
+														{
+															Kuu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](0)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]);
+															Kuv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](1)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]);                
+															if(threed) { Kuw(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](2)*phi_face[j][qp]* grad_u*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]); }
+															Kvu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](0)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]);
+															Kvv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](1)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]);                
+															if(threed) { Kvw(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](2)*phi_face[j][qp]* grad_v*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]); }             
+															if(threed) { Kwu(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](0)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]); }              
+															if(threed) { Kwv(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](1)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]); }
+															if(threed) { Kww(i,j) += bertoglio_stab_param*JxW_face[qp]*bdy_bool
+																					* (qface_normals[qp](2)*phi_face[j][qp]* grad_w*qface_tangents[qp][k]
+																						* dphi_face[i][qp]*qface_tangents[qp][k]); }
+														}*/
+
+													}
+
+													// another newton term
+													if (newton)
+													{
+	/*
+										// \int (u_old \cdot w) * (u_n^{in})
+										Fu(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_u*qface_tangents[qp][k]
+																		* dphi_face[i][qp]*qface_tangents[qp][k];
+										Fv(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_v*qface_tangents[qp][k]
+																		* dphi_face[i][qp]*qface_tangents[qp][k];
+										if(threed) { Fw(i) += bertoglio_stab_param*JxW_face[qp]*normal_velocity*bdy_bool* grad_w*qface_tangents[qp][k]
+																		* dphi_face[i][qp]*qface_tangents[qp][k]; }
+	*/
+													}	// end newton bertoglio terms
+												}
+											}	// end bertoglio stabilisation
+										} // end convective navier stokes neumann stabilisation option
+										else
+										{
+
+											//always add these terms stabilised or not - actually add 1.0 * stab terms if on bdy and (1.0 - stab_param) * stab terms if not
+											// fix this another time though
+											for (unsigned int j = 0; j < n_u_dofs; j++)
+											{
+												// + \int u_n^{out} * w * u
+												Kuu (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+												Kvv (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+												if (threed)
+												{
+													Kww (i, j) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * (phi_face[i][qp] * phi_face[j][qp]);
+												}
+
+												if (newton)
+												{
+													Kuu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (0) * phi_face[i] [qp] * phi_face[j] [qp]);
+													Kuv (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (1) * phi_face[i] [qp] * phi_face[j] [qp]);
+													if (threed)
+													{
+														Kuw (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (u * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j] [qp]);
+													}
+													Kvu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (0) * phi_face[i] [qp] * phi_face[j] [qp]);
+													Kvv (i, j) +=	backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (1) * phi_face[i] [qp] * phi_face[j] [qp]);
+													if (threed)
+													{
+														Kvw (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (v * qface_normals [qp] (2) * phi_face [i][qp] * phi_face[j][qp]);
+													}
+									
+													if (threed)
+													{
+														Kwu (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (0) * phi_face [i][qp] * phi_face [j][qp]);
+														Kwv (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (1) * phi_face [i][qp] * phi_face [j][qp]);
+														Kww (i, j) += backflow_stab_param * JxW_face[qp] * bdy_bool * (w * qface_normals [qp] (2) * phi_face [i][qp] * phi_face [j][qp]);
+													}
+												}
+											}
+
+											// another newton term
+											if (newton)
+											{
+												// \int (u_old \cdot w) * (u_n^{in})
+												Fu (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * u * phi_face[i][qp];
+												Fv (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * v * phi_face[i][qp];
+												if (threed)
+												{
+													Fw (i) += backflow_stab_param * JxW_face[qp] * normal_velocity * bdy_bool * w * phi_face[i][qp];
+												}
+											}
+
+											//we may also want to adjust the mean pressure boundary condition based on the normal velocity
+											//well, of the previous timestep to be easy and avoid issues
+											if (neumann_stabilised_adjusted)
+											{
+												Fu (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_u * approx_inflow_bdy_bool * phi_face[i][qp];
+												Fv (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_v * approx_inflow_bdy_bool * phi_face[i][qp];
+												if (threed)
+												{
+													Fw (i) += backflow_stab_param * JxW_face[qp] * approx_normal_velocity * approx_w * approx_inflow_bdy_bool * phi_face[i][qp];
+												}
+											}
+										}	// end conservative navier stokes form neumann stabilisation
 									}
 
 								}	//end face quad loop
@@ -2821,17 +3246,17 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								*/
 							 
 
+							}
+						}	//end if(bc_type[boundary_id].compare("pressure") == 0)
 
-							}	//end if(bc_type[boundary_id].compare("pressure") == 0)
+						// mean-flow conditions/terms
+						else if (bc_type[boundary_id].compare ("mean-flow") == 0)
+						{
 
-							// mean-flow conditions/terms
-							else if (bc_type[boundary_id].compare ("mean-flow") == 0)
-							{
+							//NOT IMPLEMENTED
 
-								//NOT IMPLEMENTED
-
-							}	//end if(bc_type[boundary_id].compare("mean-flow") == 0)
-					  	}
+						}	//end if(bc_type[boundary_id].compare("mean-flow") == 0)
+					
 
 
 
@@ -2840,8 +3265,9 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 						// ************** COUPLING BOUNDARY TERMS ********************* //
 						// construct stuff to put into 1d matrix lines
-						else
-					  	{
+						// must be pressure coupled and not the inflow bdy
+						if(pressure_coupled && boundary_id != 0)
+				  	{
 
 							// mean pressure conditions/terms
 							if (bc_type[boundary_id].compare ("pressure") == 0)
@@ -2872,13 +3298,23 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									}
 								}
 
+								// scale the flow rate accordingly
+								double pressure_scaling = 1.0;
+								
+								if(twod_oned_tree)
+								{
+									pressure_scaling = 12./32.;
+									
+								}
+								
+
 								// for the pressure term in the 3d equations
 								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
 						  		{
 									for (unsigned int i = 0; i < n_u_dofs; i++)
 									{
-										Fu_coupled_p (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (0);
-										Fv_coupled_p (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (1);
+										Fu_coupled_p (i) +=	JxW_face[qp] * pressure_scaling * phi_face[i][qp] * qface_normals[qp] (0);
+										Fv_coupled_p (i) +=	JxW_face[qp] * pressure_scaling * phi_face[i][qp] * qface_normals[qp] (1);
 										if (threed)
 										  Fw_coupled_p (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (2);
 									}
@@ -2889,11 +3325,21 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 								// scale the flow rate accordingly
 								double flow_rate_scaling = 1.0;
-								if(es->parameters.get<bool> ("twod_oned_tree"))
+								
+								if(twod_oned_tree)
 								{
-									double diameter_3d = (*surface_boundaries)[boundary_id]->get_max_radius() * 2.0;
-									flow_rate_scaling = 3.*M_PI/16.*diameter_3d;
+									// NONONONO - the scaling factor should be based on the inflow boundary, where the conversion took place
+									//double diameter_3d = es->parameters.get<double> ("trachea_diameter");	
+									//double diameter_3d = (*surface_boundaries)[boundary_id]->get_max_radius() * 2.0;
+									//flow_rate_scaling = 3.*M_PI/16.*diameter_3d;
+
+									// this should conserve the mean 3D velocity across the boundary
+									//double radius_3d = (*surface_boundaries)[boundary_id]->get_max_radius();
+									double radius_3d = (*surface_boundaries)[0]->get_max_radius();
+									flow_rate_scaling = M_PI*radius_3d/2.;
+									
 								}
+								
 
 								// for the pressure term in the 3d equations
 								// EQN IS + dt*Q_1d - dt*Q_3d = 0
@@ -2902,16 +3348,16 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 								{
 									for (unsigned int i = 0; i < n_u_dofs; i++)
 									{
-										Fu_coupled_u (i) += flow_rate_scaling *	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (0);
-										Fv_coupled_u (i) +=	flow_rate_scaling * JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (1);
+										Fu_coupled_u (i) += mono_flow_rate_penalty_param * flow_rate_scaling *	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (0);
+										Fv_coupled_u (i) +=	mono_flow_rate_penalty_param * flow_rate_scaling * JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (1);
 										if (threed)
 							  		{
-											Fw_coupled_u (i) +=	JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (2);
+											Fw_coupled_u (i) +=	mono_flow_rate_penalty_param * JxW_face[qp] * phi_face[i][qp] * qface_normals[qp] (2);
 							  		}
 								}
 								//std::cout << "normal = " << qface_normals[qp] << std::endl;
 
-						  	}	//end face quad loop
+					  	}	//end face quad loop
 						}
 					}		// end coupling terms
 				}
@@ -3067,8 +3513,8 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					// constrained dof then we zero it. otherwise we add it to the matrix
 					for (unsigned int i = 0; i < dof_indices.size (); i++)
 			 	 	{
-			  			//if not constrained dof
-			  			if (!dof_map.is_constrained_dof (dof_indices[i]))
+		  			//if not constrained dof
+		  			if (!dof_map.is_constrained_dof (dof_indices[i]))
 						{
 							system->matrix->add (flux_1d_index, dof_indices[i],Fe_coupled_u (i));
 							if(preconditioner_type_3d || preconditioner_type_3d1d)
@@ -3088,13 +3534,42 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 
 				// ************** INSERT LOCAL MATRICES INTO BIG MATRIX ************ //
 				// apply dirichlet conditions (e.g. wall and maybe inflow)
-				//hmm really not sure bout this last argument but it works
-				//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
-				dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,  Fe,  dof_indices,  true);
-				//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);                              
 
-				system->matrix->add_matrix (Ke, dof_indices);
-				system->rhs->add_vector (Fe, dof_indices);
+				if(!residual_formulation)
+				{
+					//hmm really not sure bout this last argument but it works
+					//if normal formulation constraint heterogenously
+					dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,  Fe,  dof_indices,  true);
+					//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);                              
+
+
+					system->matrix->add_matrix (Ke, dof_indices);
+					system->rhs->add_vector (Fe, dof_indices);
+
+				}
+				else
+				{
+					// in this formulation Fe contains the full -residual and homogenous boundary conditions are applied
+
+					/// in the residual formulation we constrain the true forcing vector Fe based on the matrix
+					// we save this vector in
+					if(increment_boundary_conditions && nonlinear_iteration == 1)
+					{
+						dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,  Fe,  dof_indices,  true);	
+						system->get_vector("Forcing Vector BC").add_vector(Fe, dof_indices); 				
+					}
+					else					
+						dof_map.constrain_element_matrix (Ke,  dof_indices,  true);
+
+					// we also add the matrix
+					system->matrix->add_matrix (Ke, dof_indices);
+					//system->rhs->add_vector (Fe, dof_indices);  put all th rhs stuff together later when we build the residual					            
+
+					dof_map.constrain_element_vector (Fe,  dof_indices,  true); 
+					system->get_vector("Forcing Vector").add_vector(Fe, dof_indices); 
+				}
+
+
 				if(preconditioner_type_3d || preconditioner_type_3d1d)
 					system->get_matrix ("Preconditioner").add_matrix (Ke, dof_indices);
 
@@ -3129,6 +3604,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 					system->get_vector ("Moghadam Vector").add_vector (Fe_moghadam, dof_indices);
 					dof_map.constrain_element_vector (Fe_moghadam,  dof_indices,  true);
 					system->get_vector ("Moghadam Vector BC").add_vector (Fe_moghadam, dof_indices);
+
 				}
 
 
@@ -3228,7 +3704,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 									// first subject the increment we in the matrix construction of this element
 									system-> request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],-Ke_pre_laplacian(local_pressure_dof,local_pressure_dof));
 									// then add the correct increment
-									system->request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],diagonal_scaling_increment * Re);
+									system->request_matrix("Pressure Laplacian Matrix")->add (pressure_dofs_on_inflow_boundary[i],pressure_dofs_on_inflow_boundary[i],diagonal_scaling_increment / viscosity_scale);
 								}
 								else if (pcd_boundary_condition_type == 3)
 								{
@@ -3282,14 +3758,14 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 		// set the parameter
 		double ave_fp_diag = sum_fp_diag / (double) all_global_pressure_dofs_on_inflow_boundary.size ();
 
-	  	for (unsigned int i = 0; i < all_global_pressure_dofs_on_inflow_boundary.size (); i++)
+  	for (unsigned int i = 0; i < all_global_pressure_dofs_on_inflow_boundary.size (); i++)
 		{
 			if(assemble_pressure_laplacian_matrix)
-				system->request_matrix ("Pressure Laplacian Matrix")->set (all_global_pressure_dofs_on_inflow_boundary[i],all_global_pressure_dofs_on_inflow_boundary[i],Re * ave_fp_diag);
+				system->request_matrix ("Pressure Laplacian Matrix")->set (all_global_pressure_dofs_on_inflow_boundary[i],all_global_pressure_dofs_on_inflow_boundary[i],1./viscosity_scale * ave_fp_diag);
 			if(assemble_pressure_convection_diffusion_matrix)
 				system->request_matrix ("Pressure Convection Diffusion Matrix")->set (all_global_pressure_dofs_on_inflow_boundary[i],all_global_pressure_dofs_on_inflow_boundary[i],ave_fp_diag);
 		}
-  	}
+	}
 
 
 
@@ -3297,26 +3773,32 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 	// put ones on the diagonal of the pressure block of the navier stokes matrix preconditioner
 	// preconditioner 9 doesn't use the velocity matrix, takes it from the system matrix
 	if (assemble_velocity_matrix &&	(preconditioner_type_3d1d == 8 || preconditioner_type_3d1d == 11))
-  	{
+	{
 		const unsigned int p_var = system->variable_number ("p");
 		std::vector < dof_id_type > p_var_idx;
 		system->get_dof_map ().local_variable_indices(p_var_idx, system->get_mesh (), p_var);
 		// velocity mass matrix
 		for (unsigned int i = 0; i < p_var_idx.size (); i++)
 			system->request_matrix ("Velocity Matrix")->set (p_var_idx[i],p_var_idx[i], 1.0);
-  	}
+	}
 
 
 
 
 
-	// construct the moghadam addition to the tangent matrix
+	// ***************  construct the moghadam addition to the tangent matrix
 	if(moghadam_coupling)
 	{
 
+		std::cout << "Assembling Moghadam Matrix Contrib..." << std::endl;
+
 		// temporarily set to not cause a malloc cause sparsity pattern not augmented yet
-		PetscMatrix<Number>* petsc_matrix = dynamic_cast<PetscMatrix<Number>* >	(system->matrix);
-		MatSetOption(petsc_matrix->mat(),MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);
+		if(!es->parameters.get<bool> ("moghadam_augment_sparsity_pattern"))
+		{
+			PetscMatrix<Number>* petsc_matrix = dynamic_cast<PetscMatrix<Number>* >	(system->matrix);
+			MatSetOption(petsc_matrix->mat(),MAT_NEW_NONZERO_ALLOCATION_ERR,PETSC_FALSE);
+		}
+
 
 		for(unsigned int k=0; k<global_velocity_dofs_on_outflow_boundary.size(); k++)
 		{
@@ -3327,7 +3809,7 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 			global_velocity_dofs_on_outflow_boundary[k].resize (std::distance (global_velocity_dofs_on_outflow_boundary[k].begin (), it));
 
 
-			std::cout << "num velocity dofs on outlet = " << global_velocity_dofs_on_outflow_boundary[k].size () << std::endl;
+			//std::cout << "num velocity dofs on outlet = " << global_velocity_dofs_on_outflow_boundary[k].size () << std::endl;
 
 			for (unsigned int i = 0; i < global_velocity_dofs_on_outflow_boundary[k].size (); i++)
 			{
@@ -3336,24 +3818,182 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 				{
 
 					unsigned int global_j = global_velocity_dofs_on_outflow_boundary[k][j];
-					double value = (*system->request_vector ("Moghadam Vector BC"))(global_i) * (*system->request_vector ("Moghadam Vector"))(global_j);
+					double value = (*system->request_vector ("Moghadam Vector"))(global_i) * (*system->request_vector ("Moghadam Vector"))(global_j);
 					// don't want to try to put values where different outlets couple
 					if(fabs(value) > 1e-10)
 					{
 						system->get_matrix ("System Matrix").add (global_i,global_j,value);
-						if(preconditioner_type_3d || preconditioner_type_3d1d)
-							system->get_matrix ("Preconditioner").add (global_i,global_j,value);
+						// testing whether this works
+						if(es->parameters.get<bool> ("construct_moghadam_h_inverse"))
+							system->get_matrix ("Moghadam H Inverse").add (global_i,global_j,value);
+						
 					}
 				}
 			}
+
+
 		}
+
+		// calculate the diagonal entries
+		if(es->parameters.get<bool> ("construct_moghadam_h_inverse"))
+		{
+
+			// add the diagonal values
+			unsigned int num_dofs = system->get_matrix ("Moghadam H Inverse").m();
+				//std::cout << "11" << std::endl;
+			std::cout << "matrix size = " << num_dofs << std::endl;
+			for(unsigned int i=0; i<num_dofs; i++)
+			{
+				// get the diagonal entry
+				double K_d = (*system->request_matrix ("Preconditioner"))(i,i);
+				system->get_matrix ("Moghadam H Inverse").add (i,i,K_d);
+			}
+
+		}
+
+
+		std::cout << "Done Assembling Moghadam Matrix Contrib..." << std::endl;
+
+
+		// on each boundary we need to construct the entries for the moghadam preconditioner
+		// NOTE: boundaries don't overlap so this should be fine.
+
+		// System Matrix contains the full system K+K_BC
+		// Preconditioner contains the standard Navier-Stokes part K
+		// Moghadam Preconditioner contains the H_tilde preconditioner
+		if(es->parameters.get<bool> ("construct_moghadam_preconditioner"))
+		{
+
+			std::cout << "Assembling Moghadam Preconditioner..." << std::endl;
+
+			// need to close the matrix Preconditioner before we get values from it
+			system->request_matrix ("Preconditioner")->close();
+
+
+			// loop over each boundary
+			for(unsigned int k=0; k<global_velocity_dofs_on_outflow_boundary.size(); k++)
+			{
+				//std::cout << "0" << std::endl;
+				std::sort (global_velocity_dofs_on_outflow_boundary[k].begin (),global_velocity_dofs_on_outflow_boundary[k].end ());
+				// remove duplicate dofs
+				//std::cout << "0a" << std::endl;
+				std::vector < unsigned int >::iterator it;
+				it = std::unique (global_velocity_dofs_on_outflow_boundary[k].begin (),global_velocity_dofs_on_outflow_boundary[k].end ());
+				//std::cout << "0b" << std::endl;
+				global_velocity_dofs_on_outflow_boundary[k].resize (std::distance (global_velocity_dofs_on_outflow_boundary[k].begin (), it));
+
+				//std::cout << "1" << std::endl;
+
+				// STEPS:
+				// 1 - calculate 1 + pressure_deriv * || 1/sqrt(K_d) * S_j || ^ 2
+				// note: Moghadam Vector BC includes sqrt(pressure_deriv), so with this squared, we don't need to worry about it
+				
+				//double pressure_deriv = bc_value[k];	// k is the same as the boundary_id
+				double denom = 0.;
+				// loop over the 
+				for (unsigned int i = 0; i < global_velocity_dofs_on_outflow_boundary[k].size (); i++)
+				{
+					// get the global dof
+					unsigned int global_i = global_velocity_dofs_on_outflow_boundary[k][i];
+				
+				//std::cout << "2" << std::endl;
+					// get the diagonal entry
+					double K_d = (*system->request_matrix ("Preconditioner"))(global_i,global_i);
+
+				//std::cout << "3" << std::endl;
+					// get the flux entry
+					double S_j = (*system->request_vector ("Moghadam Vector BC"))(global_i);
+	
+				//std::cout << "4" << std::endl;
+					// calculate contribution to the denominator
+					denom += S_j * S_j / K_d;
+					
+				}
+
+				denom += 1.;	// add the 1
+
+				// 2 - calculate the entres of the matrix
+				// H_tilde = I - sum ( R_j 1/sqrt(K_d)S_j 1/sqrt(K_d)cross S_j)
+				// quite similar to the moghadam matrix
+				// the R_j comes out of the calculated Moghadam Vector
+
+				for (unsigned int i = 0; i < global_velocity_dofs_on_outflow_boundary[k].size (); i++)
+				{
+					unsigned int global_i = global_velocity_dofs_on_outflow_boundary[k][i];
+				//std::cout << "5" << std::endl;
+					double K_d_i = (*system->request_matrix ("Preconditioner"))(global_i,global_i);
+				//std::cout << "6" << std::endl;
+					for (unsigned int j = 0; j < global_velocity_dofs_on_outflow_boundary[k].size (); j++)
+					{
+
+						unsigned int global_j = global_velocity_dofs_on_outflow_boundary[k][j];
+				//std::cout << "7" << std::endl;
+						double K_d_j = (*system->request_matrix ("Preconditioner"))(global_j,global_j);
+						
+				//std::cout << "8" << std::endl;
+						double numerator = - 1./sqrt(K_d_i) * (*system->request_vector ("Moghadam Vector BC"))(global_i) * 1./sqrt(K_d_j) * (*system->request_vector ("Moghadam Vector"))(global_j);
+						double value = numerator/denom;
+
+				//std::cout << "9" << std::endl;
+						// don't want to try to put values where different outlets couple
+						if(fabs(value) > 1e-10)
+						{
+							system->get_matrix ("Moghadam Preconditioner").add (global_i,global_j,value);
+							/*
+							if(preconditioner_type_3d || preconditioner_type_3d1d)
+								system->get_matrix ("Preconditioner").add (global_i,global_j,value);
+							*/
+						}
+				//std::cout << "10" << std::endl;
+					}// end j loop
+				}// end i loop
+				
+			}// end k loop
+
+			// add the identity
+			unsigned int num_dofs = system->get_matrix ("Moghadam Preconditioner").m();
+				//std::cout << "11" << std::endl;
+			std::cout << "matrix size = " << num_dofs << std::endl;
+			for(unsigned int i=0; i<num_dofs; i++)
+			{
+				system->get_matrix ("Moghadam Preconditioner").add (i,i,1.0);
+			}
+
+				//std::cout << "12" << std::endl;
+
+			std::cout << "Done Assembling Moghadam Preconditioner." << std::endl;
+
+
+		}// end preconditioner construction
+
+
+
 	}
+
+
+	// ********* calculate max reynolds number ********** //
+	std::cout << "max_global_velocity_mag = " << max_global_velocity_mag << std::endl;
+	std::cout << "characteristic diameter = " << es->parameters.get<double> ("characteristic_length") << std::endl;
+	std::cout << "density = " << es->parameters.set<double> ("density") << std::endl;
+	std::cout << "viscosity = " << es->parameters.set<double> ("viscosity") << std::endl;
+
+	if(nondimensionalised)
+		es->parameters.set<double> ("current_reynolds_number") = Re * max_global_velocity_mag;
+	else
+		es->parameters.set<double> ("current_reynolds_number") = max_global_velocity_mag * es->parameters.set<double> ("density") * es->parameters.get<double> ("characteristic_length") / es->parameters.set<double> ("viscosity");
+
+	std::cout << " Reynolds Number = " << es->parameters.get<double> ("current_reynolds_number") << std::endl;
+
+	if(es->parameters.get<double> ("current_reynolds_number") > es->parameters.get<double> ("max_current_reynolds_number"))
+		es->parameters.set<double> ("max_current_reynolds_number") = es->parameters.get<double> ("current_reynolds_number");
+
+	std::cout << " Max Reynolds Number = " << es->parameters.get<double> ("max_current_reynolds_number") << std::endl;
+
 
 
 
 	//std::cout << "tau_sum = " << tau_sum << std::endl;
-	std::cout << "average alpha factor = " << alpha_factor_sum /
-	count << std::endl;
+	//std::cout << "average alpha factor = " << alpha_factor_sum /	count << std::endl;
 
 
 
@@ -3361,6 +4001,1470 @@ Picard::assemble_efficient (ErrorVector &)	// error_vector)
 		std::cout << "3D efficient assembly ended." << std::endl;
 	else
 		std::cout << "2D efficient assembly ended." << std::endl;
+
+
+
+	return;
+
+
+}
+
+
+
+// this function only builds the rhs based on the current residual
+void
+Picard::assemble_residual_rhs (ErrorVector &)	// error_vector)
+{
+
+  if (threed)
+    std::cout << "\nBeginning 3D assembly of residual rhs... " << std::endl;
+  else
+    std::cout << "\nBeginning 2D assembly of residual rhs... " << std::endl;
+
+  TransientLinearImplicitSystem *system;
+
+  // Get a reference to the Stokes system object.
+  if (pressure_coupled)
+  {
+    system = &es->get_system < TransientLinearImplicitSystem > ("ns3d1d");
+  }
+  else
+  {
+    system = &es->get_system < TransientLinearImplicitSystem > ("ns3d");
+  }
+
+	// zero this first as it may be run multiple times
+	system->get_vector("Residual LHS").close();
+	system->get_vector("Residual LHS").zero();
+
+	//std::cout << "Using solution with norm " << system->solution->l2_norm() << std::endl;
+
+
+  // Parameters to avoid parameter lookups in the loop
+
+  // general
+  const unsigned int sim_type = es->parameters.get <unsigned int >("sim_type");
+  const unsigned int problem_type = es->parameters.get <unsigned int >("problem_type");
+  const unsigned int geometry_type = es->parameters.get < unsigned int >("geometry_type");
+  unsigned int unsteady = es->parameters.get < unsigned int >("unsteady");
+  unsigned int nonlinear_iteration = es->parameters.get < unsigned int >("nonlinear_iteration");
+  bool increment_boundary_conditions = es->parameters.get < bool >("increment_boundary_conditions");
+
+  // convection stabilisation
+  const bool streamline_diffusion = es->parameters.get < bool > ("streamline_diffusion");
+  bool supg = es->parameters.get < bool > ("supg");
+  bool pspg = es->parameters.get < bool > ("pspg");
+  bool lsic = es->parameters.get < bool > ("lsic");
+  const bool supg_constant_constant = es->parameters.get <bool> ("supg_constant_constant");
+  const unsigned int supg_parameter = es->parameters.get < unsigned int >("supg_parameter");
+  const double supg_scale = es->parameters.get < double >("supg_scale");
+  const bool supg_newton = es->parameters.get < bool > ("supg_newton");
+  const bool supg_full_newton = es->parameters.get < bool > ("supg_full_newton");
+  const bool supg_convection_newton = es->parameters.get < bool > ("supg_convection_newton");
+  const bool supg_convection = es->parameters.get < bool > ("supg_convection");
+  const bool supg_picard = es->parameters.get < bool > ("supg_picard");
+  const bool pspg_newton = es->parameters.get < bool > ("pspg_newton");
+  const bool pspg_picard = es->parameters.get < bool > ("pspg_picard");
+  const bool supg_laplacian = es->parameters.get < bool > ("supg_laplacian");
+
+  // boundary
+  const unsigned int moghadam_coupling = es->parameters.get <unsigned int>("moghadam_coupling");
+  const bool known_boundary_conditions = es->parameters.get <bool>("known_boundary_conditions");
+  const bool neumann_stabilised = es->parameters.get < bool > ("neumann_stabilised");
+  const bool bertoglio_stabilisation = es->parameters.get < bool > ("bertoglio_stabilisation");
+  const bool neumann_stabilised_linear = es->parameters.get <	bool >	("neumann_stabilised_linear");
+  const bool neumann_stabilised_adjusted = es->parameters.get < bool > ("neumann_stabilised_adjusted");
+  const bool neumann_stabilised_adjusted_interpolated = es->parameters.get < bool > ("neumann_stabilised_adjusted_interpolated");
+  const double backflow_stab_param = es->parameters.get < double >("backflow_stab_param");
+  const double bertoglio_stab_param = es->parameters.get < double >("bertoglio_stab_param");
+  const bool nondimensionalised = es->parameters.get < bool >("nondimensionalised");
+
+  // preconditioners
+  const unsigned int preconditioner_type_3d = es->parameters.get <unsigned int >("preconditioner_type_3d");
+  const unsigned int preconditioner_type_3d1d = es->parameters.get <unsigned int >("preconditioner_type_3d1d");
+  const bool assemble_pressure_mass_matrix = es->parameters.get <bool>("assemble_pressure_mass_matrix");
+  const bool assemble_scaled_pressure_mass_matrix = es->parameters.get <bool>("assemble_scaled_pressure_mass_matrix");
+  const bool assemble_pressure_laplacian_matrix = es->parameters.get<bool>("assemble_pressure_laplacian_matrix");
+  const bool assemble_pressure_convection_diffusion_matrix = es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix");
+  const bool assemble_velocity_mass_matrix = es->parameters.get <bool>("assemble_velocity_mass_matrix");
+  const bool assemble_velocity_matrix = es->parameters.get<bool>("assemble_velocity_matrix");
+  const unsigned int pcd_boundary_condition_type = es->parameters.get <unsigned int >("pcd_boundary_condition_type");
+
+  // physical parameters
+  const double mu = es->parameters.get < double >("viscosity");
+  const double rho = es->parameters.get < double >("density");
+  const Real Re = es->parameters.get < Real > ("reynolds_number");
+
+  // problem parameters
+  const Real dt = es->parameters.get < Real > ("dt") * es->parameters.get < double >("time_scale_factor");
+  const Real time = system->time;
+  const double velocity_scale = es->parameters.get <double>("velocity_scale");
+  const double length_scale = es->parameters.get < double >("length_scale");
+  const double time_scaling = es->parameters.get < double >("time_scaling");
+  bool stokes = es->parameters.get < bool > ("stokes");
+  unsigned int newton = es->parameters.get < unsigned int > ("newton");
+  const bool symmetric_gradient = es->parameters.get < bool > ("symmetric_gradient");
+  const bool multiply_system_by_dt = es->parameters.get < bool > ("multiply_system_by_dt");
+  const bool convective_form = es->parameters.get < bool > ("convective_form");
+  const bool residual_formulation = es->parameters.get <bool> ("residual_formulation");
+
+  // stokes stabilisation
+  const bool mesh_dependent_stab_param = es->parameters.get < bool > ("mesh_dependent_stab_param");
+  const double alpha_parameter = es->parameters.get <double> ("alpha");
+  Real alpha = es->parameters.get < Real > ("alpha");
+  bool stab = es->parameters.get < bool > ("stab");
+
+  // misc
+  const bool gravemeier_element_length = es->parameters.get < bool > ("gravemeier_element_length");
+  const double element_length_scaling = es->parameters.get < double >("element_length_scaling");
+  //const Real period     = es->parameters.get<Real>("period");
+	const bool twod_oned_tree = es->parameters.get<bool> ("twod_oned_tree");
+	const bool twod_oned_tree_pressure = es->parameters.get<bool> ("twod_oned_tree_pressure");
+
+	const unsigned int total_pressure_bc = es->parameters.get<unsigned int> ("total_pressure_bc");
+
+	// mono flow rate penalty param
+  double mono_flow_rate_penalty_param = 1.;
+	if(es->parameters.get <bool> ("mono_flow_rate_penalty"))
+		mono_flow_rate_penalty_param = es->parameters.get <double> ("mono_flow_rate_penalty_param");
+
+	// Dimensional calculation fixes
+	double density_scale = 1.0;
+	double viscosity_scale = 1.0/Re;
+	if(es->parameters.get < bool > ("dimensional_calculation_fix"))
+	{
+		// constant for the density, to go on the unsteady and convection terms
+		// - if reynolds number calculation, this is 1.0
+		// - if dimensional calculation this is \rho
+		if(!nondimensionalised)
+			density_scale = rho;
+
+		// constant for viscosity, to go on the diffusion term
+		// - if reynolds number calculation, this is 1/Re
+		// - if dimensional calculation this is \mu
+		if(!nondimensionalised)
+			viscosity_scale = mu;
+
+		//std::cout << "doing dimensional calculation fix" << std::endl;
+		//std::cout << "using mu = " << viscosity_scale << " instead of 1/Re = " << 1.0/Re << std::endl;
+	}
+
+  // Problem parameters
+  double sd_param = 0.;
+
+	/*
+	std::cout << "moghadam_coupling = " << moghadam_coupling << std::endl;
+
+  std::cout << "convective_form = " << convective_form << std::endl;
+  std::cout << "neumann_stabilised = " << neumann_stabilised << std::endl;
+  std::cout << "bertoglio_stabilisation = " << bertoglio_stabilisation << std::endl;
+
+  //
+  std::cout << "nonlin iteration = " << es->parameters.get < unsigned int >("nonlinear_iteration") << std::endl;
+  std::cout << "max initial picard = " << es->parameters.get < unsigned int >("max_initial_picard") << std::endl;
+	*/
+  // if doing stokes initial condition calc then we need to do some clever stuff
+  if(es->parameters.get < bool > ("stokes_ic") && es->parameters.get < unsigned int >("t_step") == 0)
+  {
+		unsteady = 0;
+		stokes = true;
+  }
+
+
+
+
+  // if we are doing implicit newton (i.e. newton - 1,2), then do picard if:
+  // 1) we are in the first nonlinear iteration (doesn't make a difference i think)
+  // 2) the residual of the previous nonlinear iterate is greater than some value (e.g. 0.1)
+  // 3) we are not beyond the maximum number of picard iterations we want to take
+  if(newton == 1 || newton == 2)
+  {
+  	if ((es->parameters.get < unsigned int >("nonlinear_iteration") == 1
+       || (es->parameters.get < unsigned int >("nonlinear_iteration") > 1
+	   && es->parameters.get < double >("last_nonlinear_iterate") > es->parameters.get < double >("picard_to_newton_threshold"))) 
+		&& es->parameters.get <unsigned int >("nonlinear_iteration") <= es->parameters.get <
+      unsigned int >("max_initial_picard"))
+    {
+      std::cout << "Using Picard iteration because early in nonlinear iteration." << std::endl;
+      newton = 0;
+    }
+  }
+
+  //std::cout << "newton = " << newton << std::endl;
+
+  //for the first time step we solve stokes - so that easy
+  // in any case the system is stokes by default
+  if (false)			//es->parameters.get<unsigned int> ("t_step") == 1)
+  {
+    stokes = true;
+    stab = true;
+    supg = false;
+    pspg = false;
+    lsic = false;
+  }
+
+  if (es->parameters.get < unsigned int >("t_step") == 1
+      && es->parameters.get < unsigned int >("nonlinear_iteration") == 1
+      && es->parameters.get < unsigned int >("num_continuation_iteration") ==
+      0)
+  {
+    std::cout << "using stokes for first iteration" << std::endl;
+    stokes = true;
+  }
+
+
+
+  // Mesh and system things
+  const MeshBase & mesh = es->get_mesh ();
+  const unsigned int dim = mesh.mesh_dimension ();
+
+  const unsigned int u_var = system->variable_number ("u");
+  const unsigned int v_var = system->variable_number ("v");
+  unsigned int w_var = 0;
+  if (threed)
+    w_var = system->variable_number ("w");
+  const unsigned int p_var = system->variable_number ("p");
+
+  ForcingFunction <> forcing_function (*es);
+
+
+  // Finite element types
+  FEType fe_vel_type = system->variable_type (u_var);
+  FEType fe_pres_type = system->variable_type (p_var);
+
+  AutoPtr < FEBase > fe_vel (FEBase::build (dim, fe_vel_type));
+  AutoPtr < FEBase > fe_pres (FEBase::build (dim, fe_pres_type));
+
+
+  // Quadrature rules
+  //QGauss qrule (dim, fe_vel_type.default_quadrature_order());
+
+  int default_quad_order =
+    static_cast < int >(fe_vel_type.default_quadrature_order ());
+	
+  //std::cout << "quad_order = " << default_quad_order << std::endl;
+  //QGauss qrule(dim, static_cast<Order>(default_quad_order));
+
+  QGauss qrule (dim, static_cast < Order > (default_quad_order + 2));
+
+  //std::cout << "default quad order = " << fe_vel_type.default_quadrature_order() << std::endl;
+  //std::cout << "quad order used = " << qrule.get_order() << std::endl;
+
+  fe_vel->attach_quadrature_rule (&qrule);
+  fe_pres->attach_quadrature_rule (&qrule);
+
+
+  // Boundary finite element types
+  AutoPtr < FEBase > fe_vel_face (FEBase::build (dim, fe_vel_type));
+  AutoPtr < FEBase > fe_pres_face (FEBase::build (dim, fe_pres_type));
+
+  //QGauss qface(dim-1, static_cast<Order>(default_quad_order+2));
+  QGauss qface (dim - 1, static_cast < Order > (default_quad_order + 2));
+  //QGauss qface(dim-1, static_cast<Order>(6));
+  fe_vel_face->attach_quadrature_rule (&qface);
+  fe_pres_face->attach_quadrature_rule (&qface);
+
+
+  // Initialise some variables
+  const std::vector < Real > &JxW_elem = fe_vel->get_JxW ();
+  const std::vector < std::vector < Real > >&phi = fe_vel->get_phi ();
+  const std::vector < std::vector < RealGradient > >&dphi =
+    fe_vel->get_dphi ();
+  const std::vector < std::vector < RealTensor > >&d2phi =
+    fe_vel->get_d2phi ();
+  const std::vector < std::vector < Real > >&psi = fe_pres->get_phi ();
+  const std::vector < std::vector < RealGradient > >&dpsi =
+    fe_pres->get_dphi ();
+  // const std::vector<std::vector<RealGradient> >& dpsi = fe_pres->get_dphi();
+  const std::vector < Real > &JxW_face_elem = fe_vel_face->get_JxW ();
+  const std::vector < std::vector < Real > >&phi_face =
+    fe_vel_face->get_phi ();
+  const std::vector < std::vector < Real > >&psi_face =
+    fe_pres_face->get_phi ();
+  const std::vector < std::vector < RealGradient > >&dphi_face =
+    fe_vel_face->get_dphi ();
+  const std::vector < Point > &qface_normals = fe_vel_face->get_normals ();
+  const std::vector < std::vector < Point > >&qface_tangents =
+    fe_vel_face->get_tangents ();
+  const std::vector < Point > &qpoint_face = fe_vel_face->get_xyz ();
+  const std::vector < Point > &qpoint = fe_vel->get_xyz ();
+
+
+  // Local element matrix
+	// residual formulation -> this is the "residual lhs" = A(x_star) * x_star
+  DenseVector < Number > Fe_residual_lhs;
+
+  DenseSubVector < Number > Fu_residual_lhs (Fe_residual_lhs), Fv_residual_lhs (Fe_residual_lhs), Fw_residual_lhs (Fe_residual_lhs), Fp_residual_lhs (Fe_residual_lhs);
+
+	double Fe_coupled_u = 0.;
+
+
+
+
+
+  // DofMap things
+  const DofMap & dof_map = system->get_dof_map ();
+
+  std::vector < dof_id_type > dof_indices;
+  std::vector < dof_id_type > dof_indices_u;
+  std::vector < dof_id_type > dof_indices_v;
+  std::vector < dof_id_type > dof_indices_w;
+  std::vector < dof_id_type > dof_indices_p;
+
+  // 0 corresponds to the one actually on the boundary
+  // 1 corresponds to the other dof on the element
+  // let us build this map before for ease of coding
+  dof_id_type pressure_1d_index = 0;	//p0
+  dof_id_type flux_1d_index = 0;	//q0
+
+
+  bool pin_pressure = false;
+  //int pressure_dof = -1;	// unused
+  //const unsigned int pressure_node = 0;	// unused
+  if (es->parameters.get < bool > ("pin_pressure"))
+    pin_pressure = true;
+
+  // need to add dirichlet boundary conditions on pressure nodes on the inflow dirichlet boundary
+  std::vector < unsigned int >pressure_dofs_on_inflow_boundary;
+  std::vector < unsigned int >all_global_pressure_dofs_on_inflow_boundary;
+  std::vector <std::vector<unsigned int> > global_velocity_dofs_on_outflow_boundary;
+	global_velocity_dofs_on_outflow_boundary.resize(es->parameters.set<unsigned int> ("num_1d_trees") + 1);	// +1 cause labelled from 1
+  double sum_fp_diag = 0.;
+
+
+  // Iterators
+  MeshBase::const_element_iterator el = mesh.active_local_elements_begin ();
+  const MeshBase::const_element_iterator end_el =
+    mesh.active_local_elements_end ();
+
+  double max_u = 0.0;
+  double max_u_old = 0.0;
+  //double u_mag = 0.0;
+
+  NumberVectorValue total_residual (0, 0);
+  NumberVectorValue total_residual_1 (0, 0);
+  NumberVectorValue total_residual_2 (0, 0);
+  NumberVectorValue total_residual_3 (0, 0);
+  NumberVectorValue total_residual_4 (0, 0);
+
+
+  double tau_sum = 0.;
+  double alpha_factor_sum = 0;
+  unsigned int count = 0;
+
+
+	/*
+	std::cout << "poo" << std::endl;	
+	double residual_lhs_norm_before = system->get_vector("Residual LHS").l2_norm();
+	std::cout << "poo" << std::endl;
+	std::cout << "residual_lhs_norm = " << residual_lhs_norm_before << std::endl;
+	std::cout << "poo" << std::endl;
+	*/
+
+
+	for (; el != end_el; ++el)
+	{
+		const Elem *elem = *el;
+		// only solve on the 3d subdomain
+		if (std::find (subdomains_3d.begin (), subdomains_3d.end (),elem->subdomain_id ()) != subdomains_3d.end ())
+	  {
+			count++;
+
+			// ******************************************************************* //
+			// ************* reinitialise and set some variables ***************** //
+
+			// set dof indices for element
+			dof_map.dof_indices (elem, dof_indices);
+			dof_map.dof_indices (elem, dof_indices_u, u_var);
+			dof_map.dof_indices (elem, dof_indices_v, v_var);
+			if (threed)
+			  dof_map.dof_indices (elem, dof_indices_w, w_var);
+			dof_map.dof_indices (elem, dof_indices_p, p_var);
+
+
+			// set no. of dofs for element
+			unsigned int n_dofs = dof_indices.size ();
+			unsigned int n_u_dofs = dof_indices_u.size ();
+			unsigned int n_v_dofs = dof_indices_v.size ();
+			unsigned int n_w_dofs = 0;
+			if (threed)
+			  n_w_dofs = dof_indices_w.size ();
+			unsigned int n_p_dofs = dof_indices_p.size ();
+
+
+			// compute shape functions etc of current element
+			fe_vel->reinit (elem);
+			fe_pres->reinit (elem);
+
+			// calculate element size
+			Real elem_volume = elem->volume ();
+			double h_T = 0;
+			if (threed)
+			{
+			//take cube root to get diameter of the element
+			  h_T = pow (elem_volume, 1.0 / 3.0);
+			  if (gravemeier_element_length)
+			    h_T = pow (6 * elem_volume / M_PI, 1. / 3.) / sqrt (3.);
+			}
+			else
+			  h_T = pow (elem_volume, 1.0 / 2.0);
+
+			h_T *= element_length_scaling;
+
+
+			pressure_dofs_on_inflow_boundary.resize (0);
+
+			// **************************************************************** //
+
+			// ************* SET UP ELEMENT MATRICES ************ //
+			Fe_residual_lhs.resize (n_dofs);
+
+			Fu_residual_lhs.reposition (u_var * n_u_dofs, n_u_dofs);
+			Fv_residual_lhs.reposition (v_var * n_u_dofs, n_v_dofs);
+			Fp_residual_lhs.reposition (p_var * n_u_dofs, n_p_dofs);
+			if (threed)
+			  Fw_residual_lhs.reposition (w_var * n_u_dofs, n_w_dofs);
+
+			Fe_coupled_u = 0.;
+
+			std::vector < Real > JxW = JxW_elem;
+			//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+			if (geometry_type == 5)
+			{
+			  for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
+			  {
+				  JxW[qp] *= qpoint[qp] (1);
+			  }
+			}
+
+			if (multiply_system_by_dt)
+			{
+			  for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
+			  {
+				  JxW[qp] *= dt;
+			  }
+			}
+
+
+			// ***** calulate max velocity on element, usually useful ******* //
+			// always calculate the max u at gauss points, used in a lot of places in case zero
+			double max_velocity_mag = 0.;
+			for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
+			{
+		  	// Values to hold the solution & its gradient at the previous timestep.
+		  	Number u = 0., v = 0., w = 0.;
+
+				// Compute the velocity & its gradient from the previous timestep
+				// and the old Newton iterate or (semi-implicit) old time step
+
+				if(newton < 3)
+				{
+					for (unsigned int l = 0; l < n_u_dofs; l++)
+					{
+					  // From the previous Newton iterate:
+					  u +=	phi[l][qp] * system->current_solution (dof_indices_u[l]);
+					  v +=	phi[l][qp] * system->current_solution (dof_indices_v[l]);
+					  if (threed)
+					    w +=  phi[l][qp] * system->current_solution (dof_indices_w[l]);
+					}
+				}
+				else
+				{
+					for (unsigned int l = 0; l < n_u_dofs; l++)
+					{
+					  // From the previous Newton iterate:
+					  u +=	phi[l][qp] * system->old_solution (dof_indices_u[l]);
+					  v +=	phi[l][qp] * system->old_solution (dof_indices_v[l]);
+					  if (threed)
+					    w +=  phi[l][qp] * system->old_solution (dof_indices_w[l]);
+					}
+				}
+
+				double velocity_mag = pow(pow(u,2.0) + pow(v,2.0) + pow(w,2.0), 0.5);
+				if (velocity_mag > max_velocity_mag)
+				{
+					max_velocity_mag = velocity_mag;
+				}
+			}
+
+			// ****************************************************************** //
+			// ***************** CALCULATE THE STREAMLINE DIFFUSION PARAM ******* //
+
+			// note: if we are doing semi-implicit then we use the solution 
+			//       from the previous timestep.
+
+
+			sd_param = 0.;
+			if (streamline_diffusion && !stokes)
+			{
+
+				//max_velocity_mag = 1.0;
+				// doubt i need velocity scale
+				//double Pe_k = Re / velocity_scale * max_velocity_mag * h_T;
+				double Pe_k = density_scale * h_T / (viscosity_scale * 2);
+				//std::cout << "hi Pe_k = " << Pe_k << std::endl;
+				if (Pe_k > 1.)
+				{
+					sd_param = 0.5 * h_T * (1. - 1. / Pe_k);
+					//std::cout << "Pe_k > 1., sd_param = " << sd_param << std::endl;
+					//std::cout << "Pe_k = " << Pe_k << std::endl;
+					//std::cout << "h_T = " << h_T << std::endl;
+				}
+				else
+				{
+					sd_param = 0.;
+				}
+
+				// doesn't really help
+				//sd_param *= 100.0;
+
+			}
+
+			// ***************************************************************** //
+
+
+
+
+
+
+
+
+			// ***************************************************************** //
+			// ************* CALCULATE THE STABILISATION PARAM ***************** //
+
+			// for pspg stabilisation the stabilisation parameter needs to set to 
+			// something in case the velocity is zero. if this is the case then we 
+			// use the standard p1p1 stabilisation method i.e. no residual crap.
+
+			if (mesh_dependent_stab_param && (stab || (max_velocity_mag < 1e-10  && pspg)))
+			{
+
+
+							double m_k = 1. / 3.;
+							//double Pe_k_1 = 4. * dt / (Re * m_k * h_T * h_T);
+							double Pe_k_1 = 4. * dt * viscosity_scale / (m_k * h_T * h_T);
+							double Pe_k_2 = 0.;
+				if(!stokes)
+				{
+					//Pe_k_2 = Re * m_k * max_velocity_mag * h_T / 2.;
+					Pe_k_2 = m_k * max_velocity_mag * h_T / (viscosity_scale * 2.);
+				}
+				
+				double xi_1 = Pe_k_1;	//will always be the max cause dt is "infinite"
+		
+				if (unsteady)
+					xi_1 = std::max (Pe_k_1, 1.);
+				
+				double xi_2 = std::max (Pe_k_2, 1.);
+
+					// take out factor of h_T
+					//alpha = 1. / (1. / dt * xi_1 + 4. / m_k / Re / (h_T * h_T) * xi_2);
+					alpha = 1. / (1. / dt * xi_1 + 4. / m_k * viscosity_scale / (h_T * h_T) * xi_2);
+
+					//std::cout << " using stab_param alpha = " << alpha << std::endl;                 
+
+			}
+			else
+			{
+					//alpha = alpha_parameter * Re * h_T * h_T;
+					alpha = alpha_parameter / viscosity_scale * h_T * h_T;
+			}
+
+			// debugging
+			alpha_factor_sum += alpha * viscosity_scale / (h_T * h_T);
+
+			// *************************************************************************** //
+
+
+
+
+			// *************************************************************************** //
+			// ******** BUILD VOLUME CONTRIBUTION TO ELEMENT MATRIX AND RHS ************* //
+			for (unsigned int qp = 0; qp < qrule.n_points (); qp++)
+  		{
+
+  			// ************* SET UP VARIABLES FROM PREVIOUS ITERATE/TIMESTEP ************* //
+
+  			// Values to hold the solution & its gradient at the previous timestep.
+  			Number u = 0., v = 0., w = 0., p = 0.;
+  			Number u_old = 0., v_old = 0., w_old = 0.;
+  			Gradient grad_u, grad_v, grad_w, grad_p;
+
+
+  			// Compute the velocity & its gradient from the previous timestep
+				// and the old Newton iterate.
+  			for (unsigned int l = 0; l < n_u_dofs; l++)
+				{
+					// From the old timestep:
+					u_old += phi[l][qp] * system->old_solution (dof_indices_u[l]);
+					v_old += phi[l][qp] * system->old_solution (dof_indices_v[l]);
+					if (threed)
+						w_old += phi[l][qp] * system->old_solution (dof_indices_w[l]);
+
+					// From the previous Newton iterate (actually, the previously calculated solution):
+					u += phi[l][qp] * (*system->solution) (dof_indices_u[l]);
+					v += phi[l][qp] * (*system->solution) (dof_indices_v[l]);
+					if (threed)
+						w += phi[l][qp] * (*system->solution) (dof_indices_w[l]);
+
+					grad_u.add_scaled (dphi[l][qp],(*system->solution) (dof_indices_u[l]));
+					grad_v.add_scaled (dphi[l][qp],(*system->solution) (dof_indices_v[l]));
+					if (threed)
+						grad_w.add_scaled (dphi[l][qp],(*system->solution) (dof_indices_w[l]));
+
+				}
+
+				for (unsigned int l = 0; l < n_p_dofs; l++)
+				{
+					// From the previous solution:
+					p += psi[l][qp] * (*system->solution) (dof_indices_p[l]);
+					grad_p.add_scaled (dpsi[l][qp],(*system->solution) (dof_indices_p[l]));
+				}
+
+		  	NumberVectorValue U;
+		  	if (threed)
+			  	U = NumberVectorValue (u, v, w);
+		  	else
+			  	U = NumberVectorValue (u, v);
+
+		  	// vector forms of velocities
+		  	NumberVectorValue U_old;
+		  	if (threed)
+			  U_old = NumberVectorValue (u_old, v_old, w_old);
+		  	else
+			  U_old = NumberVectorValue (u_old, v_old);
+
+			
+			  // SOME DEBUGGING
+				/*
+			  	if (pow (pow (u, 2.0) + pow (v, 2.0), 0.5) > max_u)
+					max_u = pow (pow (u, 2.0) + pow (v, 2.0), 0.5);
+
+			  	if (pow (pow (u_old, 2.0) + pow (v_old, 2.0), 0.5) > max_u_old)
+					max_u_old = pow (pow (u_old, 2.0) + pow (v_old, 2.0), 0.5);
+
+			  
+			       	if(threed)
+			       		u_mag = pow(pow(u,2.0) + pow(v,2.0) + pow(w,2.0),0.5);
+			       	else
+			       		u_mag = pow(pow(u,2.0) + pow(v,2.0),0.5);
+
+	      			if(fabs(u_old) > max_u)
+	      			      max_u =fabs(u_old);
+				*/
+
+
+				// done setup of previous values
+	      // *************************************************************** //
+
+
+
+
+
+		  	// *************************************************************************** //
+		  	// ********************* REGULAR NAVIER STOKES TERMS ************************* //
+
+
+				// ************* Residual formulation terms ********************** //
+				//
+				// here we construct A(x_star)*x_star and get the forcing terms from the matrix assembly
+				// need to add the forcing terms we are missing
+				//
+				// we also construct the newton terms K(x_prev)*x_star
+				// where x_star is the intermediate solution (solution) and x_prev is the solution ("Previous Nonlinear Solution") from the previous iteration
+				//
+				// u is u_star, u_prev is u_prev
+				// this can be used to update the rhs
+
+
+				// First, an i-loop over the velocity degrees of freedom.
+				for (unsigned int i = 0; i < n_u_dofs; i++)
+				{
+
+					// *********** Solution vector test ********** //
+					//
+					// solution vector should be phi[i][qp] * u i think
+					// no because these are the values at the gauss points, it's an integration
+/*
+					Fu_residual_lhs (i) += (phi[i][qp] * u);	// mass matrix term
+					Fv_residual_lhs (i) += (phi[i][qp] * v);	// mass matrix term
+					if (threed)
+						Fw_residual_lhs (i) += (phi[i][qp] * w); // mass matrix term
+					Fp_residual_lhs (i) += p * phi[i][qp];
+
+*/
+
+
+					// *********** Unsteady term ************* //
+					// not needed because part of f
+
+
+					
+					// Matrix contributions for the uu and vv couplings. i.e. first equation
+					// *************** Unsteady term i.e. mass matrix ************ //
+					if (unsteady)
+					{
+						Fu_residual_lhs (i) += JxW[qp] * density_scale / dt * (phi[i][qp] * u);	// mass matrix term
+						Fv_residual_lhs (i) += JxW[qp] * density_scale / dt * (phi[i][qp] * v);	// mass matrix term
+						if (threed)
+							Fw_residual_lhs (i) += JxW[qp] * density_scale / dt * (phi[i][qp] * w); // mass matrix term
+					}
+
+
+					// *************** Diffusion terms ************** //
+					// only implemented for non symmetric gradient
+					if (!symmetric_gradient)
+					{
+						Fu_residual_lhs (i) += JxW[qp] * (viscosity_scale * (grad_u * dphi[i][qp]));	// diffusion
+						Fv_residual_lhs (i) += JxW[qp] * (viscosity_scale * (grad_v * dphi[i][qp]));	// diffusion
+						if (threed)
+							Fw_residual_lhs (i) += JxW[qp] * (viscosity_scale * (grad_w * dphi[i][qp]));	// diffusion
+					}
+					else
+					{
+						std::cout << "residual formulation not implemented for symmetric gradient" << std::endl;
+						std::cout << "Exiting..." << std::endl;
+						std::exit(0);
+					}
+
+
+					// ********** Newton convection term ************ //
+					// note: newton methods have a term here, 
+					// semi-implicit as currently implemented does not.
+					// non convective terms not implemented to residual formulation
+					// we don't need to recompute this
+		
+					// *************** Matrix convection terms *************** //
+					if (!stokes)
+					{
+						// use convective or conservative form
+						if (convective_form)
+						{
+							if(newton < 3) // implicit
+							{
+								Fu_residual_lhs (i) += JxW[qp] * density_scale * ((U * grad_u) * phi[i][qp]);	// convection
+								Fv_residual_lhs (i) += JxW[qp] * density_scale * ((U * grad_v) * phi[i][qp]);	// convection
+								if (threed)
+									Fw_residual_lhs (i) += JxW[qp] * density_scale * ((U * grad_w) * phi[i][qp]);	// convection
+							}
+							else // semi-implicit
+							{
+								Fu_residual_lhs (i) += JxW[qp] * density_scale * ((U_old * grad_u) * phi[i][qp]);	// convection
+								Fv_residual_lhs (i) += JxW[qp] * density_scale * ((U_old * grad_v) * phi[i][qp]);	// convection
+								if (threed)
+									Fw_residual_lhs (i) += JxW[qp] * density_scale * ((U_old * grad_w) * phi[i][qp]);  	// convection
+							}
+						}
+						else
+						{
+							std::cout << "residual formulation not implemented for conservative form" << std::endl;
+							std::cout << "Exiting..." << std::endl;
+							std::exit(0);
+						}
+
+
+
+						// *************** Streamline Diffusion Terms ************** //
+						// streamline diffusion term, this is nonlinear and done in a 
+						// picard sense so may hamper convergence.
+
+
+
+						if (streamline_diffusion && !stokes)
+						{
+							if (!convective_form)
+							{
+								std::cout << "error conservative form for streamline diffusion not implemented" << std::endl;
+								std::exit (0);
+							}
+
+							if(newton < 3) // implicit
+							{
+								Fu_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * grad_u));	// convection
+								Fv_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * grad_v));	// convection
+								if (threed)
+									Fw_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U * dphi[i][qp]) * (U * grad_w));	// convection
+							}
+							else	// semi-implicit
+							{
+								Fu_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * grad_u));	// convection
+								Fv_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * grad_v));	// convection
+								if (threed)
+									Fw_residual_lhs (i) += sd_param * JxW[qp] * density_scale * ((U_old * dphi[i][qp]) * (U_old * grad_w));	// convection
+							}
+						}
+
+
+						
+
+						// **************** Newton Convection (Reaction) Tangent Terms ***************** //
+						// convective or conservative form.
+						// for some reason this causes problems on some meshes...
+						// not needed because this isn't the tangent
+						/*
+						if (newton > 0 && newton < 2)
+						{
+							if (convective_form)
+							{
+								Fu_residual_lhs (i) += JxW[qp] * density_scale * (grad_u (0) * phi[i][qp] * u);
+								Fu_residual_lhs (i) += JxW[qp] * density_scale * (grad_u (1) * phi[i][qp] * v);
+								if (threed)
+									Fu_residual_lhs (i) += JxW[qp] * density_scale * (grad_u (2) * phi[i][qp] * w);
+
+								Fv_residual_lhs (i) += JxW[qp] * density_scale * (grad_v (0) * phi[i][qp] * u);
+								Fv_residual_lhs (i) += JxW[qp] * density_scale * (grad_v (1) * phi[i][qp] * v);
+								if (threed)
+									Fv_residual_lhs (i) += JxW[qp] * density_scale * (grad_v (2) * phi[i][qp] * w);
+
+								if (threed)
+								{
+									Fw_residual_lhs (i) += JxW[qp] * density_scale * (grad_w (0) * phi[i][qp] * u);
+									Fw_residual_lhs (i) += JxW[qp] * density_scale * (grad_w (1) * phi[i][qp] * v);
+									Fw_residual_lhs (i) += JxW[qp] * density_scale * (grad_w (2) * phi[i][qp] * w);
+								}
+							}
+							else
+							{
+								std::cout << "residual formulation not implemented for conservative form" << std::endl;
+								std::cout << "Exiting..." << std::endl;
+								std::exit(0);
+							}
+						} // end Newton Convection (Reaction) Tangent Terms
+						*/
+
+
+					
+
+					} // end non-stokes terms
+			
+
+
+					// ************ Pressure gradient term *********************** //
+					// put the density in here
+					Fu_residual_lhs (i) += -JxW[qp] * p * dphi[i][qp] (0);
+					Fv_residual_lhs (i) += -JxW[qp] * p * dphi[i][qp] (1);
+					if (threed)
+						Fw_residual_lhs (i) += -JxW[qp] * p * dphi[i][qp] (2);
+			
+
+					
+				} // end i velocity dof loop
+
+
+
+
+				// should be zero, but you never know				
+
+				for (unsigned int i = 0; i < n_p_dofs; i++)
+				{
+
+		
+					// ************* Continuity equation  ****************************** //
+					// could possibly be NOT multiplied by negative.
+					Fp_residual_lhs (i) += -JxW[qp] * psi[i][qp] * grad_u (0);
+					Fp_residual_lhs (i) += -JxW[qp] * psi[i][qp] * grad_v (1);
+					if (threed)
+						Fp_residual_lhs (i) +=	-JxW[qp] * psi[i][qp] * grad_w (2);
+
+					// ************** Stabilisation term - should be opposite sign to continuity equation
+					// stabilisation depends on if using P1-P1 or P1-P0
+					// need stabilisation for first tstep of pspg because parameter is zero
+					if (stab || (max_velocity_mag < 1e-10	&& pspg) )
+					{
+						//Kpp(i,j) += alpha*elem_volume*JxW[qp]*dpsi[i][qp]*dpsi[j][qp];
+						Fp_residual_lhs (i) += -alpha * JxW[qp] * dpsi[i][qp] * grad_p;
+					}
+
+				}
+
+				
+
+				// end residual formulation terms
+
+
+				
+
+
+
+
+
+				// *************************************************************************** //
+
+
+			}			// end of the quadrature point qp-loop
+
+
+
+
+
+
+
+			// **************** BOUNDARY TERMS/CONDITIONS **************//
+			{
+				// The penalty value.  \f$ \frac{1}{\epsilon} \f$
+				const Real penalty = 1.e10;
+
+				for (unsigned int s = 0; s < elem->n_sides (); s++)
+				{
+					//for some reason it is natural to have more than one boundary id per side or even node
+					std::vector < boundary_id_type > boundary_ids = mesh.boundary_info->boundary_ids (elem, s);
+
+					// if there is a boundary id on this side
+					if (boundary_ids.size () > 0)
+					{
+						int boundary_id = boundary_ids[0];	// should only have one hopefully
+
+
+						// *********** STRESS BOUNDARY CONDITIONS/TERMS **************** //
+						// stress boundary conditions/terms, which are only applied if not coupled
+						// otherwise we put these contributions in the off diagonal block.
+						// will have to think about this wrt the stabilisation term on the boundary
+
+						// mean pressure conditions/terms
+						if (bc_type[boundary_id].compare ("pressure") == 0
+								|| bc_type[boundary_id].compare ("stress") == 0
+								|| bc_type[boundary_id].compare ("neumann") == 0)
+						{
+
+							// init the face shape fucntions
+							fe_vel_face->reinit (elem, s);
+							fe_pres_face->reinit (elem, s);
+
+							std::vector < Real > JxW_face = JxW_face_elem;
+							//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+							if (geometry_type == 5)
+							{
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+									JxW_face[qp] *= qpoint_face[qp] (1);
+							}
+
+
+							if (multiply_system_by_dt)
+						  {
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+									JxW_face[qp] *= dt;
+								}
+						  }
+
+
+							// only really pressure coupled on the non inlets
+							if (!pressure_coupled || boundary_id == 0)
+							{
+
+								// mean pressure or moghadam resistance
+								double mean_pressure = bc_value[boundary_id];
+								double stress_mag = bc_value[boundary_id];
+
+								double pressure_deriv = bc_value[boundary_id];
+								double resistance = bc_value_resistance[boundary_id];
+								double flow_rate = bc_value_flow_rate[boundary_id];
+								double pressure_1d = bc_value_pressure_1d[boundary_id];
+
+
+								// scale the flow rate accordingly
+								double pressure_scaling = 1.0;
+								
+								if(twod_oned_tree_pressure)
+								{
+									pressure_scaling = 12./32.;
+									
+								}
+
+								//mean_pressure = 2.;
+
+								// DEBUGGING
+								/*
+								std::cout << "pressure_deriv = " << pressure_deriv << std::endl;
+								std::cout << "resistance = " << resistance << std::endl;
+								std::cout << "flow_rate = " << flow_rate << std::endl;
+								std::cout << "pressure_1d = " << pressure_1d << std::endl;
+								*/									
+
+								if (bc_type[boundary_id].compare ("neumann") == 0)
+								  mean_pressure = 0;
+
+								// we only want to scale the pressure if we're not doing a coupled simulation
+								/*
+								if ((sim_type == 0 && !known_boundary_conditions) || (sim_type == 2 && !known_boundary_conditions) )
+								  mean_pressure *= time_scaling;
+								*/
+
+
+
+								//std::cout << "boundary_id " << boundary_id << ", value = " << mean_pressure << std::endl;
+
+								DenseMatrix < Number > stress;
+								DenseVector < Number > normal_stress;
+								unsigned int dimension = 2;
+								if (threed)
+								  dimension = 3;
+								normal_stress.resize (dimension);
+
+								if(bc_type[boundary_id].compare ("stress") == 0)
+								{
+
+									stress.resize (dimension, dimension);
+									//at the moment we just to a vector in normal direction for stress
+									if (sim_type == 0 || (sim_type == 2 && !known_boundary_conditions) )
+									  stress_mag *= time_scaling;
+
+									//make stress identity times constant
+									stress (0, 0) = 1.0;
+									stress (1, 1) = 1.0;
+									if (threed)
+										stress (2, 2) = 1.0;
+
+									stress *= stress_mag;
+								}
+
+
+
+								// DEBUGGING
+								/*
+								std::vector < double >temp_vector (n_u_dofs);
+								std::vector < std::vector <double > >temp_matrix_1 (n_u_dofs,std::vector <double >(n_u_dofs));
+								std::vector < std::vector <double > >temp_matrix_2 (n_u_dofs,std::vector <double >(n_u_dofs));
+								//double extra_terms = 0;	// unused
+								double actual_terms = 0;
+								//double actual_terms_2 = 0.;	// unused
+								//std::cout << "no gps = " << qface.n_points() << std::endl;
+								//std::cout << "no u_dofs = " << n_u_dofs << std::endl;
+								*/
+
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+
+									//std::cout << "face qpoint = " << qpoint_face[qp] << std::endl;
+									if (bc_type[boundary_id].compare ("stress") == 0)
+									{
+										normal_stress (0) = stress (0,0) * qface_normals[qp] (0) + stress (0, 1) * qface_normals[qp] (1);
+										if (threed)
+										  normal_stress (0) += stress (0,2) * qface_normals[qp] (2);
+
+										normal_stress (1) = stress (1, 0) * qface_normals[qp] (0) + stress (1, 1) * qface_normals[qp] (1);
+										if (threed)
+										  normal_stress (1) += stress (1,2) * qface_normals[qp] (2);
+
+										if (threed)
+						  				  normal_stress (2) = stress (2,0) * qface_normals[qp] (0) + stress (2,1) * qface_normals[qp] (1) + stress (2, 2) * qface_normals[qp] (2);
+									}
+									else if (bc_type[boundary_id].compare ("pressure") == 0)
+									{
+										normal_stress (0) = mean_pressure * qface_normals[qp] (0);
+										normal_stress (1) = mean_pressure * qface_normals[qp] (1);
+										if (threed)
+										  normal_stress (2) = mean_pressure * qface_normals[qp] (2);
+									}
+
+
+									double dynamic_pressure = 0.;
+									double u=0.,v=0.,w=0.,u_old=0.,v_old=0.,w_old=0.;
+									NumberVectorValue U,U_old;
+									if(total_pressure_bc)
+									{										
+
+										for (unsigned int l = 0; l < n_u_dofs; l++)
+										{
+											// From the previous Newton iterate:
+											u +=	phi[l][qp] * system->current_solution (dof_indices_u[l]);
+											v +=	phi[l][qp] * system->current_solution (dof_indices_v[l]);
+											if (threed)
+												w +=  phi[l][qp] * system->current_solution (dof_indices_w[l]);
+
+											// From the previous time step:
+											u_old +=	phi[l][qp] * system->old_solution (dof_indices_u[l]);
+											v_old +=	phi[l][qp] * system->old_solution (dof_indices_v[l]);
+											if (threed)
+												w_old +=  phi[l][qp] * system->old_solution (dof_indices_w[l]);
+										}
+
+										// vector forms of velocities
+										if (threed)
+											U_old = NumberVectorValue (u_old, v_old, w_old);
+										else
+											U_old = NumberVectorValue (u_old, v_old);
+
+
+										if (threed)
+											U = NumberVectorValue (u, v, w);
+										else
+											U = NumberVectorValue (u, v);
+
+									}
+
+									// add terms to vectors
+									// want to do this if we are on the inlet and moghadam
+									if (!moghadam_coupling || boundary_id == 0)
+									{
+										// not needed because part of f
+									}
+									else
+									{
+										// don't need to construct the moghadam vector from which we'll construct the additional term for the tangent matrix
+
+										// add the newton components to the rhs when doing moghadam nonlinear
+										// actually don't need to add the newton terms, only need the normal terms in the residual (for 1 or 2)
+										if(moghadam_coupling)
+										{
+											for (unsigned int i = 0; i < n_u_dofs; i++)
+											{
+												
+												// while resistance comes from the equations
+												// in the bc ns_assembler, this is done by updating all the values except the pressure_deriv
+												Fu_residual_lhs (i) += JxW_face[qp] * pressure_scaling * (pressure_1d) * qface_normals[qp] (0) * phi_face[i][qp];
+												Fv_residual_lhs (i) += JxW_face[qp] * pressure_scaling * (pressure_1d) * qface_normals[qp] (1) * phi_face[i][qp];
+												if (threed)
+												{
+													Fw_residual_lhs (i) += JxW_face[qp] * (pressure_1d) * qface_normals[qp] (2) * phi_face[i][qp];
+												}
+											}
+
+										}
+
+									}// done adding terms to vectors
+
+
+
+
+									if(total_pressure_bc == 4)
+									{
+										/*
+										for (unsigned int i = 0; i < n_u_dofs; i++)
+										{
+										
+											// while resistance comes from the equations
+											// in the bc ns_assembler, this is done by updating all the values except the pressure_deriv
+											Fu_residual_lhs (i) += -JxW_face[qp] * 0.5 * density_scale * (U*U) * qface_normals[qp] (0) * phi_face[i][qp];
+											Fv_residual_lhs (i) += -JxW_face[qp] * 0.5 * density_scale * (U*U) * qface_normals[qp] (1) * phi_face[i][qp];
+											if (threed)
+											{
+												Fw_residual_lhs (i) += JxW_face[qp] * 0.5 * density_scale * (U*U) * qface_normals[qp] (2) * phi_face[i][qp];
+											}
+										}
+										*/
+
+										for (unsigned int i = 0; i < n_u_dofs; i++)
+										{
+										
+											// while resistance comes from the equations
+											// in the bc ns_assembler, this is done by updating all the values except the pressure_deriv
+											Fu_residual_lhs (i) += -JxW_face[qp] * 0.5 * density_scale * (u) * qface_normals[qp] (0) * phi_face[i][qp];
+											Fv_residual_lhs (i) += -JxW_face[qp] * 0.5 * density_scale * (v) * qface_normals[qp] (1) * phi_face[i][qp];
+											if (threed)
+											{
+												Fw_residual_lhs (i) += JxW_face[qp] * 0.5 * density_scale * (U*U) * qface_normals[qp] (2) * phi_face[i][qp];
+											}
+										}
+									}
+								}// end quad loop
+							} // end pressure bcs
+
+
+
+							// ********* DO BOUNDARY STABILISATION ****************** //
+							if (convective_form || neumann_stabilised || bertoglio_stabilisation)
+							{
+
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+
+									//let us calculate the inflow normal velocity
+									double previous_normal_velocity = 0.0;
+									Number u = 0., v = 0., w = 0.;
+									Number previous_u = 0., previous_v = 0., previous_w = 0.;
+
+									for (unsigned int l = 0; l < n_u_dofs; l++)
+					 				{
+										// From the previous Newton iterate:
+										u += phi_face[l][qp] * system->current_solution (dof_indices_u[l]);
+										v += phi_face[l][qp] * system->current_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											w += phi_face[l][qp] * system->current_solution (dof_indices_w[l]);
+										}
+
+										// From the previous time_step:
+										previous_u += phi_face[l][qp] * system->old_solution (dof_indices_u[l]);
+										previous_v += phi_face[l][qp] * system->old_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											previous_w += phi_face[l][qp] * system->old_solution (dof_indices_w[l]);
+										}
+								  }
+
+									previous_normal_velocity +=	qface_normals[qp] (0) * previous_u;
+									previous_normal_velocity +=	qface_normals[qp] (1) * previous_v;
+									if (threed)
+									{
+										previous_normal_velocity +=	qface_normals[qp] (2) * previous_w;
+									}
+
+									//says whether is on the correct boundary, inflow for convective form and outflow for conservative form
+									int previous_bdy_bool = 0;
+									if (fabs (previous_normal_velocity) >	1e-10)
+									{
+										previous_bdy_bool = ((-(previous_normal_velocity - fabs (previous_normal_velocity)) / 2.0 / fabs (previous_normal_velocity)) + 0.5);
+								  }
+
+									
+									if (convective_form)
+									{
+										// if in convective form we only add a term if doing the inflow stabilisation
+										if (neumann_stabilised)
+										{
+											// - \int u_n^{in} * w * u
+											if (neumann_stabilised_linear)
+											{
+												for (unsigned int i = 0; i < n_u_dofs; i++)
+												{
+													Fu_residual_lhs (i) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (u * phi_face[i][qp]);
+													Fv_residual_lhs (i) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (v * phi_face[i][qp]);
+													if (threed)
+													{
+														Fw_residual_lhs (i) += -backflow_stab_param * JxW_face[qp] * previous_normal_velocity * previous_bdy_bool * (w * phi_face[i][qp]);
+													}
+												}
+											}
+										}
+									}
+								}	//end face quad loop
+
+
+							 
+
+
+							}	//end if(bc_type[boundary_id].compare("pressure") == 0)
+
+							// mean-flow conditions/terms
+							else if (bc_type[boundary_id].compare ("mean-flow") == 0)
+							{
+
+								//NOT IMPLEMENTED
+
+							}	//end if(bc_type[boundary_id].compare("mean-flow") == 0)
+				  	}
+
+
+
+
+
+						// ************** COUPLING BOUNDARY TERMS ********************* //
+						// construct stuff for mono coupling
+						// must be pressure coupled and not the inflow bdy
+						if(pressure_coupled && boundary_id != 0)
+				  	{
+
+							// mean pressure conditions/terms
+							if (bc_type[boundary_id].compare ("pressure") == 0)
+							{
+								//set the dof_index_0 to the correct node number
+								// primary pressure boundary node comes from either daughter 1 or daughter 2 (so we choose daughter 1)
+								// primary flux node comes from daughter 1
+								pressure_1d_index = primary_pressure_boundary_nodes_1d[boundary_id];
+
+								// pressure value
+								double pressure_1d_value = system->current_solution (pressure_1d_index);
+
+								fe_vel_face->reinit (elem, s);
+
+								std::vector < Real > JxW_face = JxW_face_elem;
+								//if axisym then need to multiply all integrals by "r" i.e. y = qpoint[qp](1)
+								if (geometry_type == 5)
+					  		{
+									for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+										JxW_face[qp] *= qpoint_face[qp] (1);
+						  	}
+
+
+								if (multiply_system_by_dt)
+						  	{
+									for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+									{
+										JxW_face[qp] *= dt;
+									}
+								}
+
+								// scale the flow rate accordingly
+								double pressure_scaling = 1.0;
+								
+								if(twod_oned_tree_pressure)
+								{
+									pressure_scaling = 12./32.;
+									
+								}
+
+
+								// for the pressure term in the 3d equations
+								// scale the 3d pressure to be applied as a 2d pressure
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+					  		{
+									for (unsigned int i = 0; i < n_u_dofs; i++)
+									{
+										Fu_residual_lhs (i) +=	pressure_scaling * JxW_face[qp] * pressure_1d_value * phi_face[i][qp] * qface_normals[qp] (0);
+										Fv_residual_lhs (i) +=	pressure_scaling * JxW_face[qp] * pressure_1d_value * phi_face[i][qp] * qface_normals[qp] (1);
+										if (threed)
+										  Fw_residual_lhs (i) +=	JxW_face[qp] * pressure_1d_value * phi_face[i][qp] * qface_normals[qp] (2);
+									}
+
+						  	}	//end face quad loop
+
+								// for the flux condition in the 1d equations
+								flux_1d_index = primary_flux_boundary_nodes_1d[boundary_id];
+
+								// scale the flow rate accordingly
+								double flow_rate_scaling = 1.0;
+								
+								if(twod_oned_tree)
+								{
+									// NONONONO - the scaling factor should be based on the inflow boundary, where the conversion took place
+									//double diameter_3d = es->parameters.get<double> ("trachea_diameter");	
+									//double diameter_3d = (*surface_boundaries)[boundary_id]->get_max_radius() * 2.0;
+									//flow_rate_scaling = 3.*M_PI/16.*diameter_3d;
+
+									// this should conserve the mean 3D velocity across the boundary
+									//double radius_3d = (*surface_boundaries)[boundary_id]->get_max_radius();
+									double radius_3d = (*surface_boundaries)[0]->get_max_radius();
+									flow_rate_scaling = M_PI*radius_3d/2.;
+									
+								}
+
+								
+
+								// for the pressure term in the 3d equations
+								// EQN IS + dt*Q_1d - dt*Q_3d = 0
+								// later on we eliminate the terms that correspond to the 
+								for (unsigned int qp = 0; qp < qface.n_points (); qp++)
+								{
+									// calculate the velocity
+									Number u = 0., v = 0., w = 0.;
+
+									for (unsigned int l = 0; l < n_u_dofs; l++)
+					 				{
+										// From the previous Newton iterate:
+										u += phi_face[l][qp] * system->current_solution (dof_indices_u[l]);
+										v += phi_face[l][qp] * system->current_solution (dof_indices_v[l]);
+										if (threed)
+										{
+											w += phi_face[l][qp] * system->current_solution (dof_indices_w[l]);
+										}
+									}
+
+
+									Fe_coupled_u += mono_flow_rate_penalty_param * flow_rate_scaling *	JxW_face[qp] * u * qface_normals[qp] (0);
+									Fe_coupled_u +=	mono_flow_rate_penalty_param * flow_rate_scaling * JxW_face[qp] * v * qface_normals[qp] (1);
+									if (threed)
+						  		{
+										Fe_coupled_u +=	mono_flow_rate_penalty_param * JxW_face[qp] * w * qface_normals[qp] (2);
+						  		}
+								}
+								//std::cout << "normal = " << qface_normals[qp] << std::endl;
+
+					  	}	//end face quad loop
+						}
+
+					}		// end coupling terms
+				}	//end side loop
+
+
+				// ******************* PIN THE PRESSURE **************************** //
+				// Pin the pressure to zero at global node number "pressure_node".
+				// This effectively removes the non-trivial null space of constant
+				// pressure solutions.
+
+				// not needed in residual formulation, because part of f
+
+
+			}			// end boundary condition section
+
+
+			// ***************** INSERT COUPLING BOUNDARY CONDITIONS ********* //
+			// if we have pressure coupled, then we need and found a boundary
+			// the only problem is that we don't want the dofs that are on the 
+			// boundary to be affected. so we zero them out and assume that there
+			// is zero contribution from them, assumming a zero boundary condition
+			// this is fairly common especially in my applications.
+			if (pressure_coupled && pressure_1d_index != 0)
+			{
+
+				// if one of the dofs is a 
+				// constrained dof then we zero it. otherwise we add it to the matrix
+				// problem is that the pressure integral should contain stuff from the boundary
+				// maybe it wil average? who knows... seems like it, but it isn't nice.                         
+				// no pressure coupling
+
+
+
+				//flux coupling - only in row corresponding to 1d dof is how it is defined
+				// this 1d dof is now pressure 0 so that getting towards symmetry
+
+				// if one of the dofs is a 
+				// constrained dof then we zero it. otherwise we add it to the matrix
+				system->get_vector("Residual LHS").add(flux_1d_index,Fe_coupled_u);
+
+				// reset to zero so that isn't used in next loop.
+				pressure_1d_index = 0;
+				flux_1d_index = 0;
+			}
+
+
+
+
+
+
+
+
+
+
+			// ********* ASSEMBLE AND APPLY DIRICHLET BOUNDARY CONDITIONS ******** //
+			// if we are estimating the error then calcalate relative contributions
+
+			// ************** INSERT LOCAL MATRICES INTO BIG MATRIX ************ //
+			// apply dirichlet conditions (e.g. wall and maybe inflow)
+			//hmm really not sure bout this last argument but it works
+			//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);
+			//dof_map.heterogenously_constrain_element_matrix_and_vector (Ke,  Fe,  dof_indices,  true);
+			//dof_map.constrain_element_matrix_and_vector (Ke, Fe, dof_indices,false);                              
+
+			//Fe_residual_lhs.print(std::cout);
+
+			// now we constrain the residual lhs homogenously and add it to a vector
+			dof_map.constrain_element_vector (Fe_residual_lhs,  dof_indices,  true);
+
+			system->get_vector("Residual LHS").add_vector (Fe_residual_lhs, dof_indices);
+
+			// ***************************************************************** //
+
+
+		}
+
+	} // ************** end of element loop
+
+
+	// leave the final putting together to the 0D for mono
+	if(residual_formulation && !pressure_coupled)
+	{
+		// make the rhs -Ax+f
+		system->rhs->close();
+		system->rhs->zero();
+		system->rhs->add(-1.0,system->get_vector("Residual LHS"));
+
+		if(increment_boundary_conditions && nonlinear_iteration == 1)
+			system->rhs->add(system->get_vector("Forcing Vector BC"));
+		else
+			system->rhs->add(system->get_vector("Forcing Vector"));
+/*
+		std::cout << "***** residual_lhs_norm = " << system->get_vector("Residual LHS").l2_norm() << std::endl;
+		std::cout << "***** forcing_vector_norm = " << system->get_vector("Forcing Vector").l2_norm() << std::endl;
+	*/
+	}
+
+
+
+	if (threed)
+		std::cout << "3D residual assembly ended." << std::endl;
+	else
+		std::cout << "2D residual assembly ended." << std::endl;
 
 
 

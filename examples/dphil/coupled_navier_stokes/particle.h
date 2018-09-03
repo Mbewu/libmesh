@@ -94,6 +94,12 @@ class Particle
 
 		NumberVectorValue get_current_velocity() { return current_velocity; };
 
+		// move particles over one timestep
+		unsigned int get_airway_id() { return current_elem->subdomain_id();};
+
+		// move particles over one timestep
+		void set_gravity();
+
 		void try_and_move();
 
 		int get_status()
@@ -140,6 +146,8 @@ class Particle
 
 		void close_to_wall ();
 
+		void set_drag_coeff_coefficients ();
+
 		
 		
 		EquationSystems* es;
@@ -165,6 +173,16 @@ class Particle
 		double entrance_time;
 		double failure_perturbation_magnitude;
 		double perturbation_magnitude;
+		Point gravity;
+		double particle_density;
+		double particle_air_density;
+		double particle_air_viscosity;
+		double particle_velocity_units;
+		double particle_diameter;
+		double dt;	// assuming constant
+		std::vector<std::vector<double> > drag_coeff_coefficients;
+
+		std::vector<double> weibel_gravity_angles;
 
 		bool deposition_verbose;
 

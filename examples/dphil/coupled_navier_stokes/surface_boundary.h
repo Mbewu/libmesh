@@ -95,6 +95,8 @@ public:
 
 			  const Elem* elem = *el;
 				// 0,1,2 are edge elements -- 27 is a nodeelem
+
+				//std::cout << "elem->type() = " << elem->type() << std::endl;
 				if(elem->type() > 2 && elem->type() != 27)
 				{
 					for (unsigned int s=0; s<elem->n_sides(); s++)
@@ -102,14 +104,16 @@ public:
 						//for some reason it is natural to have more than one boundary id per side or even node
 						std::vector<boundary_id_type> boundary_ids = mesh.boundary_info->boundary_ids(elem,s);
 
+
+						// boundary_ids[0] is the actual boundary id
 						if(boundary_ids.size() > 0 && boundary_ids[0] == surface_boundary_id) 
 						{
-						
+							
 							// now we know we are on a boundary, are we on the edge of a boundary
 					    AutoPtr<Elem> side (elem->build_side(s));
 							fe_face->reinit(elem, s);
 
-					    // Loop over the nodes on the side.
+							// Loop over the nodes on the side.
 					    for (unsigned int ns=0; ns<side->n_nodes(); ns++)
 					    {
 								std::vector<boundary_id_type> side_boundary_ids = mesh.boundary_info->boundary_ids(side->get_node(ns));

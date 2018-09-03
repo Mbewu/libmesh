@@ -433,7 +433,7 @@ PetscErrorCode MonolithicShellPCSetUp(PC pc,Mat velocity_matrix, KSP schur_ksp, 
   	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2); // not sure why this doesn't work anymore
+	ierr = PetscLogStagePush(3); // not sure why this doesn't work anymore
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
@@ -547,7 +547,7 @@ PetscErrorCode Monolithic2ShellPCSetUp(PC pc,Mat velocity_matrix, Vec non_zero_c
   	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	ierr = PetscLogStagePush(3);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -773,7 +773,7 @@ PetscErrorCode Monolithic3ShellPCSetUp(PC pc,Mat schur_complement_approx, KSP sc
 
 	std::cout << "In Monolithic3ShellPCSetUp." << std::endl;
 
-	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	ierr = PetscLogStagePush(3);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -854,7 +854,7 @@ PetscErrorCode Monolithic4ShellPCSetUp(PC pc,Mat schur_complement_approx, Vec no
 
 	std::cout << "In Monolithic4ShellPCSetUp." << std::endl;
 
-	ierr = PetscLogStagePush(2);	// not sure why this log thing makes an error now...
+	ierr = PetscLogStagePush(3);	// not sure why this log thing makes an error now...
 
   	ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
 
@@ -1254,7 +1254,7 @@ PetscErrorCode LSCScaledStabilisedShellPCSetUp(PC pc, Mat velocity_mass_matrix, 
 	
 
 	// ********* SET THE VELOCITY MASS MATRIX ****************	//
-  	shell->velocity_matrix = velocity_mass_matrix;
+  shell->velocity_matrix = velocity_mass_matrix;
 
 
 	
@@ -1886,7 +1886,9 @@ PetscErrorCode PCDShellPCApply(PC pc,Vec x,Vec y)
 
 	// ******* Apply F_p ************ //
 	//
+	std::cout << "before pressure convection matmult" << std::endl;
 	ierr = MatMult(shell->pressure_convection_diffusion_matrix,shell->temp_vec,shell->temp_vec_2); CHKERRQ(ierr);
+	std::cout << "after pressure convection matmult" << std::endl;
 	//ierr = MatMult(shell->pressure_convection_diffusion_matrix,x,shell->temp_vec_2); CHKERRQ(ierr);
 
 	
@@ -2007,7 +2009,7 @@ PetscErrorCode MonolithicShellPCApply(PC pc,Vec x,Vec y)
   	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2);
+	ierr = PetscLogStagePush(3);
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -2126,7 +2128,7 @@ PetscErrorCode Monolithic2ShellPCApply(PC pc,Vec x,Vec y)
   	MonoShellPC  *shell;
   	PetscErrorCode ierr;
 
-	ierr = PetscLogStagePush(2);
+	ierr = PetscLogStagePush(3);
 
 
   	ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
@@ -2293,10 +2295,12 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
   NSShellPC  *shell;
   PetscErrorCode ierr;
 
+	//std::cout << "inside lsc scaled stabiised shell pc" << std::endl;
+
 	//printf ("inside shell pc lsc scaled stabilised james pcapply");
 
 	//PetscLogStage pcd_stage;	// unused
-	ierr = PetscLogStagePush(1);
+	ierr = PetscLogStagePush(2);
 
 	//printf ("in PCD preconditioner\n");
 
@@ -2311,7 +2315,9 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
 	//Mat lap_mat;
 	//KSPGetOperators(shell->inner_lap_ksp,&lap_mat,NULL); CHKERRQ(ierr);
 	//MatView(lap_mat,PETSC_VIEWER_STDOUT_WORLD);
+	//std::cout << "before lap solve 1" << std::endl;
 	KSPSolve(shell->inner_lap_ksp,x,shell->temp_vec_3);
+	//std::cout << "after lap solve 1" << std::endl;
 
 
 	//std::cout << "x: " << std::endl;
@@ -2356,7 +2362,9 @@ PetscErrorCode LSCScaledStabilisedShellPCApply(PC pc,Vec x,Vec y)
 	//VecView(r_u,PETSC_VIEWER_STDOUT_SELF);
 	//std::cout << norm << std::endl;
 
+	//std::cout << "before lap solve 2" << std::endl;
 	KSPSolve(shell->inner_lap_ksp,shell->temp_vec_3,y);
+	//std::cout << "after lap solve 2" << std::endl;
 
 	//std::cout << "y: " << std::endl;
 	VecNorm(y,NORM_2,&norm);
@@ -2951,4 +2959,411 @@ PetscErrorCode MatShellMultFull(Mat A, Vec vx, Vec vy)
 
 	return 0;
 }
+
+
+
+
+
+
+
+
+
+// ************ MATSHELL MULT ***************** //
+PetscErrorCode MoghadamSchurMatShellMultFull(Mat A, Vec vx, Vec vy)
+{
+	PetscErrorCode ierr;
+	
+	// so, the output is vy
+	// we need to calculate:
+	// - vy = C * vx - B*H*B^T * vx
+	// - we will do :
+	// - temp_1 = B^T * vx (size vel)
+	// - temp_2 = H * temp_1 (size vel)
+	// - temp_3 = B * temp_2 (size pres)
+	// - vy  = C * vx
+	// - vy = vy - temp_3
+	
+	
+	MoghadamSchurShellMatrixCtx *ctx;
+
+	ierr = MatShellGetContext(A, (void **)&ctx); CHKERRQ(ierr);
+
+	//std::cout << "not made vecs" << std::endl;
+	Vec temp_vec_1;	// size vel
+	Vec temp_vec_2;	// size vel
+	Vec temp_vec_3;	// size pres
+	Vec inv_diag;
+  // create some vectors for temporary pc applying
+	PetscInt n_vel;
+	PetscInt n_vel_local;
+	PetscInt n_pres;
+	PetscInt n_pres_local;
+	//std::cout << "not got mat" << std::endl;
+	ierr = MatGetSize(ctx->moghadam_bt_matrix,&n_vel,&n_pres); CHKERRQ(ierr);
+	ierr = MatGetLocalSize(ctx->moghadam_bt_matrix,&n_vel_local,&n_pres_local); CHKERRQ(ierr);
+
+
+
+
+
+
+
+
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_1); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_2); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_3); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_1, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_2, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_3, n_pres_local, n_pres); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_1); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_2); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_3); CHKERRQ(ierr);
+
+	
+	// - temp_1 = B^T * vx (size vel)
+	ierr = MatMult(ctx->moghadam_bt_matrix,vx,temp_vec_1); CHKERRQ(ierr);
+
+	
+	// - temp_2 = H * temp_1 (size vel)
+	ierr = MatMult(ctx->moghadam_velocity_preconditioner_matrix,temp_vec_1,temp_vec_2); CHKERRQ(ierr);
+
+	// - temp_3 = B * temp_2 (size pres)
+	ierr = MatMult(ctx->moghadam_b_matrix,temp_vec_2,temp_vec_3); CHKERRQ(ierr);
+
+	// - vy  = C * vx
+	ierr = MatMult(ctx->moghadam_c_matrix,vx,vy); CHKERRQ(ierr);
+	// -C
+	//ierr = VecScale(vy,+1.0); CHKERRQ(ierr);
+
+
+
+	/*
+	double norm;
+	VecNorm(vx,NORM_2,&norm); 
+
+	std::cout << "vx_norm = " << norm << std::endl;
+
+	VecNorm(vy,NORM_2,&norm); 
+	std::cout << "vy_norm = " << norm << std::endl;
+	*/
+
+	// - vy = vy - temp_3
+	ierr = VecAXPY(vy,-1.,temp_vec_3); CHKERRQ(ierr);
+
+	//ierr = VecScale(vy,-1.0); CHKERRQ(ierr);
+
+	// clean up
+	ierr = VecDestroy(&temp_vec_1);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_2);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_3);CHKERRQ(ierr);
+
+
+	return 0;
+}
+
+
+
+
+
+
+// ************ MATSHELL MULT ***************** //
+PetscErrorCode MoghadamExactPCSchurMatShellMultFull(Mat A, Vec vx, Vec vy)
+{
+	PetscErrorCode ierr;
+	
+	// so, the output is vy
+	// we need to calculate:
+	// - vy = C * vx - B*H*B^T * vx
+	// - we will do :
+	// - temp_1 = B^T * vx (size vel)
+	// - temp_2 = H * temp_1 (size vel)
+	// - temp_3 = B * temp_2 (size pres)
+	// - vy  = C * vx
+	// - vy = vy - temp_3
+	
+	
+	MoghadamSchurShellMatrixCtx *ctx;
+
+	ierr = MatShellGetContext(A, (void **)&ctx); CHKERRQ(ierr);
+
+	//std::cout << "not made vecs" << std::endl;
+	Vec temp_vec_1;	// size vel
+	Vec temp_vec_2;	// size vel
+	Vec temp_vec_3;	// size pres
+	Vec inv_diag;
+  // create some vectors for temporary pc applying
+	PetscInt n_vel;
+	PetscInt n_vel_local;
+	PetscInt n_pres;
+	PetscInt n_pres_local;
+	//std::cout << "not got mat" << std::endl;
+	ierr = MatGetSize(ctx->moghadam_bt_matrix,&n_vel,&n_pres); CHKERRQ(ierr);
+	ierr = MatGetLocalSize(ctx->moghadam_bt_matrix,&n_vel_local,&n_pres_local); CHKERRQ(ierr);
+
+
+
+
+	// KSP for velocity block
+	
+	KSP velocity_ksp;
+
+	//ierr = KSPDestroy(&shell->inner_mass_ksp);CHKERRQ(ierr);
+	ierr = KSPCreate(PETSC_COMM_WORLD,&velocity_ksp); CHKERRQ(ierr);
+
+	//get operators from the outer pcshell solver
+	//ierr = KSPGetOperators(velocity_ksp,&ctx->moghadam_velocity_preconditioner_matrix,&ctx->moghadam_velocity_preconditioner_matrix); CHKERRQ(ierr);
+	ierr = KSPSetOperators(velocity_ksp,ctx->moghadam_velocity_preconditioner_matrix,ctx->moghadam_velocity_preconditioner_matrix); CHKERRQ(ierr);
+
+	// setup up the operators for the first inner solve
+
+	PC velocity_pc;
+	ierr = KSPGetPC(velocity_ksp,&velocity_pc); CHKERRQ(ierr);
+	ierr = PCSetType(velocity_pc,PCLU); CHKERRQ(ierr);
+
+	ierr = PCSetOperators(velocity_pc,ctx->moghadam_velocity_preconditioner_matrix,ctx->moghadam_velocity_preconditioner_matrix); CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (velocity_ksp); CHKERRQ(ierr);
+
+
+
+
+
+
+
+
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_1); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_2); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_3); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_1, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_2, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_3, n_pres_local, n_pres); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_1); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_2); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_3); CHKERRQ(ierr);
+
+	
+	// - temp_1 = B^T * vx (size vel)
+	ierr = MatMult(ctx->moghadam_bt_matrix,vx,temp_vec_1); CHKERRQ(ierr);
+
+	
+	// - temp_2 = H * temp_1 (size vel)
+	//ierr = MatMult(ctx->moghadam_velocity_preconditioner_matrix,temp_vec_1,temp_vec_2); CHKERRQ(ierr);
+	KSPSolve(velocity_ksp,temp_vec_1,temp_vec_2);
+
+	// - temp_3 = B * temp_2 (size pres)
+	ierr = MatMult(ctx->moghadam_b_matrix,temp_vec_2,temp_vec_3); CHKERRQ(ierr);
+	
+	
+	// test with just the identity as H
+	//ierr = MatMult(ctx->moghadam_b_matrix,temp_vec_1,temp_vec_3); CHKERRQ(ierr);
+
+	// - vy  = C * vx
+	ierr = MatMult(ctx->moghadam_c_matrix,vx,vy); CHKERRQ(ierr);
+	// -C
+	//ierr = VecScale(vy,+1.0); CHKERRQ(ierr);
+
+
+
+	/*
+	double norm;
+	VecNorm(vx,NORM_2,&norm); 
+
+	std::cout << "vx_norm = " << norm << std::endl;
+
+	VecNorm(vy,NORM_2,&norm); 
+	std::cout << "vy_norm = " << norm << std::endl;
+	*/
+
+	// - vy = vy - temp_3
+	ierr = VecAXPY(vy,-1.,temp_vec_3); CHKERRQ(ierr);
+
+	//ierr = VecScale(vy,-1.0); CHKERRQ(ierr);
+
+	// clean up
+	ierr = VecDestroy(&temp_vec_1);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_2);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_3);CHKERRQ(ierr);
+
+
+	ierr = KSPDestroy(&velocity_ksp);CHKERRQ(ierr);
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+// ************ MATSHELL MULT ***************** //
+PetscErrorCode MoghadamNoPCSchurMatShellMultFull(Mat A, Vec vx, Vec vy)
+{
+	PetscErrorCode ierr;
+	
+	// so, the output is vy
+	// we need to calculate:
+	// - vy = C * vx - B*H*B^T * vx
+	// - we will do :
+	// - temp_1 = B^T * vx (size vel)
+	// - temp_2 = H * temp_1 (size vel)
+	// - temp_3 = B * temp_2 (size pres)
+	// - vy  = C * vx
+	// - vy = vy - temp_3
+	
+	
+	MoghadamSchurShellMatrixCtx *ctx;
+
+	ierr = MatShellGetContext(A, (void **)&ctx); CHKERRQ(ierr);
+
+	//std::cout << "not made vecs" << std::endl;
+	Vec temp_vec_1;	// size vel
+	Vec temp_vec_2;	// size vel
+	Vec temp_vec_3;	// size pres
+	Vec inv_diag;
+  // create some vectors for temporary pc applying
+	PetscInt n_vel;
+	PetscInt n_vel_local;
+	PetscInt n_pres;
+	PetscInt n_pres_local;
+	//std::cout << "not got mat" << std::endl;
+	ierr = MatGetSize(ctx->moghadam_bt_matrix,&n_vel,&n_pres); CHKERRQ(ierr);
+	ierr = MatGetLocalSize(ctx->moghadam_bt_matrix,&n_vel_local,&n_pres_local); CHKERRQ(ierr);
+
+
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_1); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_2); CHKERRQ(ierr);
+	ierr = VecCreate(PETSC_COMM_WORLD,&temp_vec_3); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_1, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_2, n_vel_local, n_vel); CHKERRQ(ierr);
+	ierr = VecSetSizes(temp_vec_3, n_pres_local, n_pres); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_1); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_2); CHKERRQ(ierr);
+	ierr = VecSetFromOptions(temp_vec_3); CHKERRQ(ierr);
+
+	
+	// - temp_1 = B^T * vx (size vel)
+	ierr = MatMult(ctx->moghadam_bt_matrix,vx,temp_vec_1); CHKERRQ(ierr);
+
+	
+	// - temp_2 = H * temp_1 (size vel)
+	// moghadam no pc ignores this
+	//ierr = MatMult(ctx->moghadam_velocity_preconditioner_matrix,temp_vec_1,temp_vec_2); CHKERRQ(ierr);
+
+	// - temp_3 = B * temp_2 (size pres)
+	ierr = MatMult(ctx->moghadam_b_matrix,temp_vec_1,temp_vec_3); CHKERRQ(ierr);
+	
+	
+	// test with just the identity as H
+	//ierr = MatMult(ctx->moghadam_b_matrix,temp_vec_1,temp_vec_3); CHKERRQ(ierr);
+
+	// - vy  = C * vx
+	ierr = MatMult(ctx->moghadam_c_matrix,vx,vy); CHKERRQ(ierr);
+	// -C
+	//ierr = VecScale(vy,+1.0); CHKERRQ(ierr);
+
+
+
+	/*
+	double norm;
+	VecNorm(vx,NORM_2,&norm); 
+
+	std::cout << "vx_norm = " << norm << std::endl;
+
+	VecNorm(vy,NORM_2,&norm); 
+	std::cout << "vy_norm = " << norm << std::endl;
+	*/
+
+	// - vy = vy - temp_3
+	ierr = VecAXPY(vy,-1.,temp_vec_3); CHKERRQ(ierr);
+
+	//ierr = VecScale(vy,-1.0); CHKERRQ(ierr);
+
+	// clean up
+	ierr = VecDestroy(&temp_vec_1);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_2);CHKERRQ(ierr);
+	ierr = VecDestroy(&temp_vec_3);CHKERRQ(ierr);
+
+	return 0;
+}
+
+
+
+
+
+PetscErrorCode MoghadamVelocityPCApply(PC pc,Vec x,Vec y)
+{
+  PetscErrorCode ierr;
+	
+  MoghadamVelocityPCCtx  *shell;
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+
+
+	ierr = MatMult(shell->moghadam_velocity_preconditioner_matrix,x,y);
+	
+
+/*
+	
+	double norm;
+	VecNorm(x,NORM_2,&norm); 
+
+	std::cout << "vx_norm = " << norm << std::endl;
+
+	VecNorm(y,NORM_2,&norm); 
+	std::cout << "vy_norm = " << norm << std::endl;
+	
+*/
+
+	//ierr = VecAXPY(y,1.,x); CHKERRQ(ierr);
+	
+
+  return 0;
+}
+
+
+
+PetscErrorCode ShellPCCreate(MoghadamVelocityPCCtx **shell)
+{
+  MoghadamVelocityPCCtx  *newctx;
+  PetscErrorCode ierr;
+
+	ierr         = PetscNew(&newctx);CHKERRQ(ierr);
+  newctx->moghadam_velocity_preconditioner_matrix = 0;
+  *shell       = newctx;
+  return 0;
+}
+
+PetscErrorCode MoghadamVelocityPCDestroy(PC pc)
+{
+  MoghadamVelocityPCCtx  *shell;
+  PetscErrorCode ierr;
+
+		std::cout << "boo" << std::endl;
+  ierr = PCShellGetContext(pc,(void**)&shell);CHKERRQ(ierr);
+	//ierr = MatDestroy(&shell->moghadam_velocity_preconditioner_matrix);CHKERRQ(ierr);
+
+		std::cout << "boo" << std::endl;
+  ierr = PetscFree(shell);CHKERRQ(ierr);
+
+		std::cout << "boo" << std::endl;
+  return 0;
+}
+
+PetscErrorCode MoghadamVelocityPCSetUp(PC pc, Mat moghadam_velocity_preconditioner_matrix)
+{
+	printf ("inside moghadam velocity pc setup");
+  MoghadamVelocityPCCtx  *shell;
+  PetscErrorCode ierr;
+
+
+  ierr = PCShellGetContext(pc,(void**)&shell); CHKERRQ(ierr);
+
+ 	shell->moghadam_velocity_preconditioner_matrix = moghadam_velocity_preconditioner_matrix;
+
+  return 0;
+}
+
+
+
 

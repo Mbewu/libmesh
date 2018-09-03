@@ -868,6 +868,7 @@ PetscLinearSolver<T>::solve (SparseMatrix<T>&  matrix_in,
 }
 
 
+// doesn't actually need solution or rhs or tol or m_its
 template <typename T>
 std::pair<unsigned int, Real>
 PetscLinearSolver<T>::solve_simple_setup (SparseMatrix<T>&  matrix_in,

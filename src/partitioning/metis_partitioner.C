@@ -458,7 +458,7 @@ void MetisPartitioner::_do_partition (MeshBase& mesh,
 			{
 				unsigned int proc_id = elements_added_1d/elements_per_proc_1d;
 	      			elem->processor_id() = proc_id;	// should already be n_pieces - 1
-				std::cout << "proc id = " << proc_id << std::endl;				
+				//std::cout << "proc id = " << proc_id << std::endl;				
 	      			elements_added_1d++;
 			}
     		}

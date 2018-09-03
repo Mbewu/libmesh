@@ -35,6 +35,21 @@ Airway::Airway ()
 	terminal_exit_fraction = 0.;
 
 	particle_fraction = 0.;
+	cumulative_particle_fraction = 0.;
+
+	is_symmetric_airway = false;
+	num_symmetric_airways = 0;
+
+	acinar_id = -1;
+	acinar_elem = -1;
+	acinar_output_elem = -1;
+
+	resistance = 0.;
+	poiseuille_resistance = 0.;
+	wall_thickness = 0.;
+	airway_compliance = 0.;
+	inertance = 0.;
+	local_acinar_compliance = -1.;
 
 }
 
@@ -181,6 +196,11 @@ void Airway::move_element_numbers(unsigned int amount)
 		parent += amount;
 }
 
+
+
+
+// ***************** output and print stuff ******************** //
+
 void Airway::print()
 {
 	std::cout << "\t local_elem_number = " << local_elem_number << std::endl;
@@ -201,12 +221,22 @@ void Airway::print()
 	std::cout << "\t num_daughters = " << daughters.size() << std::endl;
 	for(unsigned int i=0; i<daughters.size(); i++)
 	{
-		std::cout << "\t\t " << i << " = " << daughters[i] << std::endl;
+		std::cout << "\t  " << i << ": " << daughters[i] << std::endl;
 	}
 	std::cout << "\t parent = " << parent << std::endl;
 	std::cout << "\t node1 = " << node_1 << std::endl;
 	std::cout << "\t node2 = " << node_2 << std::endl;
 	std::cout << "\t poiseuille = " << poiseuille << std::endl;
+	// symmetric airway stuff
+	if(is_symmetric_airway)
+	{
+		std::cout << "\t is_symmetric_airway = TRUE " << std::endl;
+		std::cout << "\t num_symmetric_airways = " << num_symmetric_airways << std::endl;
+	}
+	else
+	{
+		std::cout << "\t is_symmetric_airway = FALSE" << std::endl;
+	}
 
 }
 
@@ -228,18 +258,37 @@ void Airway::print_concise()
 	std::cout << "\t num_daughters = " << daughters.size() << std::endl;
 	for(unsigned int i=0; i<daughters.size(); i++)
 	{
-		std::cout << "\t\t " << i << " = " << daughters[i] << std::endl;
+		std::cout << "\t  " << i << ": " << daughters[i] << std::endl;
 	}
-
+	// symmetric airway stuff
+	if(is_symmetric_airway)
+	{
+		std::cout << "\t is_symmetric_airway = TRUE " << std::endl;
+		std::cout << "\t num_symmetric_airways = " << num_symmetric_airways << std::endl;
+	}
+	else
+	{
+		std::cout << "\t is_symmetric_airway = FALSE" << std::endl;
+	}
 }
 
 
+
+
+
+
+
+
+
+// ************** particle fraction functions **************** //
 
 void Airway::add_particle_fraction(double amount, double entry_time)
 {
 	particle_fraction_amount.push_back(amount);
 	particle_fraction_entry_time.push_back(entry_time);
 	particle_fraction_distance.push_back(0.);
+
+	cumulative_particle_fraction += amount;
 }
 
 
@@ -280,4 +329,78 @@ void Airway::remove_particle_fraction(unsigned int particle_fraction_number)
 	particle_fraction_amount.erase(particle_fraction_amount.begin() + particle_fraction_number);
 	particle_fraction_entry_time.erase(particle_fraction_entry_time.begin() + particle_fraction_number);
 	particle_fraction_distance.erase(particle_fraction_distance.begin() + particle_fraction_number);
+}
+
+
+
+
+
+
+// ********************* symmetric airway functions ****************** //
+
+// branching angle (e.g. useful for symmetric airways)
+// NOTE: only functional for symmetric airways currently, although would be useful otherwise
+void Airway::set_branching_angle(double _branching_angle)
+{
+	if(is_symmetric_airway)
+	{
+		branching_angle = _branching_angle;
+	}
+	else
+	{
+		std::cout << "setting branching angle of an airway not implemented for non-symmetric airways" << std::endl;
+		std::cout << "EXITING...." << std::endl;	
+		std::exit(0);
+	}
+}
+
+double Airway::get_branching_angle()
+{
+
+	if(is_symmetric_airway)
+	{
+		return branching_angle;
+	}
+	else
+	{
+		std::cout << "getting branching angle of an airway not implemented for non-symmetric airways" << std::endl;
+		std::cout << "EXITING...." << std::endl;	
+		std::exit(0);
+		return 0.;
+	}
+}
+
+
+
+
+// gravity angle (e.g. useful for symmetric airways)
+// NOTE: only functional for symmetric airways currently, although would be useful otherwise
+void Airway::set_gravity_angle(double _gravity_angle)
+{
+	if(is_symmetric_airway)
+	{
+		gravity_angle = _gravity_angle;
+	}
+	else
+	{
+		std::cout << "setting gravity angle of an airway not implemented for non-symmetric airways" << std::endl;
+		std::cout << "EXITING...." << std::endl;	
+		std::exit(0);
+	}
+}
+
+double Airway::get_gravity_angle()
+{
+
+	if(is_symmetric_airway)
+	{
+		return gravity_angle;
+	}
+	else
+	{
+		std::cout << "getting gravity angle of an airway not implemented for non-symmetric airways" << std::endl;
+		std::cout << "EXITING...." << std::endl;	
+		std::exit(0);
+		return 0.;
+	}
 }

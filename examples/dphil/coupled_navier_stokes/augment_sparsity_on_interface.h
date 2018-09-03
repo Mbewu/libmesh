@@ -37,8 +37,9 @@ private:
 
 	std::vector<unsigned int> subdomains_3d;
 	std::vector<unsigned int> subdomains_1d;
- 
-	int n_initial_3d_elem;
+
+  std::vector<unsigned int> elem_to_airway;
+	//int n_initial_3d_elem;
 
 	bool coupled;
 	std::vector<Airway> airway_data;
@@ -48,8 +49,8 @@ public:
   /**
    * Constructor.
    */
-  AugmentSparsityOnInterface(EquationSystems& _es, std::vector<Airway>&  _airway_data, std::vector<unsigned int> _subdomains_3d,std::vector<unsigned int> _subdomains_1d, unsigned int _n_initial_3d_elem=0, bool _coupled=false)
-			:  es(&_es), subdomains_3d(_subdomains_3d), subdomains_1d(_subdomains_1d), n_initial_3d_elem(_n_initial_3d_elem), coupled(_coupled), airway_data(_airway_data)
+  AugmentSparsityOnInterface(EquationSystems& _es, std::vector<Airway>&  _airway_data, std::vector<unsigned int> _subdomains_3d,std::vector<unsigned int> _subdomains_1d, std::vector<unsigned int> _elem_to_airway, bool _coupled=false)
+			:  es(&_es), subdomains_3d(_subdomains_3d), subdomains_1d(_subdomains_1d), elem_to_airway(_elem_to_airway), coupled(_coupled), airway_data(_airway_data)
 	{ 
 		
 };

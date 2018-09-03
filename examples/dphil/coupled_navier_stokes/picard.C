@@ -2237,7 +2237,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 								double resistance = bc_value[boundary_id];
 								//mean_pressure = 2.;
 
-								if(es->parameters.get <bool>("moghadam_coupling"))
+								if(es->parameters.get <unsigned int>("moghadam_coupling"))
 									std::cout << "resistance = " << resistance << std::endl;
 
 
@@ -2296,7 +2296,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									}
 							  }
 
-								if(es->parameters.get < bool > ("moghadam_coupling"))
+								if(es->parameters.get < unsigned int > ("moghadam_coupling"))
 								{
 									std::vector <unsigned int >velocity_dofs_on_side;
 									FEInterface::dofs_on_side (elem, dim,fe_vel_type, s,velocity_dofs_on_side);
@@ -2357,7 +2357,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 									}
 
 
-									if (!es->parameters.get < bool > ("moghadam_coupling"))
+									if (!es->parameters.get < unsigned int > ("moghadam_coupling"))
 									{
 										for (unsigned int i = 0; i < n_u_dofs; i++)
 										{
@@ -3174,7 +3174,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 				// assemble moghadam vector
-				if(es->parameters.get <bool>("moghadam_coupling"))
+				if(es->parameters.get <unsigned int>("moghadam_coupling"))
 				{
 					system->get_vector ("Moghadam Vector").add_vector (Fe_moghadam, dof_indices);
 					dof_map.constrain_element_vector (Fe_moghadam,  dof_indices,  true);
@@ -3363,7 +3363,7 @@ Picard::assemble (ErrorVector &)	// error_vector)
 
 
 	// construct the moghadam addition to the tangent matrix
-	if(es->parameters.get < bool >("moghadam_coupling"))
+	if(es->parameters.get < unsigned int >("moghadam_coupling"))
 	{
 
 		// temporarily set to not cause a malloc cause sparsity pattern not augmented yet

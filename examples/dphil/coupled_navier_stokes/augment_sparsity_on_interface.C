@@ -94,24 +94,33 @@ void AugmentSparsityOnInterface::augment_sparsity_pattern (SparsityPattern::Grap
 
 
 			//****** next calculate the coupling between 1d elements
-			int current_1d_el_idx = current_el_idx -	n_initial_3d_elem;
+			int current_1d_el_idx = elem_to_airway[current_el_idx];//current_el_idx -	n_initial_3d_elem;
 			bool has_parent = airway_data[current_1d_el_idx].has_parent();
 			int parent_el_idx = 0;
 			//std::cout << "hello" << std::endl;
 			if(has_parent)
-				parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+			{
+				//parent_el_idx = (int)airway_data[current_1d_el_idx].get_parent() + n_initial_3d_elem;
+				parent_el_idx = airway_data[(int)airway_data[current_1d_el_idx].get_parent()].get_local_elem_number();
+			}
 			//std::cout << "hello" << std::endl;
 			bool is_daughter_1 = airway_data[current_1d_el_idx].get_is_daughter_1();	//this is a bool duh!
 			//std::cout << "hello, current_1d_el_idx = " << current_1d_el_idx << std::endl;
 			std::vector<unsigned int> daughters_el_idx = airway_data[current_1d_el_idx].get_daughters();
 			//std::cout << "hello" << std::endl;
 			for(unsigned int i=0; i<daughters_el_idx.size(); i++)
-				daughters_el_idx[i] += n_initial_3d_elem;
+			{
+				//daughters_el_idx[i] += n_initial_3d_elem;
+				daughters_el_idx[i] = airway_data[daughters_el_idx[i]].get_local_elem_number();
+			}
 
 			//std::cout << "hello" << std::endl;
 			std::vector<unsigned int> siblings_el_idx = airway_data[current_1d_el_idx].get_siblings();
 			for(unsigned int i=0; i<siblings_el_idx.size(); i++)
-				siblings_el_idx[i] += n_initial_3d_elem;
+			{
+				//siblings_el_idx[i] += n_initial_3d_elem;
+				siblings_el_idx[i] = airway_data[siblings_el_idx[i]].get_local_elem_number();
+			}
 			
 			//std::cout << "hello" << std::endl;
 			if(coupled)

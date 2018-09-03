@@ -97,7 +97,7 @@ class Airway
 		void add_daughter(unsigned int daughter) { daughters.push_back(daughter); };
 		std::vector<unsigned int> get_daughters() { return daughters; };
 		int get_daughter_1();	
-		bool has_daughter_1();	
+		bool has_daughter_1();	// same as has_daughters really
 
 		void set_parent(int _parent) { parent = _parent; };
 		int get_parent();	
@@ -165,6 +165,8 @@ class Airway
 		double get_total_particle_fraction();
 		void set_total_particle_fraction(double _particle_fraction);
 
+		double get_cumulative_particle_fraction() { return cumulative_particle_fraction; };
+
 		void set_deposition_probability_total(double _deposition_probability_total) { deposition_probability_total = _deposition_probability_total; };
 		double get_deposition_probability_total() { return deposition_probability_total; };
 
@@ -201,6 +203,63 @@ class Airway
 		void add_terminal_exit_fraction(double _terminal_exit_fraction) { terminal_exit_fraction += _terminal_exit_fraction; };
 		double get_terminal_exit_fraction() { return terminal_exit_fraction; };
 
+
+		// symmetric airway data
+		void set_is_symmetric_airway(bool _is_symmetric_airway) { is_symmetric_airway = _is_symmetric_airway; };
+		bool get_is_symmetric_airway() { return is_symmetric_airway; };
+
+		// num symmetric airways (so that can calculate how many particles etc)
+		void set_num_symmetric_airways(unsigned int _num_symmetric_airways) { num_symmetric_airways = _num_symmetric_airways; };
+		unsigned int get_num_symmetric_airways() { return num_symmetric_airways; };
+
+		// bifurcation angle (e.g. useful for symmetric airways)
+		// NOTE: only implmented for symmetric airways
+		void set_branching_angle(double _branching_angle);
+		double get_branching_angle();
+
+		// gravity angle (e.g. useful for symmetric airways)
+		// NOTE: only implmented for symmetric airways
+		void set_gravity_angle(double _gravity_angle);
+		double get_gravity_angle();
+
+		// the acinar id (from 0)
+		void set_acinar_id(int _acinar_id) { acinar_id = _acinar_id; };
+		int get_acinar_id() { return acinar_id; };
+
+		// the acinar elem number in the full mesh
+		void set_acinar_elem(int _acinar_elem) { acinar_elem = _acinar_elem; };
+		int get_acinar_elem() { return acinar_elem; };
+
+		// the acinar elem number in the full mesh
+		void set_acinar_output_elem(int _acinar_output_elem) { acinar_output_elem = _acinar_output_elem; };
+		int get_acinar_output_elem() { return acinar_output_elem; };
+
+		// the resistance of the airway
+		void set_resistance(double _resistance) { resistance = _resistance; };
+		double get_resistance() { return resistance; };
+
+		// the poiseuille resistance of the airway
+		void set_poiseuille_resistance(double _poiseuille_resistance) { poiseuille_resistance = _poiseuille_resistance; };
+		double get_poiseuille_resistance() { return poiseuille_resistance; };
+
+		// the wall thickness of the airway
+		void set_wall_thickness(double _wall_thickness) { wall_thickness = _wall_thickness; };
+		double get_wall_thickness() { return wall_thickness; };
+
+		// the compliance of the airway (not the acinus)
+		void set_airway_compliance(double _airway_compliance) { airway_compliance = _airway_compliance; };
+		double get_airway_compliance() { return airway_compliance; };
+
+		// the inertance
+		void set_inertance(double _inertance) { inertance = _inertance; };
+		double get_inertance() { return inertance; };
+
+		// the local acinar compliance (if has an acinus, else -1)
+		void set_local_acinar_compliance(double _local_acinar_compliance) { local_acinar_compliance = _local_acinar_compliance; };
+		double get_local_acinar_compliance() { return local_acinar_compliance; };
+
+
+
 	private:
 		
 		int generation;
@@ -218,7 +277,7 @@ class Airway
 		Point node_1;
 		Point node_2;
 		bool poiseuille;
-		unsigned int local_elem_number;
+		int local_elem_number;
 		unsigned int tree_number;
 		double flow;
 		double pressure_diff;
@@ -240,6 +299,7 @@ class Airway
 		double deposition_fraction_dif;
 
 		double particle_fraction;
+		double cumulative_particle_fraction;
 
 		double stokes_number;
 
@@ -248,6 +308,23 @@ class Airway
 		std::vector<double> particle_fraction_amount;
 		std::vector<double> particle_fraction_entry_time;
 		std::vector<double> particle_fraction_distance;
+
+		bool is_symmetric_airway;
+		unsigned int num_symmetric_airways;
+
+		double branching_angle;
+		double gravity_angle;
+
+		int acinar_id;	// -1 if no acinus
+		int acinar_elem;	// -1 if no acinus
+		int acinar_output_elem;	// -1 if no acinus
+
+		double resistance;	// updated after each assembly
+		double poiseuille_resistance;	// set in the beginning
+		double wall_thickness;	// set in the beginning
+		double airway_compliance; // set in the beginning
+		double inertance; // set in the beginning
+		double local_acinar_compliance; // -1 if no acinus
 
 };
 #endif //__branch_h__

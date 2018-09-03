@@ -36,16 +36,22 @@ Particle::Particle (EquationSystems& es_in,EquationSystems& es_3d_in,Point& p, c
 	exited = false;
 	on_wall = false;
 
-
 	// calculate parameters for particle
 	double lambda = es->parameters.get<double>("mean_free_path");
-	double particle_diameter = es->parameters.get<double>("particle_diameter");
+	particle_diameter = es->parameters.get<double>("particle_diameter");
+	particle_density = es->parameters.get<double>("particle_density");
+	particle_air_density = es->parameters.get<double>("particle_air_density");
+	particle_air_viscosity = es->parameters.get<double>("particle_air_viscosity");
+	particle_velocity_units = es->parameters.get<double>("particle_velocity_units");
+	dt = es->parameters.get<Real>("dt");
+
+
 	cunningham_correction_factor = 1. + 2.*lambda/particle_diameter*
 																	(1.257 + 0.4*exp(-1.1*(particle_diameter/(2*lambda))));
 
 
-  constant_drag_force = 18. / 24. * es->parameters.get<double>("particle_air_viscosity") / (es->parameters.get<double>("particle_density") * 
-														pow(es->parameters.get<double>("particle_diameter"),2.0) *
+  constant_drag_force = 18. / 24. * particle_air_viscosity / (particle_density * 
+														pow(particle_diameter,2.0) *
 														cunningham_correction_factor);
 
 
@@ -53,22 +59,71 @@ Particle::Particle (EquationSystems& es_in,EquationSystems& es_3d_in,Point& p, c
 	impaction = es->parameters.get<bool>("particle_impaction");
 	drag = es->parameters.get<bool>("particle_drag");
 
+	
+	// set the drag coefficient coefficients
+	set_drag_coeff_coefficients();
 
 	//std::cout << "cunningham correction factor = " << cunningham_correction_factor << std::endl;
 	//std::cout << "current_velocity = " << current_velocity << std::endl;
 	//std::cout << "elem number = " << current_elem->id() << std::endl;
 
+
+	// set gravity
+
+
+	gravity = Point(0.,0.,0.);
+	if(es->parameters.get<unsigned int>("gravity_type") == 0)
+	{
+		if(threed)
+			gravity(2) = -1.;
+		else
+			gravity(1) = -1.;				
+
+		gravity *= es->parameters.get<double>("gravity");	
+	}
+	else if(es->parameters.get<unsigned int>("gravity_type") == 1 || es->parameters.get<unsigned int>("gravity_type") == 2)
+	{
+		if(threed)
+		{
+			gravity(0) = es->parameters.get<double>("gravity_x");
+			gravity(1) = es->parameters.get<double>("gravity_y");
+			gravity(2) = es->parameters.get<double>("gravity_z");
+		}
+		else
+		{
+			gravity(0) = es->parameters.get<double>("gravity_x");
+			gravity(1) = es->parameters.get<double>("gravity_y");	
+		}
+
+		gravity *= es->parameters.get<double>("gravity");
+	}
+	else if(es->parameters.get<unsigned int>("gravity_type") == 3)
+	{
+		// weibel gravity angles, set up what they are and set the default, i.e. first airway
+
+		// the iterator constructor can also be used to construct from arrays:
+		double weibel_gravity_angles_array[] = {0, 0.3491, 0.5411, 0.7505, 0.6807, 0.6807, 0.6981, 0.6283, 0.6807, 0.7854, 0.7505, 0.7854, 0.7854, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.0472, 1.04721};
+
+		weibel_gravity_angles = std::vector<double>(weibel_gravity_angles_array, weibel_gravity_angles_array + sizeof(weibel_gravity_angles_array) / sizeof(double) );
+
+
+	}
+
 }
 
 
+void Particle::set_gravity()
+{
+}
+
 double Particle::particle_reynolds_number ()
 {
+
 	// is it correct to have a reynolds nnumber for different directions
 	// units converts to SI for parameters
-	double Re = (current_particle_velocity - current_velocity).size() * es->parameters.get<double>("particle_velocity_units");
+	double Re = (current_particle_velocity - current_velocity).size() * particle_velocity_units;
 	//std::cout << "Re = " << Re << std::endl;
-	Re *= es->parameters.get<double>("particle_air_density") * es->parameters.get<double>("particle_diameter") /
-					es->parameters.get<double>("particle_air_viscosity");	//if we are not using SI unit here we are in trouble, but okay
+	Re *= particle_air_density * particle_diameter / particle_air_viscosity;	//if we are not using SI unit here we are in trouble, but okay
 	
 	//std::cout << "particle_air_viscosity = " << es->parameters.get<double>("particle_air_viscosity") << std::endl;
 	//std::cout << "Re = " << Re << std::endl;
@@ -76,58 +131,87 @@ double Particle::particle_reynolds_number ()
 	
 }
 
+
+void Particle::set_drag_coeff_coefficients()
+{
+
+	//should depend on reynolds number, we use the values for reynolds number 10-100
+	// see Morsi 1972, via Lambert 2011
+	std::vector<double> temp_drag_coeff_coefficients(3);
+
+	drag_coeff_coefficients.resize(0);
+	// reynolds_number < 0.1
+	temp_drag_coeff_coefficients[0] = 0.;
+	temp_drag_coeff_coefficients[1] = 24.;
+	temp_drag_coeff_coefficients[2] = 0.;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+	// reynolds_number < 1.0
+	temp_drag_coeff_coefficients[0] = 3.69;
+	temp_drag_coeff_coefficients[1] = 22.73;
+	temp_drag_coeff_coefficients[2] = 0.0903;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+	// reynolds_number < 10.0
+	temp_drag_coeff_coefficients[0] = 1.222;
+	temp_drag_coeff_coefficients[1] = 29.1667;
+	temp_drag_coeff_coefficients[2] = -3.8889;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+	// reynolds_number < 100.0
+	temp_drag_coeff_coefficients[0] = 0.6167;
+	temp_drag_coeff_coefficients[1] = 46.5;
+	temp_drag_coeff_coefficients[2] = -116.67;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+	// reynolds_number < 1000.0
+	temp_drag_coeff_coefficients[0] = 0.3644;
+	temp_drag_coeff_coefficients[1] = 98.33;
+	temp_drag_coeff_coefficients[2] = -2778;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+	// reynolds_number >= 1000.0
+	temp_drag_coeff_coefficients[0] = 0.357;
+	temp_drag_coeff_coefficients[1] = 148.62;
+	temp_drag_coeff_coefficients[2] = -4.75e4;
+	drag_coeff_coefficients.push_back(temp_drag_coeff_coefficients);
+
+}
+
 double Particle::drag_coeff (double reynolds_number)
 {
 
 	//should depend on reynolds number, we use the values for reynolds number 10-100
 	// see Morsi 1972, via Lambert 2011
-	double a1 = 0.;
-	double a2 = 0.;
-	double a3 = 0.;
 
-	if(reynolds_number < 0.1)
+	if(fabs(reynolds_number) < 1e-10 )
 	{
-		a1 = 0.;
-		a2 = 24.0;
-		a3 = 0.;
+		// this should hopefully never really happen
+		return 0;
+	}
+	else if(reynolds_number < 0.1)
+	{
+		return drag_coeff_coefficients[0][0] + drag_coeff_coefficients[0][1]/reynolds_number + drag_coeff_coefficients[0][2]/pow(reynolds_number,2.0);
 	}
 	else if(reynolds_number < 1.0)
 	{
-		a1 = 3.69;
-		a2 = 22.73;
-		a3 = 0.0903;
+		return drag_coeff_coefficients[1][0] + drag_coeff_coefficients[1][1]/reynolds_number + drag_coeff_coefficients[1][2]/pow(reynolds_number,2.0);
 	}
 	else if(reynolds_number < 10.0)
 	{
-		a1 = 1.222;
-		a2 = 29.1667;
-		a3 = -3.8889;
+		return drag_coeff_coefficients[2][0] + drag_coeff_coefficients[2][1]/reynolds_number + drag_coeff_coefficients[2][2]/pow(reynolds_number,2.0);
 	}
 	else if(reynolds_number < 100.0)
 	{
-		a1 = 0.6167;
-		a2 = 46.5;
-		a3 = -116.67;
+		return drag_coeff_coefficients[3][0] + drag_coeff_coefficients[3][1]/reynolds_number + drag_coeff_coefficients[3][2]/pow(reynolds_number,2.0);
 	}
 	else if(reynolds_number < 1000.0)
 	{
-		a1 = 0.3644;
-		a2 = 98.33;
-		a3 = -2778;
+		return drag_coeff_coefficients[4][0] + drag_coeff_coefficients[4][1]/reynolds_number + drag_coeff_coefficients[4][2]/pow(reynolds_number,2.0);
 	}
 	else
 	{
-		a1 = 0.357;
-		a2 = 148.62;
-		a3 = -4.75e4;
+		return drag_coeff_coefficients[5][0] + drag_coeff_coefficients[5][1]/reynolds_number + drag_coeff_coefficients[5][2]/pow(reynolds_number,2.0);
 	}
 
-	if(fabs(reynolds_number) > 1e-10)
-		return a1 + a2/reynolds_number + a3/pow(reynolds_number,2.0);
-	else
-		return 0.;
 
 }
+
 
 // this is a primary bottleneck, but difficult to make faster
 // it's just slow calculating the velocity at loads of points
@@ -188,32 +272,6 @@ void Particle::try_and_move ()
 NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocity) 
 {
 	NumberVectorValue particle_velocity(0.,0.,0.);
-	const double dt = es->parameters.get<Real>("dt");
-
-
-	Point gravity(0.,0.,0.);
-	if(es->parameters.get<unsigned int>("gravity_type") == 0)
-	{
-		if(threed)
-			gravity(2) = -1.;
-		else
-			gravity(1) = -1.;					
-	}
-	else if(es->parameters.get<unsigned int>("gravity_type") == 1 || es->parameters.get<unsigned int>("gravity_type") == 2)
-	{
-		if(threed)
-		{
-			gravity(0) = es->parameters.get<double>("gravity_x");
-			gravity(1) = es->parameters.get<double>("gravity_y");
-			gravity(2) = es->parameters.get<double>("gravity_z");
-		}
-		else
-		{
-			gravity(0) = es->parameters.get<double>("gravity_x");
-			gravity(1) = es->parameters.get<double>("gravity_y");	
-		}
-	}
-	gravity *= es->parameters.get<double>("gravity");
 
 
 	//std::cout << "gravity = " << gravity << std::endl;
@@ -242,10 +300,8 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 		if(sedimentation)
 		{
 
-			double particle_density = es->parameters.get<double>("particle_density");
-			double particle_air_density = es->parameters.get<double>("particle_air_density");
 
-			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) / es->parameters.get<double>("particle_velocity_units") / (1. + dt*F_D);
+			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) / particle_velocity_units / (1. + dt*F_D);
 
 		}
 	}
@@ -260,10 +316,7 @@ NumberVectorValue Particle::compute_particle_velocity (NumberVectorValue velocit
 		{
 
 
-			double particle_density = es->parameters.get<double>("particle_density");
-			double particle_air_density = es->parameters.get<double>("particle_air_density");
-
-			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) / es->parameters.get<double>("particle_velocity_units");
+			particle_velocity += dt * gravity * (1. - particle_air_density/particle_density) /  particle_velocity_units;
 		}
 	}
 

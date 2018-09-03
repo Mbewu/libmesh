@@ -6,13 +6,35 @@
 // 3D or 1D domains.
 //
 // setup_3d_mesh
+// set_characteristic_length_3d
 // setup_3d_system
 // prerefine_3d_mesh
 // calculate_3d_boundary_values
 // write_3d_solution
 // solve_3d_system_iteration
+// assemble_3d_system
+// solve_3d_system
+// solve_3d_clean_up
+// solve_3d_system_moghadam
+// solve_3d_clean_up_moghadam
+// solve_3d_system_residual
+// solve_3d_clean_up_moghadam
+// setup_preconditioners
+// setup_moghadam_velocity_1
+// setup_moghadam_schur
+// setup_moghadam_velocity_2
+// construct_schur_stokes_matrix
+// test_post_solve
+// setup_is_simple
+// compute_and_output_eigenvalues
 // adaptively_refine
 // plot_error
+// write_elem_pid_3d
+// set_elem_proc_id_3d
+// scale_3d_solution_vector
+// update_3d_dirichlet_boundary_conditions
+// copy_3d_solution_output_to_program
+// copy_3d_solution_program_to_output
 //
 // *********************************************************** //
 
@@ -32,6 +54,11 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 	std::cout << std::endl;
 	std::cout << "Setting up 2D/3D mesh." << std::endl;
 	
+
+	//scale the mesh to make length scale
+	double length_scale = es->parameters.get<double>("length_scale");
+
+
 	// always reread in the mesh. forget about mesh refinement for now.
 	// if we are doing a 2D simulation we need to change mesh back to having dimension 2
 	if(!es->parameters.get<bool> ("threed"))
@@ -102,11 +129,8 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 	}
 
 
-
-	//scale the mesh to make length scale
-
-	double length_scale = es->parameters.get<double>("length_scale");
-	MeshTools::Modification::scale(_mesh,1./length_scale,1./length_scale,1./length_scale);
+	if(es->parameters.get<bool>("nondimensionalised") && !output_mesh)
+		MeshTools::Modification::scale(_mesh,1./length_scale,1./length_scale,1./length_scale);
 	
 
 
@@ -187,7 +211,8 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 						std::cout << "old bdy id = " << *it << std::endl;
 						std::cout << "new bdy id = " << 0 << std::endl;					
 					}
-					else if(*it == es->parameters.get<int> ("wall_bdy_id"))
+					else if(*it == es->parameters.get<int> ("wall_bdy_id")
+									|| *it == es->parameters.get<int> ("wall_bdy_id_2"))
 					{
 						MeshTools::Modification::change_boundary_id(_mesh,*it,-1);		//inflow
 						std::cout << "old bdy id = " << *it << std::endl;
@@ -284,8 +309,26 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 
 			}
 
-			// should only be one i hope...
-			MeshTools::Modification::change_subdomain_id(_mesh,*subids.begin(),0);		//volume
+
+			if(es->parameters.get<bool> ("subdomain_airways"))
+			{
+
+				std::cout << "num subdomain ids = " << subids.size() << std::endl;
+
+				for (std::set<subdomain_id_type>::iterator it=subids.begin(); it!=subids.end(); ++it)
+				{
+					int old_sub_id = *it;
+					int new_sub_id = *it - 3000;
+					MeshTools::Modification::change_subdomain_id(_mesh,old_sub_id,new_sub_id);
+					std::cout << "old sub id = " << old_sub_id << std::endl;
+					std::cout << "new sub id = " << new_sub_id << std::endl;					
+				}
+			}
+			else
+			{
+				// should only be one i hope...
+				MeshTools::Modification::change_subdomain_id(_mesh,*subids.begin(),0);		//volume
+			}
 
 		}
 		else	// not sure what this is, but it isn't used anymore
@@ -414,34 +457,77 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 	//  assign different subdomain id to different element types
 	// Loop over all elements.
 
-	std::cout << "num subdomains before = " <<	_mesh.n_subdomains () << std::endl;
-	
-	std::vector<libMesh::ElemType> elem_types;	// temporary variable storing the types of elements encountered
-	MeshBase::element_iterator       elem_it  = _mesh.elements_begin();
-	const MeshBase::element_iterator elem_end = _mesh.elements_end();
-	
-	std::vector<libMesh::ElemType>::iterator it;
 
-	unsigned int count = 0;
-	for (; elem_it != elem_end; ++elem_it)
+
+	unsigned int num_subdomains = 0;
+	if(es->parameters.get<bool> ("subdomain_airways"))
 	{
-		Elem* elem = *elem_it;
-		ElemType current_elem_type = elem->type();
-		it = std::find(elem_types.begin(), elem_types.end(), current_elem_type);
+		std::cout << "Not attempting different subdomains for different element types," << std::endl;
+		std::cout << "because different subdomains for different airways." << std::endl;
 
-		// element type not encountered yet
-		if(it==elem_types.end())
+		std::set<subdomain_id_type> subids;
+		_mesh.subdomain_ids(subids);
+		num_subdomains = subids.size();
+
+		//populate subdomains_3d
+		subdomains_3d.resize(num_subdomains);
+
+		unsigned int count = 0;
+		for (std::set<subdomain_id_type>::iterator it=subids.begin(); it!=subids.end(); ++it)
 		{
-			elem_types.push_back(current_elem_type);
-			elem->subdomain_id() = count;
-			count++;
+			subdomains_3d[count] = *it;		
+			count++;		
+		}
+		
+	}
+	else
+	{
+		std::cout << "num subdomains before = " <<	_mesh.n_subdomains () << std::endl;
+	
+		std::vector<libMesh::ElemType> elem_types;	// temporary variable storing the types of elements encountered
+		MeshBase::element_iterator       elem_it  = _mesh.elements_begin();
+		const MeshBase::element_iterator elem_end = _mesh.elements_end();
+	
+		std::vector<libMesh::ElemType>::iterator it;
+
+		unsigned int count = 0;
+		for (; elem_it != elem_end; ++elem_it)
+		{
+			Elem* elem = *elem_it;
+			ElemType current_elem_type = elem->type();
+			it = std::find(elem_types.begin(), elem_types.end(), current_elem_type);
+
+			// element type not encountered yet
+			if(it==elem_types.end())
+			{
+				elem_types.push_back(current_elem_type);
+				elem->subdomain_id() = count;
+				count++;
 				
+			}
+			else
+			{
+				elem->subdomain_id() = it - elem_types.begin();
+				//count++;	// not sure if this is right but makes sense
+			}
 		}
-		else
+
+		std::cout << std::endl;
+		std::cout << "Subdomain identification summary:" << std::endl;
+		std::cout << " " << elem_types.size() << " element types found." << std::endl;
+		std::cout << " Given subdomain ids:" << std::endl;
+		for(unsigned int i=0; i<elem_types.size(); i++)
 		{
-			elem->subdomain_id() = it - elem_types.begin();
-			//count++;	// not sure if this is right but makes sense
+			std::cout << " subdomain " << i << ": " << Utility::enum_to_string(elem_types[i]) << " elements." << std::endl;
 		}
+		num_subdomains = elem_types.size();
+
+		// *** subdomain stuff ****** //
+	
+		//populate subdomains_3d
+		subdomains_3d.resize(num_subdomains);
+		for(unsigned int i=0; i<num_subdomains; i++)
+			subdomains_3d[0] = i;
 	}
 	
 	
@@ -460,20 +546,6 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 	{
 
 
-		// *** subdomain stuff ****** //
-
-		std::cout << std::endl;
-		std::cout << "Subdomain identification summary:" << std::endl;
-		std::cout << " " << elem_types.size() << " element types found." << std::endl;
-		std::cout << " Given subdomain ids:" << std::endl;
-		for(unsigned int i=0; i<elem_types.size(); i++)
-		{
-			std::cout << " subdomain " << i << ": " << Utility::enum_to_string(elem_types[i]) << " elements." << std::endl;
-		}
-	
-		//populate subdomains_3d
-		for(unsigned int i=0; i<elem_types.size(); i++)
-			subdomains_3d.push_back(i);
 
 
 
@@ -507,9 +579,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 
 				std::cout << "surface " << i << ":" << std::endl;
 				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << " (" 
+									<< surface_boundaries[i]->get_centroid() * length_scale << " m)" << std::endl;
+				std::cout << "\t area is " << surface_boundaries[i]->get_area() << " ("
+									<< surface_boundaries[i]->get_area() * pow(length_scale,2.0) << " m^2)" << std::endl;
 				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
+				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << " (" 
+									<< surface_boundaries[i]->get_max_radius() * length_scale << " m)" << std::endl;
 				std::cout << std::endl;
 			}
 
@@ -571,10 +647,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 
 					std::cout << "surface " << i << ":" << std::endl;
 					std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-					std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-					std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+					std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << " (" 
+									<< surface_boundaries[i]->get_centroid() * length_scale << " m)" << std::endl;
+					std::cout << "\t area is " << surface_boundaries[i]->get_area() << " ("
+									<< surface_boundaries[i]->get_area() * pow(length_scale,2.0) << " m^2)" << std::endl;
 					std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-					std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+					std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << " (" 
+									<< surface_boundaries[i]->get_max_radius() * length_scale << " m)" << std::endl;
 					std::cout << std::endl;
 				}
 			}
@@ -628,10 +707,13 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 
 				std::cout << "surface " << i << ":" << std::endl;
 				std::cout << "\t normal is " << surface_boundaries[i]->get_normal() << std::endl;
-				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << std::endl;
-				std::cout << "\t area is " << surface_boundaries[i]->get_area() << std::endl;
+				std::cout << "\t centroid is " << surface_boundaries[i]->get_centroid() << " (" 
+									<< surface_boundaries[i]->get_centroid() * length_scale << " m)" << std::endl;
+				std::cout << "\t area is " << surface_boundaries[i]->get_area() << " ("
+									<< surface_boundaries[i]->get_area() * pow(length_scale,2.0) << " m^2)" << std::endl;
 				std::cout << "\t unit parabola integral is " << surface_boundaries[i]->get_unit_parabola_integral() << std::endl;
-				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << std::endl;
+				std::cout << "\t max radius is " << surface_boundaries[i]->get_max_radius() << " (" 
+									<< surface_boundaries[i]->get_max_radius() * length_scale << " m)" << std::endl;
 				std::cout << std::endl;
 			}
 		
@@ -651,6 +733,15 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 	
 			input_pressure_values_3d.push_back(es->parameters.get<double>("parent_pressure_mag"));
 			input_pressure_values_3d.push_back(es->parameters.get<double>("daughter_1_pressure_mag"));
+
+			std::cout << "after setting pressure vals" << std::endl;
+			std::cout << "parent_pressure_mag = " << es->parameters.get<double>("parent_pressure_mag") << std::endl;
+			std::cout << "input_pressure_values_3d[0] = " << input_pressure_values_3d[0] << std::endl;
+
+
+			for(unsigned int i=0; i<input_pressure_values_3d.size(); i++)
+				std::cout << "input_pressure_values_3d[" << i << "] = " << input_pressure_values_3d[i] << std::endl;
+
 
 			// scale so that corresponds to the correct generation
 			//MeshTools::Modification::scale(mesh,5.6);
@@ -767,8 +858,11 @@ void NavierStokesCoupled::setup_3d_mesh(EquationSystems* _es,Mesh& _mesh, bool o
 // set the characteristic length of the sim
 void NavierStokesCoupled::set_characteristic_length_3d()
 {
+	//scale the mesh to make length scale
+	double length_scale = es->parameters.get<double>("length_scale");
+
 	// need to find the first element and get its diameter
-	es->parameters.set<double> ("characteristic_length") = 2*surface_boundaries[0]->get_max_radius();
+	es->parameters.set<double> ("characteristic_length") = 2*surface_boundaries[0]->get_max_radius()*length_scale;
 	std::cout << "characteristic length = " << es->parameters.get<double> ("characteristic_length") << std::endl;
 }
 
@@ -811,7 +905,10 @@ void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 	std::set<subdomain_id_type> active_subdomains;
 	active_subdomains.clear(); 
 	for(unsigned int i=0; i<subdomains_3d.size(); i++)
+	{
 		active_subdomains.insert(subdomains_3d[i]);
+		std::cout << "subdomain = " << subdomains_3d[i] << std::endl;
+	}
 
 	unsigned int u_var = 0, v_var = 0, w_var = 0;
 	unsigned int u_adj_var = 0, v_adj_var = 0, w_adj_var = 0;
@@ -891,6 +988,9 @@ void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 		// add variable for proc id
 		int proc_id_var = extra_3d_data_system->add_variable("proc_id", CONSTANT, MONOMIAL,&active_subdomains);
 
+		// total pressure
+		int total_p_var = extra_3d_data_system->add_variable("total_p", FIRST,LAGRANGE,&active_subdomains);
+
 		// need to cast to an implicit system to be able to add matrices
 		TransientLinearImplicitSystem* system_implicit = (TransientLinearImplicitSystem*)system;
 		
@@ -930,12 +1030,30 @@ void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 		}
 	
 
-		if(es->parameters.get<bool>("moghadam_coupling"))
+		if(es->parameters.get<unsigned int>("moghadam_coupling") 
+			|| (es->parameters.get<unsigned int>("preconditioner_type_3d") == 13 &&  
+			(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0 || es->parameters.get<bool>("moghadam_velocity_preconditioner"))))
 		{
 			// need false flag to zero the vector
 			system_implicit->add_vector("Moghadam Vector",false);
 			system_implicit->add_vector("Moghadam Vector BC",false);
+
+
+			system_implicit->add_matrix("Preconditioner");	// this contains the system matrix without the moghadam terms
+			if(es->parameters.get<bool> ("construct_moghadam_preconditioner"))
+			{
+				system_implicit->add_matrix("Moghadam Preconditioner");	// this contains the moghadam preconditioner
+			}
+
+			if(es->parameters.get<bool> ("construct_moghadam_h_inverse"))
+			{
+				system_implicit->add_matrix("Moghadam H Inverse");	// this contains the moghadam preconditioner
+			}
+
+	
+
 		}
+
 	
 		// need vectors for calculating the flux and pressure on the boundaries
 		for(unsigned int i=0 ; i<=es->parameters.set<unsigned int> ("num_1d_trees"); i++)
@@ -947,6 +1065,48 @@ void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 			system_implicit->add_vector("Flow Rate Vector " + number.str(),false);
 			system_implicit->add_vector("Mean Pressure Vector " + number.str(),false);
 		}
+
+		// residual formulation stuff
+		// add vector for use as intermediate solution
+
+		if(es->parameters.get<bool> ("residual_formulation"))
+		{
+			// vector to save the original forcing vector (not including newton terms), without BCs
+			system_implicit->add_vector("Forcing Vector",false);
+
+			// vector to save the BCs
+			system_implicit->add_vector("BC Vector",false);
+
+			// vector to save the "lhs of the residual" i.e. A(x_star) * x_star
+			system_implicit->add_vector("Residual LHS",false);
+
+			// vector to save the BCs
+			//system_implicit->add_vector("Newton RHS",false);
+
+			// vector to save the "lhs of the residual" i.e. A(x_star) * x_star
+			system_implicit->add_vector("Solver Residual",false);
+
+			if(es->parameters.get<bool>("increment_boundary_conditions"))
+			{
+				system_implicit->add_vector("Forcing Vector BC",false);
+			}
+			// vector to save the "lhs of the residual" i.e. A(x_star) * x_star
+			//system_implicit->add_vector("Previous Nonlinear Solution",false);
+
+			// vector to save the previous nonlinear solution
+			//system_implicit->add_matrix("System Matrix No BC");
+
+		}
+
+		// for doing residual linear solve, we need to retain the Previous Nonlinear solution
+		if(es->parameters.get<bool> ("residual_linear_solve"))
+		{
+			// vector to save the previous nonlinear solution
+			system_implicit->add_vector("Intermediate Nonlinear Solution",false);
+
+	
+		}
+
 	}
 
 	// want some extra variables when doing particle deposition
@@ -1210,6 +1370,16 @@ void NavierStokesCoupled::setup_3d_system(System* system, bool output_system)
 		std::set<boundary_id_type> boundary_id_wall;
 			boundary_id_wall.insert(-1);
 
+		// if the number of wall bdy ids is > 0 then we are obviously doing this kind of sim 
+		// and add them as wall bdys.
+		// note that they are numbered -1, -2, -3
+		if(es->parameters.get<bool> ("gmsh_diff_wall_bdy_id"))
+		{
+			for(int i=2; i<=num_wall_bdy_ids; i++)
+			{
+				boundary_id_wall.insert(-1*i);
+			}
+		}
 
 		DirichletBoundary dirichlet_bc_wall(boundary_id_wall,
 			                       variables,
@@ -1631,10 +1801,36 @@ void NavierStokesCoupled::calculate_3d_boundary_values()
 		flux_values_3d_precompute = picard->calculate_fluxes(boundary_ids);
 		pressure_values_3d_precompute = picard->calculate_pressures(boundary_ids);
 
+		if(es->parameters.get<unsigned int> ("total_pressure_bc") == 1)
+		{
+			previous_dynamic_pressure_values_3d.resize(boundary_ids.size());
+			for(unsigned int i=0; i<boundary_ids.size(); i++)
+			{
+				double previous_dynamic_pressure = picard->calculate_previous_dynamic_pressure(boundary_ids[i]);
+				if(i != 0 && es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh") && sim_1d)
+					previous_dynamic_pressure_values_3d[boundary_id_to_tree_id[i]] = previous_dynamic_pressure;
+				else
+					previous_dynamic_pressure_values_3d[i] = previous_dynamic_pressure;				
+			}
+		}
 
+		if(es->parameters.get<bool> ("output_total_pressure"))
+		{
+			total_pressure_values_3d.resize(boundary_ids.size());
+			for(unsigned int i=0; i<boundary_ids.size(); i++)
+			{
+				double total_pressure = picard->calculate_mass_averaged_total_pressure(boundary_ids[i]);
+				if(i != 0 && es->parameters.get<bool> ("match_1d_mesh_to_3d_mesh") && sim_1d)
+					total_pressure_values_3d[boundary_id_to_tree_id[i]] = total_pressure;
+				else
+					total_pressure_values_3d[i] = total_pressure;				
+			}
+		}
 
+		/* only want to do this at the end of a time step
 		previous_flux_values_3d = flux_values_3d;
 		previous_pressure_values_3d = pressure_values_3d;
+		*/
 
 		flux_values_3d[0] = flux_values_3d_precompute[0];
 		pressure_values_3d[0] = pressure_values_3d_precompute[0];
@@ -1716,6 +1912,11 @@ void NavierStokesCoupled::write_3d_solution()
 	// copy the program solution to the output system
 	copy_3d_solution_program_to_output();
 
+	if(es->parameters.get<bool>("output_total_pressure"))
+	{
+		calculate_total_pressure();
+	}
+
 
 
 	// exodus file writer - to output mesh
@@ -1737,6 +1938,9 @@ void NavierStokesCoupled::write_3d_solution()
 	if(threed)
 		variables_3d.push_back("w");
 	variables_3d.push_back("p");
+
+	if(es->parameters.get<bool>("output_total_pressure"))
+		variables_3d.push_back("total_p");
 
 	if(es->parameters.get<bool>("output_adjoint_variables"))
 	{
@@ -1792,7 +1996,6 @@ void NavierStokesCoupled::write_3d_solution()
 
 
 	//system->update();
-	
 
 
 	//the time step variable needs to reflect the position in the file_name
@@ -1947,6 +2150,12 @@ void NavierStokesCoupled::write_3d_solution()
 bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSystem * system)
 {
 
+	previous_nonlinear_residual = current_nonlinear_residual;
+
+
+
+	// ****** Setup some Petsc stuff ********** //
+
 	PetscErrorCode ierr;
 
 	// always use the same command line options, can differentiate between stokes and navier stokes within the command line hopefully	
@@ -1954,8 +2163,6 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	// only use ksp view in the first iteration
 	ierr = PetscOptionsInsertString(es->parameters.get<std::string>("petsc_solver_options").c_str()); CHKERRQ(ierr);
 	
-	previous_nonlinear_residual = current_nonlinear_residual;
-
 
 	//es->reinit ();	// UPDATE TIME DEPENDENT DIRICHLET BOUNDARY CONDITIONS put after
 
@@ -1966,41 +2173,70 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 			(system->linear_solver.get());
 
 
+
+
 	//****************** SOLVE THE SYSTEM AND OUTPUT SOME INFO ************************//
+
+	if(es->parameters.get<bool>("residual_formulation") && !es->parameters.get<bool>("increment_boundary_conditions"))
+	{
+		// only update the constraints after the solution has been calculated
+		system->get_dof_map().enforce_constraints_exactly(*system);	
+	}
+
+
 
 	*last_nonlinear_soln = *system->solution;	//don't need to worry bout sizes
 	last_nonlinear_soln->close();
-	//double before_norm = last_nonlinear_soln->l2_norm();
 
-	//set the inner tolerances here - maxits is now 20
-	//ierr = KSPSetTolerances(subksp[1],1e-8,1e-10,1e3,30);
+	//std::cout << "soln norm in system = " << system->solution->l2_norm() << std::endl;
 
-	//using the previous solution as an initial guess is bad for the iterative solvers!!
-	//if(es->parameters.get<bool>("adaptive_refinement")))
-	// if we do not do update here then the local won't be updated and the assembly will use solution
 
 	// must set it to zero for initial guess of solver, but don't update to local for assembly
 	system->update();						//put the previous soln in local
-	//system->solution->zero();		//now make initial guess zero
-	//*system->solution = *last_nonlinear_soln;
 		
 	//unsigned int n_linear_iterations = 0;
 	double final_linear_residual = 0.;
 
-	if(sim_type != 5)
+	// ****** Update solution vector to contain the correct BCs 
+	//
+	// if we are doing the standard newton form, then we need to
+	// apply the boundary conditions to the solution to be used first
+	// but maybe after..
+
+
+
+	// ***** Assemble the System ***** //
+	assemble_3d_system(system);
+
+	//std::cout << "rhs norm directly after assemble = " << system->rhs->l2_norm() << std::endl;
+
+	// ***** Solve the System ***** //
+	// these methods all output the actual solution
+	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 13)
 	{
-		final_linear_residual = solve_and_assemble_3d_system(system);
+		// solve using the moghadam preconditioner
+		final_linear_residual = solve_3d_system_moghadam(system);
+	}
+	else if(es->parameters.get<bool>("residual_linear_solve"))
+	{
+		// solve using the residual update method
+		final_linear_residual = solve_3d_system_residual(system);
 	}
 	else
 	{
-		final_linear_residual = solve_and_assemble_3d_system(system);
+		// solve normally
+		final_linear_residual = solve_3d_system(system);
 	}
 
-	if(es->parameters.get<bool>("compute_eigenvalues"))
-		compute_and_output_eigenvalues(system);
+
+	if(sim_type == 5)
+		set_resistance();
 
 
 
+
+
+	// ****** Some clean up ************ //
 	// need to zero the preconditioner matrix myself... after we have computed the eigenvalues
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 	{
@@ -2010,8 +2246,12 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	}
 
 
-	// need to recollect the ksp because perhaps some shit changed in restrict_solve_to
-	system_linear_solver = libmesh_cast_ptr<PetscLinearSolver<Number>* > (system->linear_solver.get());
+
+
+
+
+	// ***** Get info on how the solve went ***** //
+
 	KSP system_ksp = system_linear_solver->ksp();
 
 	int num_outer_its = 0;	
@@ -2047,14 +2287,28 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		//std::cout << "velocity converged reason = " << velocity_converged_reason << std::endl;
 		//std::cout << "pressure converged reason = " << pressure_converged_reason << std::endl;
 	}
+
+
 	PetscInt outer_maxits = 0;
 	ierr = KSPGetTolerances(system_ksp,NULL,NULL,NULL,&outer_maxits); CHKERRQ(ierr);
 
 	int converged_reason = system_linear_solver->get_petsc_converged_reason();
 
+	std::cout << "converged reason: " << converged_reason << " - " << get_converged_reason_string(converged_reason) << std::endl;
 	//std::cout << "KSPConvergedReason = " << converged_reason << std::endl;
 	
 	//system->get_dof_map().enforce_constraints_exactly(*system);
+
+	// get the number of linear iterations
+	num_linear_iterations = system->n_linear_iterations();
+
+
+
+
+
+
+
+	// **** Calculate the nonlinear residual ********** //
 
 	std::vector<Real> weights;  // u, v
 	weights.push_back(1.0);
@@ -2081,6 +2335,14 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	}
 	std::vector<FEMNormType>	norms;	//if empty will automagically use discrete l2
 
+/*
+	std::cout << "soln norm in system = " << system->solution->l2_norm() << std::endl;
+	std::cout << "last nlin soln before solve = " << last_nonlinear_soln->l2_norm() << std::endl;
+
+	std::cout << "soln velocity norm = " << system->calculate_norm(*system->solution,SystemNorm(norms, weights)) << std::endl;
+	std::cout << "last nlin soln velocity norm = " << system->calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights)) << std::endl;
+*/
+	// debug
 	double norm_3d = system->calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights));
 
   // Compute the difference between this solution and the last
@@ -2088,17 +2350,34 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	last_nonlinear_soln->add (-1., *system->solution);
 	last_nonlinear_soln->close();
 
-
 	current_nonlinear_residual = system->calculate_norm(*last_nonlinear_soln,SystemNorm(norms, weights));
+/*
+	std::cout << "non normalised residual error l2 = " << last_nonlinear_soln->l2_norm() << std::endl;
+	std::cout << "non normalised residual error velocity = " << current_nonlinear_residual << std::endl;
+*/
+	// debug
+	double non_norm_residual = current_nonlinear_residual;
+
 	// now normalise it
 	current_nonlinear_residual /= system->calculate_norm(*system->solution,SystemNorm(norms, weights));
+	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
 
 
-	//current_nonlinear_residual = last_nonlinear_soln->l2_norm();
-	num_linear_iterations = system->n_linear_iterations();
+	// if we are doing residual linear solve
+	// then we need to compare to the actual previous solution
+	/*
+	if(es->parameters.get<bool> ("residual_linear_solve"))
+	{
+		std::cout << "previous nlin soln before solve = " << system->get_vector("Previous Nonlinear Solution").l2_norm() << std::endl;
 
-	// Print out convergence
-	std::cout << "Lin Solver converged ("
+	}
+	*/
+
+
+
+
+	// ***** Print out convergence ****** //
+	std::cout << " 3D/3D-0D linear solver converged ("
 						<< converged_reason << ") at step: "
         		<< num_outer_its
         		<< ",\n\tSolver res: "
@@ -2109,24 +2388,55 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	std::cout << "Nonlinear iteration: " << nonlinear_iteration << std::endl;
 	std::cout << "Time: " << time << std::endl;
 	std::cout << "Time step: " << t_step << std::endl;
+	std::cout << "dt: " << dt << std::endl;
 	std::cout << "3D norm: " << norm_3d << std::endl << std::endl;
 
-	es->parameters.set<double> ("last_nonlinear_iterate") = current_nonlinear_residual;
+	//std::cout << "non_norm_residual = " << non_norm_residual << std::endl;
+
 
 	if(es->parameters.get<bool> ("output_linear_iteration_count"))
 		output_linear_iteration_count();
 
 
+
+
 	//*************** DECIDE WHAT TO DO ON THE NEXT ITERATION *****************//
+
+
+
+	// if we've already been told to reduce dt then we should do that and exit the loop
+	// e.g. from the moghadam residual loop
+	if(reduce_dt)
+	{
+
+		// same thing for exiting
+		if(!es->parameters.get<bool>("adaptive_time_stepping"))
+		{
+			exit_program = true;
+		}
+		return true;
+	}
+
+	// same thing for exiting
+	if(exit_program)
+	{
+		return true;
+	}
+
+
 
 	//if stokes we only need a single iteration unless iterating with 1d model
 	// i.e. need iterations
-	
-	if(es->parameters.get<bool>("stokes") && sim_type != 3 )
+	/*
+	if(es->parameters.get<bool>("stokes") && sim_type != 3 && !es->parameters.get<unsigned int>("moghadam_coupling")
+		&& !(sim_type == 5 && es->parameters.get<unsigned int>("resistance_type_1d") == 1) 
+		&& es->parameters.get<unsigned int>("preconditioner_type_3d") != 13)
 	{
 		std::cout << "Stokes so only one iteration required" << std::endl;
+
 		return true;
 	}
+	*/
 
 	if(es->parameters.get<unsigned int>("newton") == 3 && sim_type != 3)
 	{
@@ -2138,6 +2448,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 	// Terminate the solution iteration if the difference between
 	// this nonlinear iterate and the last is sufficiently small, AND
 	// if the most recent linear system was solved to a sufficient tolerance.
+
   
 	//doesn't make sense to compare with the first step in a time dependent problem
 	if(num_outer_its == outer_maxits)
@@ -2147,7 +2458,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		if(es->parameters.get<bool>("adaptive_time_stepping"))
 		{
 			*system->solution = *old_global_solution;
-			reduce_dt = true;
+			reduce_dt = 2;
 		}
 		else
 		{
@@ -2157,6 +2468,8 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		}
 		return true;
 	}
+
+
 	if(es->parameters.get<bool>("increasing_residuals_exit") && 
 			(current_nonlinear_residual > previous_nonlinear_residual && nonlinear_iteration > 2))	
 	{
@@ -2166,7 +2479,7 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 		if(es->parameters.get<bool>("adaptive_time_stepping"))
 		{
 			*system->solution = *old_global_solution;
-			reduce_dt = true;
+			reduce_dt = 1;
 		}
 		else
 		{
@@ -2184,12 +2497,27 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
           		<< std::endl;
 
 		//well l < 3 was doing very badly..
+		/*
+		std::cout << "HI"<< std::endl;
+		std::cout << "nonlinear_iteration = " << nonlinear_iteration << std::endl;
+		std::cout << "es->parameters.get<unsigned int>(\"adaptive_newton_solve_limit\") = " << es->parameters.get<unsigned int>("adaptive_newton_solve_limit") << std::endl;
+		std::cout << "steps_since_last_dt_change = " << steps_since_last_dt_change << std::endl;
+		std::cout << "es->parameters.get<unsigned int>(\"min_steps_between_dt_increase\") = " << es->parameters.get<unsigned int>("min_steps_between_dt_increase") << std::endl;
+		std::cout << "es->parameters.get<bool>(\"adaptive_time_stepping\") = " << es->parameters.get<bool>("adaptive_time_stepping") << std::endl;
+		*/
 
-		if(nonlinear_iteration < es->parameters.get<unsigned int>("adaptive_newton_solve_limit") && 
-				steps_since_last_dt_change > es->parameters.get<unsigned int>("min_steps_between_dt_increase") 
-				&& es->parameters.get<bool>("adaptive_time_stepping"))	// don't wanna increase the timestep
+
+		if(es->parameters.get<bool>("adaptive_time_stepping") && 
+					steps_since_last_dt_change >= es->parameters.get<unsigned int>("min_steps_between_dt_increase") )
 		{
-			increase_dt = true;
+			// only increase if all three are true
+			// - note: local_max_residual_iterations will be 
+			if(nonlinear_iteration < es->parameters.get<unsigned int>("adaptive_newton_solve_limit") &&
+					local_max_iterations < es->parameters.get<unsigned int>("adaptive_linear_iterations_limit") &&
+					local_max_residual_iterations < es->parameters.get<unsigned int>("adaptive_residual_iterations_limit"))	// don't wanna increase the timestep
+			{
+				increase_dt = true;
+			}
 		}
   	return true;
  	}
@@ -2200,10 +2528,19 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
               		<< nonlinear_iteration
               		<< std::endl;
 
+		// occasionally, the timestep is so small that the pleural pressure hasn't changed
+		// leading to a trivial, but that should be okay... converge to zero...
+
+		if(!es->parameters.get<bool>("max_newton_iterations_exit"))
+		{
+			std::cout << "Continuing anyway a la Moghadam." << std::endl;
+			return true;
+		}
+
 		if(es->parameters.get<bool>("adaptive_time_stepping"))
 		{
 			*system->solution = *old_global_solution;
-			reduce_dt = true;
+			reduce_dt = 1;
 		}
 		else
 		{
@@ -2225,6 +2562,32 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 
 
+// ************************************************************************** //
+// ********              SOLVE 3D LINEAR SYSTEM (replacement of libmesh)	
+// ************
+
+// NOTES:
+// - no subset functionality
+void NavierStokesCoupled::assemble_3d_system(TransientLinearImplicitSystem * system)
+{
+	PetscErrorCode ierr;
+		
+	perf_log.push("assembly");
+	if (system->assemble_before_solve)
+	{
+		//std::cout << "boo" << std::endl;
+		// Assemble the linear system
+		system->assemble ();
+		//std::cout << "you" << std::endl;
+
+	}
+
+
+  perf_log.pop("assembly");
+}
+
+
+
 
 
 // ************************************************************************** //
@@ -2233,20 +2596,15 @@ bool NavierStokesCoupled::solve_3d_system_iteration(TransientLinearImplicitSyste
 
 // NOTES:
 // - no subset functionality
-double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicitSystem * system)
+double NavierStokesCoupled::solve_3d_system(TransientLinearImplicitSystem * system)
 {
 	PetscErrorCode ierr;
-		
-	perf_log.push("assembly");
-	if (system->assemble_before_solve)
-	{
-		// Assemble the linear system
-		system->assemble ();
-	}
-  	perf_log.pop("assembly");
 
 
 	perf_log.push("solve_setup");
+
+
+
 
 
 	// ******************* SOME SETTINGS
@@ -2283,6 +2641,14 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	// only need to do fieldsplit IS setup on first nonlinear iteration
 	// hmmm, let us check whether all the fieldsplit options have been set here.
 	
+	//KSP system_ksp = system_linear_solver->ksp();
+
+	if(es->parameters.get<bool>("compute_eigenvalues"))
+	{
+		// this must be called before KSPSetup
+		KSPSetComputeEigenvalues(system_ksp,PETSC_TRUE);
+	}
+
 
 
 
@@ -2290,29 +2656,24 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	const Real tol = es->parameters.get<Real>("linear solver tolerance");
 
 	// Get the user-specified maximum # of linear solver iterations
-	const unsigned int maxits = es->parameters.get<unsigned int>("linear solver maximum iterations");
+	const unsigned int maxits = 100000; //es->parameters.get<unsigned int>("linear solver maximum iterations");
 
 
 	// SET THE MATRIX OPERATORS
 
-	std::cout << "before setup" << std::endl;
+	//std::cout << "\nBefore 3D solve setup" << std::endl;
 
 
+	// set options for which matrices to use for the system matrix and preconditioner
+	// - these both do the same thing.
+	// - it is possible that later on we will want an option for specifying a different preconditioner 
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 0 && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
 		system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
 	else
 		system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
 
 
-//	PetscInt numsplit;
-//	ierr = PCFieldSplitGetSubKSP(sub_pc,&numsplit,NULL);// CHKERRQ(ierr);
-//	std::cout << "hmmm" << std::endl;
-//	std::cout << "numsplit = " << numsplit << std::endl;
-//	std::cout << "hmmm" << std::endl;
 
-	std::cout << "after setup" << std::endl;
-
-	//ierr = KSPSetUp(system_ksp); CHKERRQ(ierr);
 
 	if(es->parameters.get<bool>("fieldsplit") && !init_names_done)
 	{
@@ -2320,7 +2681,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		init_names_done = true;
 	}
 
-	std::cout << "after init names" << std::endl;
+	//std::cout << "after init names" << std::endl;
 
 /*
 	if(nonlinear_iteration == 1 && es->parameters.get<bool>("fieldsplit"))
@@ -2347,43 +2708,19 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 
 
-	if(false)//es->parameters.get<bool>("fieldsplit"))
-	{
-		//PetscErrorCode (*function_ptr)(KSP, PetscInt, PetscReal, void*);
-		//function_ptr = &custom_outer_monitor;
-
-		//ierr = KSPMonitorSet(system_ksp,function_ptr,NULL,NULL); CHKERRQ(ierr);
-	}
-
-	//get the inner iteration ksp
-	//int num_splits = 0;	// unused
-
-
-/*
-	std::cout << "ja" << std::endl;
-	KSP* subksp;	//subksps
-	PCFieldSplitGetSubKSP(pc,&num_splits,&subksp);
-	std::cout << "ja" << std::endl;
-	PetscErrorCode (*function_ptr_pressure)(KSP, PetscInt, PetscReal, void*);
-	function_ptr_pressure = &custom_inner_pressure_monitor;
-	KSPMonitorSet(subksp[1],function_ptr_pressure,NULL,NULL);
-	
-
-	std::cout << "ja" << std::endl;
-*/
-
-	//system->request_matrix("System Matrix")->print();
-
-	//std::ofstream matrix_to_print("results/matrix_gosh.txt");
-	//system->request_matrix("System Matrix")->print(matrix_to_print);
-	//matrix_to_print.close();
-
 
 	// ******* SETUP PRECONDITIONERS ************** //
 
 
+	std::cout << "\n3D preconditioner setup..." << std::endl;
 
 	Mat B;
+
+	// do jacobi preconditioning of matrix and rhs
+	if(es->parameters.get<unsigned int>("libmesh_jacobi"))
+	{
+		libmesh_jacobi_pre(system);
+	}
 
 	//perf_log.push("setup_pre");
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
@@ -2392,7 +2729,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 	//perf_log.pop("setup_pre");
 
-	std::cout << "after setup preconditioner" << std::endl;
+	std::cout << "3D preconditioner setup done." << std::endl;
 
 	// output system matrix
 	if(es->parameters.get<bool>("output_system_matrix"))
@@ -2417,65 +2754,51 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	perf_log.pop("solve_setup");
 	perf_log.push("solve");
 
-	//ierr = PCFieldSplitSetSchurPre(pc, PC_FIELDSPLIT_SCHUR_PRE_USER, s->myS);CHKERRQ(ierr);
+
 
 	// Solve the linear system.  Several cases:
 	std::pair<unsigned int, Real> rval = std::make_pair(0,0.0);
-	//bool _shell_matrix = false;	// unused
-	// matrix always passed by reference, preconditioner can be passed by reference of pointer
 
-	// 2.) No shell matrix, with or without user-supplied preconditioner
-	
-	/*
-	std::cout << "system matrix" << std::endl;
-	system->request_matrix("System Matrix")->print();
-	std::cout << "rhs" << std::endl;
-	system->rhs->print();
-	std::cout << "solution" << std::endl;
-	system->solution->print();
-	*/
-
-	//std::cout << "system matrix" << std::endl;
-	//system->request_matrix("System Matrix")->print();
-
-	//std::cout << "preconditioner matrix" << std::endl;
-	//system->request_matrix("Preconditioner")->print();
-
+/*
 	std::cout << "preconditioner_type_3d = " << es->parameters.get<unsigned int>("preconditioner_type_3d") << std::endl;
 	std::cout << "preconditioner_type_3d1d = " << es->parameters.get<unsigned int>("preconditioner_type_3d1d") << std::endl;
-	
+*/	
 
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 0 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
 	{
-		std::cout << "Using system matrix as preconditioner" << std::endl;
+		//std::cout << "Using system matrix as preconditioner" << std::endl;
 		rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
 	}
 	else
 	{
-		std::cout << "Using different preconditioner matrix" << std::endl;
+		//std::cout << "Using different preconditioner matrix" << std::endl;
 		rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->request_matrix("Preconditioner"), *system->solution, *system->rhs, tol, maxits);
 	}
 	
-	/*
-	std::cout << "\n\n\n\nsolving for unit rhs" << std::endl;
-	system->rhs->zero();
-	std::cout << "k" << std::endl;
-	system->rhs->set(100,1.);
-	system->rhs->close();
-	std::cout << "doing the solve" << std::endl;
-	rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
-
-	std::cout << "DONE" << std::endl;
-	*/
 
 
-/*
-	if(es->parameters.get<unsigned int>("preconditioner_type") == 0)
-		rval = system_linear_solver->solve (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
-	else if(es->parameters.get<unsigned int>("preconditioner_type"))
-		rval = system_linear_solver->solve (*system->request_matrix("System Matrix"), *system->request_matrix("Preconditioner"), *system->solution, *system->rhs, tol, maxits);	
-*/
+	// do jacobi preconditioning and get the solution back
+	if(es->parameters.get<unsigned int>("libmesh_jacobi"))
+	{
+		libmesh_jacobi_post(system);
+	}
+
+	// if we are using the residual formulation, we need to update
+	// the solution from the last_nonlinear_soln
+	if(es->parameters.get<bool>("residual_formulation"))
+	{
+		//std::cout << "post solve increment l2 norm = " << system->solution->l2_norm() << std::endl;
+
+		// we get out the increment so add the previous solution to find the new one
+		system->solution->add(*last_nonlinear_soln);
+
+		// enforce the constraints on the solution after the solve
+		//system->get_dof_map().enforce_constraints_exactly(*system);	
+
+	}
+
 	perf_log.pop("solve");
+
 
 	//system->request_matrix("Preconditioner")->print();
 	//if(es->parameters.get<unsigned int>("preconditioner_type") == 1)
@@ -2487,10 +2810,11 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	*/
 
 	// first time step or zeroth time step (setting up IC)
-	if(es->parameters.get<bool>("ksp_view") && nonlinear_iteration == 1 && (t_step - es->parameters.get<unsigned int>("restart_time_step")) <= 1)
+	if(es->parameters.get<bool>("ksp_view_3d"))
 	{
 		// we need to set this directly
 		ierr = KSPView(system_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+		es->parameters.set<bool>("ksp_view_3d") = false;	// only want to do it once
 	}
 
 
@@ -2553,33 +2877,106 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	local_linear_iterations += num_outer_its;
 	if(num_outer_its > total_max_iterations)
 		total_max_iterations = num_outer_its;
+	if(num_outer_its > local_max_iterations)
+		local_max_iterations = num_outer_its;
 
 	std::cout << std::endl;
 	std::cout << "outer its this nlin it = " << num_outer_its << std::endl;
 	std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
 	std::cout << "total outer its = " << total_linear_iterations << std::endl;
-	std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
-	std::cout << "max outer its = " << total_max_iterations << std::endl;
+	//std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+	std::cout << "local max outer its = " << local_max_iterations << std::endl;
+	std::cout << "total max outer its = " << total_max_iterations << std::endl;
 	std::cout << std::endl;
+
 
 
 	//_n_linear_iterations   = rval.first;
 	double final_linear_residual = rval.second;
 
+	// if we have solved the system only then do we calculate the eigenvalues
+
+	// ***** Possibly compute eigenvalues ******* //
+	if(es->parameters.get<bool>("compute_eigenvalues"))
+	{
+		if(sim_type == 0 || sim_type == 2 || sim_type == 3 || sim_type == 4)
+			compute_and_output_eigenvalues(system_3d);
+		else if(sim_type == 5)
+			compute_and_output_eigenvalues(system_coupled);
+	}
+
+
+
+
+	// DEBUG
+	//
+	// Compute the residual
+	// - the forcing vector will already have been computed
+	// - before we have updated u_old
+
+	/*
+	std::cout << "\nDONE2" << std::endl;
+	system->request_matrix("System Matrix")->print();
+
+	// Assemble the residual rhs
+	es->parameters.set<bool>("assemble_residual_only") = true;
+	system->assemble ();
+	es->parameters.set<bool>("assemble_residual_only") = false;
+
+	*/
+
 	// Update the system after the solve
 	system->update();
 
-	std::cout << "assemble_pressure_convection_diffusion_matrix = " << es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix") << std::endl;
-	std::cout << "assemble_pressure_laplacian_matrix = " << es->parameters.get<bool>("assemble_pressure_laplacian_matrix") << std::endl;
-	std::cout << "assemble_pressure_mass_matrix = " << es->parameters.get<bool>("assemble_pressure_mass_matrix") << std::endl;
-	std::cout << "assemble_scaled_pressure_mass_matrix = " << es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix") << std::endl;
-	std::cout << "assemble_velocity_mass_matrix = " << es->parameters.get<bool>("assemble_velocity_mass_matrix") << std::endl;
 
 
-	std::cout << "1" << std::endl;
+	//std::cout << "1" << std::endl;
+
+
+
+
+	
+
+
+
+
+
+
+
+
+
+
 
 	// ********* DELETE MATRICES AND VECTORS AFTER SOLVE *********************** //
+	solve_3d_clean_up(system,B);
+
+	
+	//std::cout << "hi" << std::endl;
+
+	return final_linear_residual;
+}
+
+// ************************************************************************* //
+
+
+
+
+
+// ************************************************************************** //
+// ********              CLEAN UP
+// ************
+
+// cleans up things by deleting matrices allocated etc
+void NavierStokesCoupled::solve_3d_clean_up(TransientLinearImplicitSystem * system, Mat& B)
+{
+
+	std::cout << "Cleaning up after solve." << std::endl;
+	
+	PetscErrorCode ierr;
+		
+
 	// only the pressure convection diffusion matrix and the pressure laplacian change at each step the others we don't need to delete
+
 	if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
 	{
 		std::cout << "1a" << std::endl;
@@ -2588,7 +2985,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 
 
-	std::cout << "2" << std::endl;
+	//std::cout << "2" << std::endl;
 	if(es->parameters.get<bool>("assemble_pressure_laplacian_matrix"))
 	{
 		std::cout << "2a" << std::endl;
@@ -2597,7 +2994,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 
 
-	std::cout << "3" << std::endl;
+	//std::cout << "3" << std::endl;
 	if(es->parameters.get<bool>("assemble_pressure_mass_matrix"))
 	{
 
@@ -2607,7 +3004,7 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	}
 
 
-	std::cout << "4" << std::endl;
+	//std::cout << "4" << std::endl;
 	if(es->parameters.get<bool>("assemble_scaled_pressure_mass_matrix"))
 	{
 
@@ -2631,14 +3028,51 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 
 	// need to zero the moghadam vectors in between each iteration
-	if(es->parameters.get<bool>("moghadam_coupling"))
+	if(es->parameters.get<unsigned int>("moghadam_coupling") 
+		|| (es->parameters.get<unsigned int>("preconditioner_type_3d") == 13 &&  
+		(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0 || es->parameters.get<bool>("moghadam_velocity_preconditioner"))))
 	{
 		system->request_vector("Moghadam Vector")->close();
 		system->request_vector("Moghadam Vector")->zero();
 		system->request_vector("Moghadam Vector BC")->close();
 		system->request_vector("Moghadam Vector BC")->zero();
 
+		if(es->parameters.get<bool> ("construct_moghadam_preconditioner"))
+		{
+			system->request_matrix("Moghadam Preconditioner")->init();
+			system->request_matrix("Preconditioner")->init();
+		}
+
 	}
+
+	// need to zero vectors used in residual formulation
+	if(es->parameters.get<bool>("residual_formulation"))
+	{
+		std::cout << "cleaning residual vectors" << std::endl;
+		system->request_vector("Forcing Vector")->close();
+		system->request_vector("Forcing Vector")->zero();
+		system->request_vector("BC Vector")->close();
+		system->request_vector("BC Vector")->zero();
+		system->request_vector("Residual LHS")->close();
+		system->request_vector("Residual LHS")->zero();
+		//system->request_vector("Newton RHS")->close();
+		//system->request_vector("Newton RHS")->zero();
+		system->request_vector("Solver Residual")->close();
+		system->request_vector("Solver Residual")->zero();
+		
+		if(es->parameters.get<bool>("increment_boundary_conditions"))
+		{
+			system->request_vector("Forcing Vector BC")->close();
+			system->request_vector("Forcing Vector BC")->zero();
+		}
+		// we don't want this to be deleted
+		//system->request_vector("Previous Nonlinear Solution")->close();
+		//system->request_vector("Previous Nonlinear Solution")->zero();
+
+		//system->request_matrix("System Matrix No BC")->init();
+
+	}
+	
 
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
 		system->request_matrix("Preconditioner")->init();
@@ -2649,7 +3083,8 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 	// delete the shell matrix from pcd 2.0
 	if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 5)
 	{
-		ierr = MatDestroy(&B); CHKERRQ(ierr);
+		// had to remove the CHKERR hmm
+		MatDestroy(&B);
 	}
 
 
@@ -2681,6 +3116,379 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 		std::cout << "hiya deleted SIMPLE IS's" << std::endl;
 	}
 	*/
+}
+
+
+
+
+
+// ************************************************************************** //
+// ********              SOLVE 3D LINEAR SYSTEM USING THE RESIDUAL METHOD (replacement of libmesh)	
+// ************
+
+// NOTES:
+// - no subset functionality
+double NavierStokesCoupled::solve_3d_system_residual(TransientLinearImplicitSystem * system)
+{
+	PetscErrorCode ierr;
+
+	// could probably build the preconditioner etc outside the loop
+	Mat B;
+	double final_linear_residual = 0.;
+
+	std::cout << "yo" << std::endl;
+
+	// first we need to calculate the initial residual
+	// this can be done by assembling the residual only
+	// should have been done already tbh
+
+	// ***** Calculate the residual norm ****** //
+	//
+	// || R ||
+	//
+	// which is the right hand side
+
+	double initial_residual_norm = 0.;
+	initial_residual_norm = system->rhs->l2_norm();
+
+	// need to apply the libmesh jacobi pre here first, once
+	if(es->parameters.get<unsigned int>("libmesh_jacobi"))
+	{
+		libmesh_jacobi_pre(system);
+	}
+
+	// need to set the initial intermediate nonlinear solution value
+	if(es->parameters.get<bool>("residual_linear_solve"))
+	{
+		// save the intermediate nonlinear soln before we change it
+		// to be consistent, it should have the old boundary values
+		// use the vector for this
+		system->get_vector("Intermediate Nonlinear Solution").zero();
+		system->get_vector("Intermediate Nonlinear Solution").add(*system->solution);
+
+	}
+
+	// ******** loop until residual has converged ******** //
+	double residual_converged = false;
+	residual_linear_iteration = 1;
+	int total_num_outer_its = 1;	
+	while(!residual_converged)
+	{
+		std::cout << "\n Residual Linear Iteration " << residual_linear_iteration << std::endl;
+
+		perf_log.push("solve_setup");
+
+
+
+
+
+		// ******************* SOME SETTINGS
+		es->parameters.set<Real> ("linear solver tolerance") =
+			 es->parameters.get<double>("outer_solver_rtol");//1.e-12;
+		//set previous nonlinear residual to value it was
+
+		//get petsc solver
+		PetscLinearSolver<Number>* system_linear_solver =
+				libmesh_cast_ptr<PetscLinearSolver<Number>* >
+				(system->linear_solver.get());
+
+		//let us set up to use the same preconditioner
+		system_linear_solver->reuse_preconditioner(es->parameters.get<bool>("reuse_preconditioner"));
+	
+		// this inits the ksp so need to set prefix before this
+		std::string prefix_3d;
+		if(sim_type != 5)
+			prefix_3d = "ns3d_";
+		else
+			prefix_3d = "ns3d1d_";
+
+		system_linear_solver->set_prefix (prefix_3d);
+		KSP system_ksp = system_linear_solver->ksp();
+
+
+
+		// Get the user-specifiied linear solver tolerance
+		const Real tol = es->parameters.get<Real>("linear solver tolerance");
+
+		// Get the user-specified maximum # of linear solver iterations
+		const unsigned int maxits = 100000; //es->parameters.get<unsigned int>("linear solver maximum iterations");
+
+
+		// SET THE MATRIX OPERATORS
+
+		//std::cout << "\nBefore 3D solve setup" << std::endl;
+
+
+		// set options for which matrices to use for the system matrix and preconditioner
+		// - these both do the same thing.
+		// - it is possible that later on we will want an option for specifying a different preconditioner 
+		if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 0 && es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
+			system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
+		else
+			system_linear_solver->solve_simple_setup (*system->request_matrix("System Matrix"), *system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
+
+
+		if(es->parameters.get<bool>("fieldsplit") && !init_names_done)
+		{
+			system->linear_solver->init_names(*system);
+			init_names_done = true;
+		}
+
+
+		// ************************************* //
+
+
+		if(es->parameters.get<bool>("nonzero_initial_guess"))
+		{
+			ierr = KSPSetInitialGuessNonzero (system_ksp, PETSC_TRUE); CHKERRQ(ierr);
+		}
+		else
+		{
+			ierr = KSPSetInitialGuessNonzero (system_ksp, PETSC_FALSE); CHKERRQ(ierr);
+		}
+
+
+		// ******* SETUP PRECONDITIONERS ************** //
+
+
+		std::cout << "\n3D preconditioner setup..." << std::endl;
+
+		//perf_log.push("setup_pre");
+		if(es->parameters.get<unsigned int>("preconditioner_type_3d") || es->parameters.get<unsigned int>("preconditioner_type_3d1d"))
+		{
+			setup_preconditioners(system,B);
+		}
+		//perf_log.pop("setup_pre");
+
+		std::cout << "3D preconditioner setup done." << std::endl;
+
+		// output system matrix
+		if(es->parameters.get<bool>("output_system_matrix"))
+		{
+		
+			std::ostringstream file_name;
+			file_name << output_folder.str() << "system_matrix.dat";
+
+			system->request_matrix("System Matrix")->print_matlab(file_name.str());
+		}
+
+		if(es->parameters.get<bool>("ksp_view_before"))
+		{
+			ierr = KSPView(system_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+		}
+
+
+		//std::cout << "System Matrix:"<< std::endl;
+		//system->request_matrix("System Matrix")->print();
+
+		std::cout << std::endl;
+		perf_log.pop("solve_setup");
+		perf_log.push("solve");
+
+		//ierr = PCFieldSplitSetSchurPre(pc, PC_FIELDSPLIT_SCHUR_PRE_USER, s->myS);CHKERRQ(ierr);
+
+		// Solve the linear system.  Several cases:
+		std::pair<unsigned int, Real> rval = std::make_pair(0,0.0);
+
+		std::cout << "preconditioner_type_3d = " << es->parameters.get<unsigned int>("preconditioner_type_3d") << std::endl;
+		std::cout << "preconditioner_type_3d1d = " << es->parameters.get<unsigned int>("preconditioner_type_3d1d") << std::endl;
+	
+
+		if(es->parameters.get<unsigned int>("preconditioner_type_3d") == 0 || es->parameters.get<unsigned int>("preconditioner_type_3d1d") == 0)
+		{
+			std::cout << "Using system matrix as preconditioner" << std::endl;
+			rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->solution, *system->rhs, tol, maxits);
+		}
+		else
+		{
+			std::cout << "Using different preconditioner matrix" << std::endl;
+			rval = system_linear_solver->solve_simple (*system->request_matrix("System Matrix"), *system->request_matrix("Preconditioner"), *system->solution, *system->rhs, tol, maxits);
+		}
+	
+		// calculate the solver residual (before post jacobi)
+
+
+		system->get_vector("Solver Residual").zero();
+		system->get_vector("Solver Residual").add_vector(*system->solution,*system->request_matrix("System Matrix"));
+		std::cout << "soln_norm = " << system->solution->l2_norm() << std::endl;
+
+		std::cout << "Ax_norm = " << system->get_vector("Solver Residual").l2_norm() << std::endl;
+		std::cout << "rhs_norm = " << system->rhs->l2_norm() << std::endl;
+		system->get_vector("Solver Residual").add(-1.0,*system->rhs);
+		double solver_residual_norm = system->get_vector("Solver Residual").l2_norm();
+		std::cout << "solver_residual_norm = " << solver_residual_norm << std::endl;
+		std::cout << "initial_residual_norm = " << initial_residual_norm << std::endl;
+		double residual_error = solver_residual_norm/initial_residual_norm;
+		std::cout << "residual_error = " << residual_error << std::endl;
+
+		// do jacobi preconditioning and get the solution back
+		if(es->parameters.get<unsigned int>("libmesh_jacobi"))
+		{
+			libmesh_jacobi_post(system);
+		}
+
+		// need to update the solution from the previous nonlinear solution
+		std::cout << "post solve increment l2 norm = " << system->solution->l2_norm() << std::endl;
+
+		// we get out the increment so add the previous solution to find the new one
+		system->solution->add(system->get_vector("Intermediate Nonlinear Solution"));
+
+		perf_log.pop("solve");
+
+
+		// first time step or zeroth time step (setting up IC)
+		if(es->parameters.get<bool>("ksp_view_3d"))
+		{
+			// we need to set this directly
+			ierr = KSPView(system_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+			es->parameters.set<bool>("ksp_view_3d") = false;	// only want to do it once
+		}
+
+
+
+
+
+
+
+
+
+		if(es->parameters.get<bool>("post_solve"))
+			test_post_solve(system);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		int num_outer_its = 0;
+		//int num_inner_velocity_its = 0;	// unused
+		//int num_inner_pressure_its = 0;	// unused
+		// output some data about the iterative solve
+		// this is hard to do when doing restrict_solve_to, so just leave it
+
+		ierr = KSPGetIterationNumber(system_ksp,&num_outer_its); CHKERRQ(ierr);
+
+		if(es->parameters.get<unsigned int>("preconditioner_type_3d1d") >= 6
+			&& es->parameters.get<unsigned int>("preconditioner_type_3d") >= 2)
+		{
+			num_outer_its = mono_ctx->total_velocity_iterations;
+		}
+	
+		PetscReal rnorm;
+		KSPGetResidualNorm(system_ksp,&rnorm);
+
+		PetscReal divtol;
+		KSPGetTolerances(system_ksp,NULL,NULL,&divtol,NULL);
+	
+		total_num_outer_its += num_outer_its;
+		total_linear_iterations += num_outer_its;
+		local_linear_iterations += num_outer_its;
+		if(num_outer_its > total_max_iterations)
+			total_max_iterations = num_outer_its;
+		if(num_outer_its > local_max_iterations)
+			local_max_iterations = num_outer_its;
+
+		std::cout << std::endl;
+		std::cout << "linear its this residual iteration = " << num_outer_its << std::endl;
+		std::cout << "outer its this nlin it = " << total_num_outer_its << std::endl;
+		std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+		std::cout << "total outer its = " << total_linear_iterations << std::endl;
+		std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+		std::cout << "local max outer its = " << local_max_iterations << std::endl;
+		std::cout << "max outer its = " << total_max_iterations << std::endl;
+		std::cout << std::endl;
+
+
+
+		//_n_linear_iterations   = rval.first;
+		final_linear_residual = rval.second;
+
+
+
+
+		if(residual_error < es->parameters.get<double>("residual_linear_solver_tolerance"))
+		{
+			std::cout << "Residual has converged at iteration " << residual_linear_iteration << "." << std::endl;
+			residual_converged = true;
+		}
+		else if(residual_linear_iteration > es->parameters.get<unsigned int>("residual_max_iterations"))
+		{
+			std::cout << "Residual taking too long to converge." << std::endl;
+			std::cout << "Exiting..." << std::endl;
+			std::cout << "Eventually..." << std::endl;
+			residual_converged = true;
+			if(!es->parameters.get<bool>("adaptive_time_stepping"))
+				exit_program = true;
+			else
+			{	/* do nothing */	}		
+		}
+		else
+		{
+			std::cout << "Residual has not converged, continuing with iteration." << std::endl;
+		
+			residual_linear_iteration++;
+
+			// ***** Assemble adjusted residual rhs for the next solve ******* //
+			//
+			// here we want to calculate the residual error after the solve
+			// this also assembles the rhs for the subsequent residual iteration
+			// problem is, the assemble function zeros the system matrix (and rhs)
+
+
+			// before we assemble, we need to reinit the bcs for the moghadam matrix
+			// this is so that the flow rate and resistance can be updated and applied correctly
+			
+			if(es->parameters.get<unsigned int>("moghadam_coupling"))
+			{
+				calculate_3d_boundary_values();	// calculate the boundary values to be used
+				calculate_1d_pressure_deriv_values();
+
+				// use the pressure_deriv_values_1d and/or input_pressure_values_3d (well... we need the 1d pressures for moghadam, so yeah..)
+				picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,pressure_deriv_values_1d,
+												previous_flux_values_3d,previous_previous_flux_values_3d,
+												empty_vec,empty_vec,previous_dynamic_pressure_values_3d);
+			}
+
+			// Assemble the residual rhs
+			es->parameters.set<bool>("assemble_residual_only") = true;
+			picard->assemble ();	// call from picard so it doesn't zero the system matrix
+			es->parameters.set<bool>("assemble_residual_only") = false;
+
+			// after assembly, need to update what the intermediate nonlinear solution is
+			system->get_vector("Intermediate Nonlinear Solution") = *system->solution;
+
+			
+		}
+
+	}
+		
+
+	// Update the system after the solve
+	system->update();
+
+
+	std::cout << "1" << std::endl;
+
+
+
+
+
+
+	// ********* DELETE MATRICES AND VECTORS AFTER SOLVE *********************** //
+	solve_3d_clean_up(system,B);
 
 	
 	std::cout << "hi" << std::endl;
@@ -2690,6 +3498,2053 @@ double NavierStokesCoupled::solve_and_assemble_3d_system(TransientLinearImplicit
 
 // ************************************************************************* //
 
+
+
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP LIBMESH LEFT JACOBI **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::libmesh_jacobi_pre(TransientLinearImplicitSystem * system)
+{
+
+	// to do left jacobi, we need to scale the system matrix and the rhs
+
+	// scale the system matrix
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+
+	//moghadam_velocity_rhs = cast_ptr<PetscVector<Number>*>(NumericVector<Number>::build(mesh.comm()).release());
+	diagonal = NumericVector<Number>::build(mesh.comm()).release();
+
+	std::cout << "hello" << std::endl;
+	system->rhs->create_subvector(*diagonal,all_var_idx);
+
+	std::cout << "hello" << std::endl;
+	system->request_matrix("System Matrix")->close();
+	system->request_matrix("System Matrix")->get_diagonal(*diagonal);
+
+	diagonal->close();
+
+	// check no zeros
+	for(unsigned int i=0; i<all_var_idx.size(); i++)
+	{
+		double value = diagonal->el(all_var_idx[i]);
+		if(fabs(value) < 1.e-10)
+		{
+			diagonal->set(all_var_idx[i],1.0);
+		}
+		else
+		{
+			//diagonal->set(all_var_idx[i],fabs(value));
+
+		}
+	}
+
+	// if left preconditioning then we scale the rhs by the inverse of the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 1)
+	{
+		std::cout << "hello" << std::endl;
+		// scale the rhs
+		*system->rhs /= *diagonal;
+	}
+
+	// for symmetric preconditioning, we need the square root of the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		for(unsigned int i=0; i<all_var_idx.size(); i++)
+		{
+			double sqrt_value = sqrt(fabs(diagonal->el(all_var_idx[i])));
+			diagonal->set(all_var_idx[i],sqrt_value);
+		}
+
+		std::cout << "hello" << std::endl;
+		// scale the rhs
+		*system->rhs /= *diagonal;
+	}
+
+	system->rhs->close();
+
+	std::cout << "fuck yeah" << std::endl;
+		diagonal->close();
+	std::cout << "hello" << std::endl;
+	// scale the matrix
+	diagonal->reciprocal();
+	std::cout << "hello" << std::endl;
+
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 1)
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(system->request_matrix("System Matrix"))->mat(),cast_ptr<PetscVector<Number>*>(diagonal)->vec(),NULL);
+	else if(es->parameters.get<unsigned int>("libmesh_jacobi") == 2)
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(system->request_matrix("System Matrix"))->mat(),NULL,cast_ptr<PetscVector<Number>*>(diagonal)->vec());
+	else if(es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(system->request_matrix("System Matrix"))->mat(),cast_ptr<PetscVector<Number>*>(diagonal)->vec(),cast_ptr<PetscVector<Number>*>(diagonal)->vec());
+
+	std::cout << "hello" << std::endl;
+
+}
+
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP LIBMESH LEFT JACOBI **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::libmesh_jacobi_post(TransientLinearImplicitSystem * system)
+{
+
+	std::cout << "Scaling the Solution jacobi post solve " << std::endl;
+
+	// to do left jacobi, we need to scale the system matrix and the rhs
+
+	// scale the system matrix
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+	std::cout << "boo" << std::endl;
+	// we already have the reciprocal of the diagonal, need to get it back
+	//diagonal->reciprocal();
+
+	// if right preconditioning then we scale the solution by the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 2)
+	{
+		std::cout << "hello" << std::endl;
+		// scale the rhs
+		*system->solution /= *diagonal;
+	}
+
+	// for symmetric preconditioning, we scale the solution by the inverse of square root of the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		std::cout << "hello" << std::endl;
+		// scale the rhs
+		*system->solution /= *diagonal;
+	}
+
+	system->solution->close();
+
+	std::cout << "hello" << std::endl;
+
+}
+
+
+
+
+
+
+
+
+// ************************************************************************** //
+// ********              SOLVE 3D LINEAR SYSTEM USING MOGHADAM PRECONDITIONER (replacement of libmesh)	
+// ************
+
+// NOTES:
+// - no subset functionality
+double NavierStokesCoupled::solve_3d_system_moghadam(TransientLinearImplicitSystem * system)
+{
+	PetscErrorCode ierr;
+		
+	// could probably build the preconditioner etc outside the loop
+	Mat B;
+	double final_linear_residual = 0.;
+
+	// need to set the initial intermediate nonlinear solution value
+	system->get_vector("Intermediate Nonlinear Solution").zero();
+	system->get_vector("Intermediate Nonlinear Solution").add(*system->solution);
+
+	// we need to setup the matrices before the loop so they can be reused
+	// they will be jacobi scaled in here
+	setup_moghadam_matrices(system);
+
+	// setup the solvers
+	// the velocity solver and the schur complement solver
+	perf_log.push("solve_setup");
+	setup_moghadam_solvers(system);
+	perf_log.pop("solve_setup");
+
+	// first we need to calculate the initial residual
+	// this can be done by assembling the residual only
+	// should have been done already tbh
+	// all norms are calculated before jacobi scaling
+	double initial_residual_norm = 0.;
+	initial_residual_norm = system->rhs->l2_norm();
+	std::cout << "\ninitial_residual_norm = " << initial_residual_norm << std::endl;
+
+
+	// the rhs needs to be jacobi scaled separately
+	// this may be wrong?? i think not, cause we do all the norm calculations without preonditioners
+	moghadam_libmesh_jacobi_pre_rhs(system);
+
+
+
+	// outer moghadam loop
+	bool residual_converged = false;
+	residual_linear_iteration = 1;
+
+	// iteration count variables for this iteration
+	int total_num_outer_its = 0;	// gmres_1 + schur + gmres_2
+	int total_gmres_1_its = 0;
+	int total_schur_its = 0;
+	int total_gmres_2_its	= 0;
+	while(!residual_converged)
+	{
+
+		std::cout << "\n*** Moghadam Linear Iteration " <<  residual_linear_iteration << " ***" << std::endl;
+
+		// ************ First Moghadam GMRES Solve ************ //
+
+		std::cout << std::endl;
+
+		// ************ Setup Solver ********* //
+		perf_log.push("solve_setup");
+
+		
+
+
+		// ******************* Solver Options ********** //
+		const double gmres_tol = es->parameters.get<Real>("linear solver tolerance");
+
+		// Get the user-specified maximum # of linear solver iterations
+		const unsigned int maxits = es->parameters.get<unsigned int>("linear solver maximum iterations");
+
+		//get petsc solver
+		PetscLinearSolver<Number>* system_linear_solver =
+				libmesh_cast_ptr<PetscLinearSolver<Number>* >
+				(system->linear_solver.get());
+		KSP moghadam_velocity_ksp = system_linear_solver->ksp();
+
+
+
+
+
+
+		// ******** Set velocity 1 rhs *********** //
+		// setup all the vectors that we use at this stage
+		// - for now K, H, f_u and u_temp
+
+		setup_moghadam_velocity_1(system);
+
+		perf_log.pop("solve_setup");
+
+
+
+
+
+
+		// *********** Solve the moghadam GMRES 1 ************ //
+
+		perf_log.push("solve");
+
+		//std::cout << "preconditioner_type_3d = " << es->parameters.get<unsigned int>("preconditioner_type_3d") << std::endl;
+		std::cout << " Before Moghadam GMRES Solve 1" << std::endl;
+	
+		// SOLVE
+		// want two options, one where we use the moghadam preconditioner matrix and one without
+		if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0)
+			system_linear_solver->solve_simple (*moghadam_velocity_matrix, *moghadam_velocity_preconditioner_matrix, *moghadam_velocity_temp_solution, *moghadam_velocity_rhs, gmres_tol, maxits);
+		else
+			system_linear_solver->solve_simple (*moghadam_velocity_matrix, *moghadam_velocity_matrix, *moghadam_velocity_temp_solution, *moghadam_velocity_rhs, gmres_tol, maxits);
+
+		std::cout << " After Moghadam GMRES Solve 1" << std::endl;
+		perf_log.pop("solve");
+
+
+		// ********** Get info from GMRES 1 solve ************** //
+
+		// first time step or zeroth time step (setting up IC)
+		if(es->parameters.get<bool>("ksp_view_3d"))
+		{
+			// we need to set this directly
+			ierr = KSPView(moghadam_velocity_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+			es->parameters.set<bool>("ksp_view_3d") = false;	// only want to do it once
+		}
+
+
+		int num_gmres_1_its = 0;	
+		ierr = KSPGetIterationNumber(moghadam_velocity_ksp,&num_gmres_1_its); CHKERRQ(ierr);
+
+		PetscReal rnorm;
+		KSPGetResidualNorm(moghadam_velocity_ksp,&rnorm);
+
+		PetscReal divtol;
+		PetscInt gmres_1_maxits;
+		KSPGetTolerances(moghadam_velocity_ksp,NULL,NULL,&divtol,&gmres_1_maxits);
+
+		KSPConvergedReason gmres_1_converged_reason;
+		ierr = KSPGetConvergedReason(moghadam_velocity_ksp,&gmres_1_converged_reason); CHKERRQ(ierr);
+
+		total_gmres_1_its += num_gmres_1_its;
+		total_num_outer_its += num_gmres_1_its;
+		total_linear_iterations += num_gmres_1_its;
+		local_linear_iterations += num_gmres_1_its;
+		total_gmres_linear_iterations += num_gmres_1_its;
+		if(num_gmres_1_its > total_max_iterations)
+			total_max_iterations = num_gmres_1_its;
+		if(num_gmres_1_its > local_max_iterations)
+			local_max_iterations = num_gmres_1_its;
+		if(num_gmres_1_its > total_max_gmres_iterations)
+			total_max_gmres_iterations = num_gmres_1_its;
+
+		std::cout << std::endl;
+		std::cout << "gmres_1 converged reason = " << gmres_1_converged_reason << ": " <<  get_converged_reason_string(gmres_1_converged_reason) << std::endl;
+		std::cout << "gmres_1 final residual norm = " << rnorm << std::endl;
+		std::cout << "gmres_1 its this residual it = " << num_gmres_1_its << std::endl;
+		std::cout << "max gmres its = " << total_max_gmres_iterations << std::endl;
+
+		// check hasn't taken too long
+		if(num_gmres_1_its == gmres_1_maxits && es->parameters.get<bool>("adaptive_time_stepping"))
+		{
+			reduce_dt = 2;
+			break;
+		}
+		/*
+		std::cout << "total gmres_1 its this nlin it = " << total_gmres_1_its << std::endl;
+		std::cout << "total its this nlin it = " << total_num_outer_its << std::endl;
+		std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+		std::cout << "total outer its = " << total_linear_iterations << std::endl;
+		std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+		std::cout << "max outer its = " << total_max_iterations << std::endl;
+		std::cout << std::endl;
+		*/
+
+		// DONE GMRES SOLVE 1
+
+
+
+
+
+
+
+
+		// *********************** MOGHADAM SCHUR SOLVE *********************** //
+		perf_log.push("solve_setup");
+
+		// now we solve S_tilde = f_p - B * u_hat
+		// where S_tilde = C- BHB^T
+		// where u_hat is the solution of the velocity solve done previously
+		//
+		// steps:
+		//
+		// 1 - calculate f_p - B * u_hat
+
+		// setup all the matrices, vectors, ksp that we can at this stage
+		// - for now K, H, f_u and u_temp
+
+		std::cout << std::endl;
+		setup_moghadam_schur(system);
+
+		perf_log.pop("solve_setup");
+
+
+
+
+
+
+
+
+		// *********** Solve the moghadam schur ************ //
+
+		perf_log.push("solve");
+
+		//std::cout << "preconditioner_type_3d = " << es->parameters.get<unsigned int>("preconditioner_type_3d") << std::endl;
+		std::cout << " Before Moghadam Schur Solve" << std::endl;
+
+		// SOLVE SCHUR
+		ierr = KSPSolve(moghadam_schur_ksp,cast_ptr<PetscVector<Number>*>(moghadam_schur_rhs)->vec(),cast_ptr<PetscVector<Number>*>(moghadam_schur_temp_solution)->vec());
+
+		std::cout << " After Moghadam Schur" << std::endl;
+
+		perf_log.pop("solve");
+
+
+
+		// *** Get some info after the solve
+
+		// first time step or zeroth time step (setting up IC)
+		if(es->parameters.get<bool>("ksp_view_3d"))
+		{
+			// we need to set this directly
+			ierr = KSPView(moghadam_schur_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+			es->parameters.set<bool>("ksp_view_3d") = false;	// only want to do it once
+		}
+
+
+		int num_schur_its = 0;	
+		ierr = KSPGetIterationNumber(moghadam_schur_ksp,&num_schur_its); CHKERRQ(ierr);
+
+		KSPGetResidualNorm(moghadam_schur_ksp,&rnorm);
+
+		KSPConvergedReason schur_converged_reason;
+		ierr = KSPGetConvergedReason(moghadam_schur_ksp,&schur_converged_reason); CHKERRQ(ierr);
+
+		PetscInt schur_maxits;
+		KSPGetTolerances(moghadam_schur_ksp,NULL,NULL,&divtol,&schur_maxits);
+	
+		total_schur_its += num_schur_its;
+		total_num_outer_its += num_schur_its;
+		total_linear_iterations += num_schur_its;
+		local_linear_iterations += num_schur_its;
+		total_cg_linear_iterations += num_schur_its;
+		if(num_schur_its > total_max_iterations)
+			total_max_iterations = num_schur_its;
+		if(num_schur_its > local_max_iterations)
+			local_max_iterations = num_schur_its;
+		if(num_schur_its > total_max_cg_iterations)
+			total_max_cg_iterations = num_schur_its;
+
+		std::cout << "schur converged reason = " << schur_converged_reason << ": " << get_converged_reason_string(schur_converged_reason) << std::endl;
+		std::cout << "schur final residual norm = " << rnorm << std::endl;
+		std::cout << "schur its this residual it = " << num_schur_its << std::endl;
+		std::cout << "max cg its = " << total_max_cg_iterations << std::endl;
+
+		// check hasn't taken too long
+		if(num_schur_its == schur_maxits && es->parameters.get<bool>("adaptive_time_stepping"))
+		{
+			reduce_dt = 2;
+			break;
+		}
+		/*
+		std::cout << "total schur its this nlin it = " << total_schur_its << std::endl;
+		std::cout << "total its this nlin it = " << total_num_outer_its << std::endl;
+		std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+		std::cout << "total outer its = " << total_linear_iterations << std::endl;
+		std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+		std::cout << "max outer its = " << total_max_iterations << std::endl;
+		std::cout << std::endl;
+		*/
+
+		// DONE MOGHADAM SCHUR SOLVE
+
+
+
+
+
+
+
+		// ********* GMRES 2 solve ******* //
+
+		// ******** Set solver operators *********** //
+		perf_log.push("solve_setup");
+
+		std::cout << std::endl;
+		// setup all the vectors to be used at this stage
+		// - for now K, H, f_u and u_temp
+		setup_moghadam_velocity_2(system);
+
+		perf_log.pop("solve_setup");
+
+
+
+
+		// *********** Solve the moghadam GMRES 2 ************ //
+
+		perf_log.push("solve");
+
+		//std::cout << "preconditioner_type_3d = " << es->parameters.get<unsigned int>("preconditioner_type_3d") << std::endl;
+		std::cout << " Before Moghadam GMRES Solve 2" << std::endl;
+	
+		// want two options, one where we use the moghadam preconditioner matrix and one without
+		if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0)
+			system_linear_solver->solve_simple (*moghadam_velocity_matrix, *moghadam_velocity_preconditioner_matrix, *moghadam_velocity_temp_solution_2, *moghadam_velocity_rhs_2, gmres_tol, maxits);
+		else
+			system_linear_solver->solve_simple (*moghadam_velocity_matrix, *moghadam_velocity_matrix, *moghadam_velocity_temp_solution_2, *moghadam_velocity_rhs_2, gmres_tol, maxits);
+
+		std::cout << " After Moghadam GMRES Solve 2" << std::endl;
+
+		perf_log.pop("solve");
+
+
+
+
+
+
+		// first time step or zeroth time step (setting up IC)
+		if(es->parameters.get<bool>("ksp_view_3d"))
+		{
+			// we need to set this directly
+			ierr = KSPView(moghadam_velocity_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+			es->parameters.set<bool>("ksp_view_3d") = false;	// only want to do it once
+		}
+
+
+		int num_gmres_2_its = 0;	
+
+		ierr = KSPGetIterationNumber(moghadam_velocity_ksp,&num_gmres_2_its); CHKERRQ(ierr);
+	
+		KSPConvergedReason gmres_2_converged_reason;
+		ierr = KSPGetConvergedReason(moghadam_velocity_ksp,&gmres_2_converged_reason); CHKERRQ(ierr);
+
+		KSPGetResidualNorm(moghadam_velocity_ksp,&rnorm);
+
+		PetscInt gmres_2_maxits;
+		KSPGetTolerances(moghadam_velocity_ksp,NULL,NULL,&divtol,&gmres_2_maxits);
+
+		total_gmres_2_its += num_gmres_2_its;
+		total_num_outer_its += num_gmres_2_its;
+		total_linear_iterations += num_gmres_2_its;
+		local_linear_iterations += num_gmres_2_its;
+		total_gmres_linear_iterations += num_gmres_2_its;
+		if(num_gmres_2_its > total_max_iterations)
+			total_max_iterations = num_gmres_2_its;
+		if(num_gmres_2_its > local_max_iterations)
+			local_max_iterations = num_gmres_2_its;
+		if(num_gmres_2_its > total_max_gmres_iterations)
+			total_max_gmres_iterations = num_gmres_2_its;
+
+		std::cout << "gmres_2 converged reason = " << gmres_2_converged_reason << ": " <<  get_converged_reason_string(gmres_2_converged_reason) << std::endl;
+		std::cout << "gmres_2 final residual norm = " << rnorm << std::endl;
+		std::cout << "gmres_2 its this residual it = " << num_gmres_2_its << std::endl;
+		std::cout << "max gmres its = " << total_max_gmres_iterations << std::endl;
+
+		// check hasn't taken too long
+		if(num_gmres_2_its == gmres_2_maxits && es->parameters.get<bool>("adaptive_time_stepping"))
+		{
+			reduce_dt = 2;
+			break;
+		}
+/*
+		std::cout << "total gmres_2 its this nlin it = " << total_gmres_2_its << std::endl;
+		std::cout << "total its this nlin it = " << total_num_outer_its << std::endl;
+		std::cout << "outer its this timestep = " << local_linear_iterations << std::endl;
+		std::cout << "total outer its = " << total_linear_iterations << std::endl;
+		std::cout << "average outer its per nonlinear iteration this time step = " << (double)local_linear_iterations/(double)(nonlinear_iteration) << std::endl;
+		std::cout << "max outer its = " << total_max_iterations << std::endl;
+		std::cout << std::endl;
+*/
+
+
+
+		// **** DONE GMRES 2
+
+
+
+
+
+
+
+		// ***** now put the vector together
+		// u = moghadam_velocity_temp_solution_1 - moghadam_velocity_temp_solution_2
+		// then U = (u p)
+
+		std::cout << std::endl;
+		update_moghadam_solution_vector(system);
+
+
+		// **** check the preconditioned system
+		//
+		// first equation is F*u + Bt*p - fu = 0
+		// second equation is B*u + C*p - fp = 
+		
+		check_moghadam_preconditioned_solution(system);
+		
+
+		//std::cout << "soln_norm before scale = " << system->solution->l2_norm() << std::endl;
+
+
+
+		// the system matrix is not jacobi scaled,
+		// so need to scale back before calculating the residual
+		// rescale the solution and rhs
+		moghadam_libmesh_jacobi_post(system);
+
+		// ***** now calculate the residual to check error
+		//
+		// will the system matrix and solution vector be correct?
+		// should be, just need to make sure, they have been scaled correctly
+		// hopefully they won't have been scaled at all
+
+		system->get_vector("Solver Residual").zero();
+		system->get_vector("Solver Residual").add_vector(*system->solution,*system->request_matrix("System Matrix"));
+		//std::cout << "soln_norm = " << system->solution->l2_norm() << std::endl;
+
+		//std::cout << "Ax_norm = " << system->get_vector("Solver Residual").l2_norm() << std::endl;
+		//std::cout << "rhs_norm = " << system->rhs->l2_norm() << std::endl;
+		system->get_vector("Solver Residual").add(-1.0,*system->rhs);
+		system->get_vector("Solver Residual").close();
+		double solver_residual_norm = system->get_vector("Solver Residual").l2_norm();
+		//std::cout << "solver_residual_norm = " << solver_residual_norm << std::endl;
+		std::cout << "initial_residual_norm = " << initial_residual_norm << std::endl;
+		double residual_error = solver_residual_norm/initial_residual_norm;
+		std::cout << "residual_error = " << residual_error << std::endl;
+
+		// update the solution vector from the intermediate nonlinear soln
+		// and the increment soln
+		system->solution->add(system->get_vector("Intermediate Nonlinear Solution"));
+
+
+
+		// ********* DELETE VECTORS AFTER SOLVE *********************** //
+		solve_3d_clean_up_moghadam_vectors(system);
+
+		if(residual_error < es->parameters.get<double>("residual_linear_solver_tolerance"))
+		{
+			std::cout << "Residual has converged at iteration " << residual_linear_iteration << "." << std::endl;
+			
+			if(residual_linear_iteration > local_max_residual_iterations)
+				local_max_residual_iterations = residual_linear_iteration;
+
+			residual_converged = true;
+		}
+		else if(residual_linear_iteration > es->parameters.get<unsigned int>("residual_max_iterations"))
+		{
+			std::cout << "Residual taking too long to converge." << std::endl;
+			residual_converged = true;
+			if(!es->parameters.get<bool>("adaptive_time_stepping"))
+			{
+				std::cout << "Exiting..." << std::endl;
+				std::cout << "Eventually..." << std::endl;
+				exit_program = true;
+			}
+			else
+			{
+				std::cout << "Reducing time step." << std::endl;
+				reduce_dt = 3;	
+			}			
+		}
+		else
+		{
+			std::cout << "Residual has not converged, continuing with iteration.\n" << std::endl;
+		
+			residual_linear_iteration++;
+
+			// before we assemble, we need to reinit the bcs for the moghadam matrix
+			// this is so that the flow rate and resistance can be updated and applied correctly
+			
+			// we are probably always doing moghadam coupling in this method, but oh well
+			if(es->parameters.get<unsigned int>("moghadam_coupling"))
+			{
+				calculate_3d_boundary_values();	// calculate the boundary values to be used
+				if(sim_type == 2)
+					calculate_1d_pressure_deriv_values();
+
+				// use the pressure_deriv_values_1d and/or input_pressure_values_3d (well... we need the 1d pressures for moghadam, so yeah..)
+				picard->init_bc(boundary_ids,pressure_values_1d,flux_values_1d,pressure_deriv_values_1d,
+												previous_flux_values_3d,previous_previous_flux_values_3d,
+												empty_vec,empty_vec,previous_dynamic_pressure_values_3d);
+			}
+
+			// Assemble the residual rhs
+			es->parameters.set<bool>("assemble_residual_only") = true;
+			picard->assemble ();	// call from picard so it doesn't zero the system matrix
+			es->parameters.set<bool>("assemble_residual_only") = false;
+
+			//std::cout << "hmm" << std::endl;
+			// once the residual rhs has been assembled, jacobi scale it
+			moghadam_libmesh_jacobi_pre_rhs(system);
+
+			//std::cout << "hmm" << std::endl;
+
+			system->solution->close();
+			system->get_vector("Intermediate Nonlinear Solution") = *system->solution;
+
+			
+		}
+
+	}
+
+	std::cout << "hih bebe" << std::endl;
+
+	// ********* DELETE MATRICES AFTER SOLVE *********************** //
+	solve_3d_clean_up_moghadam_matrices(system);
+
+	std::cout << "lol" << std::endl;
+	// Update the system after the solve
+	system->update();
+	std::cout << "fu" << std::endl;
+
+
+
+	return final_linear_residual;
+}
+
+// ************************************************************************* //
+
+
+
+
+
+
+
+
+
+
+// ************************************************************************** //
+// ********              CLEAN UP
+// ************
+
+// cleans up things by deleting matrices allocated etc
+void NavierStokesCoupled::solve_3d_clean_up_moghadam_matrices(TransientLinearImplicitSystem * system)
+{
+
+	PetscErrorCode ierr;
+
+	// ********* DELETE MATRICES AND VECTORS AFTER SOLVE *********************** //
+	// only the temp solution vector doesn't need to be deleted -> what why??
+	// hmm, don't we need to set it to re construct them now?
+	delete moghadam_velocity_matrix;
+	if(es->parameters.get<bool>("construct_moghadam_preconditioner"))
+		delete moghadam_velocity_preconditioner_matrix;
+	delete moghadam_b_matrix;
+	delete moghadam_bt_matrix;
+	delete moghadam_c_matrix;
+
+	if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+		delete moghadam_velocity_h_inverse_matrix;
+
+	if(es->parameters.get<bool>("moghadam_velocity_preconditioner"))
+	{
+		std::cout << "hello" << std::endl;
+		//get petsc solver
+		PetscLinearSolver<Number>* system_linear_solver =
+				libmesh_cast_ptr<PetscLinearSolver<Number>* >
+				(system->linear_solver.get());
+
+		std::cout << "hello" << std::endl;
+		KSP moghadam_velocity_ksp = system_linear_solver->ksp();
+
+		std::cout << "hello" << std::endl;
+		PC moghadam_velocity_pc;
+		ierr = KSPGetPC(moghadam_velocity_ksp,&moghadam_velocity_pc);// CHKERRQ(ierr);
+
+		std::cout << "hello" << std::endl;
+
+		// hmm, not quite sure what i have to do here	
+		//ierr = MoghadamVelocityPCDestroy(moghadam_velocity_pc);
+		
+		std::cout << "hello" << std::endl;
+	}
+
+	// these don't work for some reason, probably need more specific action
+	ierr = MatDestroy(&moghadam_schur_matrix);	//delete moghadam_schur_matrix;
+	//delete moghadam_schur_mat_ctx;
+	ierr = KSPDestroy(&moghadam_schur_ksp);	//delete moghadam_schur_ksp;
+
+	// don't really want to destroy all this stuff, maybe next iteration
+	// or better yet, only build the matrices each iteration
+	
+	system->request_matrix("Preconditioner")->init();
+	if(es->parameters.get<unsigned int>("moghadam_coupling") 
+		|| (es->parameters.get<unsigned int>("preconditioner_type_3d") == 13 &&  
+		(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0 || es->parameters.get<bool>("moghadam_velocity_preconditioner"))))
+	{
+		system->request_vector("Moghadam Vector")->close();
+		system->request_vector("Moghadam Vector")->zero();
+		system->request_vector("Moghadam Vector BC")->close();
+		system->request_vector("Moghadam Vector BC")->zero();
+
+		if(es->parameters.get<bool>("construct_moghadam_preconditioner"))
+		{
+			system->request_matrix("Moghadam Preconditioner")->init();
+		}
+
+		if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+		{
+			system->request_matrix("Moghadam H Inverse")->init();		
+		}
+	}
+
+
+}
+
+
+
+
+
+
+
+
+
+
+// ************************************************************************** //
+// ********              CLEAN UP
+// ************
+
+// cleans up things by deleting matrices allocated etc
+// this function is called after each intermediate residual solve
+void NavierStokesCoupled::solve_3d_clean_up_moghadam_vectors(TransientLinearImplicitSystem * system)
+{
+
+
+	// ********* DELETE VECTORS AFTER SOLVE *********************** //
+	// only the temp solution vector doesn't need to be deleted -> what why??
+	// hmm, don't we need to set it to re construct them now?
+	delete moghadam_velocity_rhs;
+	delete moghadam_velocity_temp_solution;
+	delete moghadam_schur_rhs;
+	delete moghadam_schur_temp_solution;
+	delete moghadam_velocity_rhs_2;
+	delete moghadam_velocity_temp_solution_2;	
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP PRECONDITIONERS **************************** //
+// setup the matrices to be used in the solver. these will be deleted at the end of a nonlinear iteration
+// note: the vectors are built separately and deleted every residual iteration
+// we'll potentially scale them appropriately here too: to do.
+int NavierStokesCoupled::setup_moghadam_matrices(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	std::cout << "\nSetting up matrices for moghadam preconditioner." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	std::cout << "hi" << std::endl;
+
+	// ****** construct the moghadam velocity matrix K *********** //
+	moghadam_velocity_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+	system->request_matrix("System Matrix")->create_submatrix(*moghadam_velocity_matrix,U_var_idx,U_var_idx);
+	moghadam_velocity_matrix->close();
+
+	std::cout << "hi" << std::endl;
+	// ****** construct the moghadam velocity preconditioner matrix H *********** //
+	if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0 || es->parameters.get<bool>("moghadam_velocity_preconditioner"))
+	{
+		moghadam_velocity_preconditioner_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+		system->request_matrix("Moghadam Preconditioner")->create_submatrix(*moghadam_velocity_preconditioner_matrix,U_var_idx,U_var_idx);
+		moghadam_velocity_preconditioner_matrix->close();
+	}
+	std::cout << "hi" << std::endl;
+	// lumped diagonal, not currently implemented
+	/*
+	else if(es->parameters.get<unsigned int>("moghadam_without_pc") == 2)
+	{
+		// create lumped matrix
+		moghadam_velocity_preconditioner_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+		system->request_matrix("System Matrix")->create_submatrix(*moghadam_velocity_preconditioner_matrix,U_var_idx,U_var_idx);
+
+		moghadam_velocity_row_sum = NumericVector<Number>::build(mesh.comm()).release();
+		system->rhs->create_subvector(*moghadam_velocity_row_sum,U_var_idx);
+		MatGetRowSum(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat(), 
+									cast_ptr<PetscVector<Number>*>(moghadam_velocity_row_sum)->vec());
+	
+		moghadam_velocity_row_sum->reciprocal();
+
+		MatDiagonalSet(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat(),
+									cast_ptr<PetscVector<Number>*>(moghadam_velocity_row_sum)->vec(),INSERT_VALUES);
+
+		moghadam_velocity_preconditioner_matrix->close();
+	}
+	*/
+
+	std::cout << "hi" << std::endl;
+	// ********* construct B matrix
+	moghadam_b_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+	system->request_matrix("System Matrix")->create_submatrix(*moghadam_b_matrix,p_var_idx,U_var_idx);
+	moghadam_b_matrix->close();
+
+	std::cout << "hi" << std::endl;
+	// ********* construct Bt matrix
+	moghadam_bt_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+	system->request_matrix("System Matrix")->create_submatrix(*moghadam_bt_matrix,U_var_idx,p_var_idx);
+	moghadam_bt_matrix->close();
+
+	std::cout << "hi" << std::endl;
+	// ********* construct C matrix
+	moghadam_c_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+	system->request_matrix("System Matrix")->create_submatrix(*moghadam_c_matrix,p_var_idx,p_var_idx);
+	moghadam_c_matrix->close();
+
+	std::cout << "hi" << std::endl;
+
+
+	// ****** construct the H inverse
+	if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+	{
+		moghadam_velocity_h_inverse_matrix = SparseMatrix<Number>::build(mesh.comm()).release();
+		system->request_matrix("Moghadam H Inverse")->create_submatrix(*moghadam_velocity_h_inverse_matrix,U_var_idx,U_var_idx);
+		moghadam_velocity_h_inverse_matrix->close();
+	}
+	
+
+	std::cout << "hi" << std::endl;
+
+
+
+	//std::cout << "hi" << std::endl;
+
+	// ******** jacobi scale the matrices
+	if(es->parameters.get<unsigned int>("libmesh_jacobi"))
+	{
+		moghadam_libmesh_jacobi_pre(system);
+	}
+
+	std::cout << "hi" << std::endl;
+	
+}
+
+
+
+// ********************** SETUP MOGHADAM PRECONDITIONERS **************************** //
+// setup the matrices to be used in the solver. these will be deleted at the end of a nonlinear iteration
+// note: the vectors are built separately and deleted every residual iteration
+// we'll potentially scale them appropriately here too: to do.
+int NavierStokesCoupled::setup_moghadam_solvers(TransientLinearImplicitSystem * system)
+{
+
+	PetscErrorCode ierr;
+
+	std::cout << "Setting up the velocity solver" << std::endl;
+
+	// ******************* Solver Options ********** //
+	es->parameters.set<Real> ("linear solver tolerance") =
+		 es->parameters.get<double>("moghadam_gmres_tol");//1.e-12;
+
+	const double gmres_tol = es->parameters.get<Real>("linear solver tolerance");
+
+	// Get the user-specified maximum # of linear solver iterations
+	const unsigned int maxits = es->parameters.get<unsigned int>("linear solver maximum iterations");
+
+	//get petsc solver
+	PetscLinearSolver<Number>* system_linear_solver =
+			libmesh_cast_ptr<PetscLinearSolver<Number>* >
+			(system->linear_solver.get());
+
+	//std::cout << "hello" << std::endl;
+	KSP moghadam_velocity_ksp = system_linear_solver->ksp();
+
+	//std::cout << "hello" << std::endl;
+	//let us set up to use the same preconditioner
+	system_linear_solver->reuse_preconditioner(es->parameters.get<bool>("reuse_preconditioner"));
+
+	//std::cout << "hello" << std::endl;
+	// ************************************* //
+	if(es->parameters.get<bool>("nonzero_initial_guess"))
+	{		ierr = KSPSetInitialGuessNonzero (moghadam_velocity_ksp, PETSC_TRUE); CHKERRQ(ierr);	}
+	else
+	{		ierr = KSPSetInitialGuessNonzero (moghadam_velocity_ksp, PETSC_FALSE); CHKERRQ(ierr);	}
+
+	//std::cout << "hello" << std::endl;
+	// this inits the ksp so need to set prefix before this
+	std::string prefix_3d;
+	prefix_3d = "moghadam_velocity_";
+
+	system_linear_solver->set_prefix (prefix_3d);
+	ierr = KSPSetOptionsPrefix(moghadam_velocity_ksp,"moghadam_velocity_");// CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (moghadam_velocity_ksp);// CHKERRQ(ierr);
+
+	//std::cout << "hello" << std::endl;
+
+
+
+	// ******** Set solver operators *********** //
+	// the temp solution, rhs, tol and maxits won't actually be used,
+	// but maybe deferencing them will be a problem, so we send it the wrong ones
+
+	// want two options, one where we use the moghadam preconditioner matrix and one without
+	if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0)
+		system_linear_solver->solve_simple_setup (*moghadam_velocity_matrix, *moghadam_velocity_preconditioner_matrix, *system->solution, *system->rhs, gmres_tol, maxits);
+	else
+		system_linear_solver->solve_simple_setup (*moghadam_velocity_matrix, *moghadam_velocity_matrix, *system->solution, *system->rhs, gmres_tol, maxits);
+
+	// solve_simple_setup pretty much only sets up the matrix and preconditioner matrix
+	// we need to set up the actual preconditioner and stuff now if we want to do something different from command line
+	// i.e. using the moghadam preconditioner instead of nothing
+
+	//std::cout << "hello" << std::endl;
+
+	if(es->parameters.get<bool>("moghadam_velocity_preconditioner"))
+	{
+
+		//const char* prefix
+		//KSPGetOptionsPrefix(KSP ksp,const char *prefix[])
+		// get the pc
+		
+		KSPSetPCSide(moghadam_velocity_ksp,PC_RIGHT);
+
+		PC moghadam_velocity_pc;
+		ierr = KSPGetPC(moghadam_velocity_ksp,&moghadam_velocity_pc); CHKERRQ(ierr);
+
+		ierr = PCSetType(moghadam_velocity_pc,PCSHELL);// CHKERRQ(ierr);
+		
+		ierr = ShellPCCreate(&moghadam_velocity_pc_ctx);// CHKERRQ(ierr);
+
+		ierr = PCShellSetApply(moghadam_velocity_pc,MoghadamVelocityPCApply);// CHKERRQ(ierr);
+
+		//moghadam_velocity_pc_ctx->moghadam_velocity_preconditioner_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat();
+		
+		ierr = PCShellSetContext(moghadam_velocity_pc,&moghadam_velocity_pc_ctx);// CHKERRQ(ierr);
+
+		//ierr = PCShellSetDestroy(moghadam_velocity_pc,MoghadamVelocityPCDestroy);// CHKERRQ(ierr);
+
+		ierr = PCShellSetName(moghadam_velocity_pc,"Moghadam Velocity Preconditioner");// CHKERRQ(ierr);
+
+		ierr = MoghadamVelocityPCSetUp(moghadam_velocity_pc,cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat());// CHKERRQ(ierr);
+
+		// set the default monitor, for some reason it's getting lost
+		//ierr = KSPMonitorSet(moghadam_velocity_ksp,KSPMonitorDefault,NULL,NULL);
+
+		//ierr = KSPSetUp(moghadam_velocity_ksp);
+		//ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),schur_ksp,es->parameters.get<bool> ("negative_bfbt_schur_complement"));// CHKERRQ(ierr);
+		//
+		
+
+	}
+	
+	//std::cout << "goodbye" << std::endl;
+
+	// ******* potentially do some output ************** //
+
+	// output system matrix
+	if(es->parameters.get<bool>("output_system_matrix"))
+	{
+	
+		std::ostringstream file_name;
+		file_name << output_folder.str() << "system_matrix.dat";
+
+		system->request_matrix("System Matrix")->print_matlab(file_name.str());
+	}
+
+	if(es->parameters.get<bool>("ksp_view_before"))
+	{
+		ierr = KSPView(moghadam_velocity_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+	}
+
+
+
+
+
+
+	std::cout << "Setting up Schur solver." << std::endl;
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	// ***** SETUP SHELL MATRIX for the schur complement ********** //
+
+	// setup the matrix context that houses the matrices used in the operation
+	// moghadam wPC preconditioner
+	if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0)
+	{
+		// test with actual velocity matrix solve
+		moghadam_schur_mat_ctx.moghadam_velocity_preconditioner_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat();
+	}
+	// exact preconditioner
+	else if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 2)
+	{
+		moghadam_schur_mat_ctx.moghadam_velocity_preconditioner_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_matrix)->mat();
+	}
+
+	moghadam_schur_mat_ctx.moghadam_b_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_b_matrix)->mat();
+	moghadam_schur_mat_ctx.moghadam_bt_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_bt_matrix)->mat();
+	moghadam_schur_mat_ctx.moghadam_c_matrix = cast_ptr<PetscMatrix<Number>*>(moghadam_c_matrix)->mat();
+		
+
+	// args are: comm, local m, local n, global M, global N, *ctx, Mat *
+	ierr = MatCreateShell(PETSC_COMM_WORLD,p_var_idx.size(),p_var_idx.size(),p_var_idx.size(),p_var_idx.size(),&moghadam_schur_mat_ctx,&moghadam_schur_matrix);
+
+	// set the operation function
+	// different functions for with and without pc
+	if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 0)
+	{
+		ierr = MatShellSetOperation(moghadam_schur_matrix, MATOP_MULT, (void(*)(void))MoghadamSchurMatShellMultFull); CHKERRQ(ierr);
+	}
+	else if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 1)
+	{
+		ierr = MatShellSetOperation(moghadam_schur_matrix, MATOP_MULT, (void(*)(void))MoghadamNoPCSchurMatShellMultFull); CHKERRQ(ierr);
+	}
+	else if(es->parameters.get<unsigned int>("moghadam_preconditioner_type") == 2)
+	{
+		ierr = MatShellSetOperation(moghadam_schur_matrix, MATOP_MULT, (void(*)(void))MoghadamExactPCSchurMatShellMultFull); CHKERRQ(ierr);
+	}
+
+	// ****** SETUP THE KSP for the schur complement ********** //
+
+	// create the ksp
+	ierr = KSPCreate(PETSC_COMM_WORLD,&moghadam_schur_ksp);// CHKERRQ(ierr);
+
+	// get the pc
+	PC moghadam_schur_pc;
+	ierr = KSPGetPC(moghadam_schur_ksp,&moghadam_schur_pc); CHKERRQ(ierr);
+
+	// set pc type to none
+	ierr = PCSetType(moghadam_schur_pc,PCNONE); CHKERRQ(ierr);
+
+	// set the operator
+	ierr = KSPSetOperators(moghadam_schur_ksp,moghadam_schur_matrix,moghadam_schur_matrix);// CHKERRQ(ierr);
+
+	// set the prefix and some options
+	ierr = KSPSetInitialGuessNonzero (moghadam_schur_ksp, PETSC_FALSE);// CHKERRQ(ierr);
+	ierr = KSPSetOptionsPrefix(moghadam_schur_ksp,"moghadam_schur_");// CHKERRQ(ierr);
+	ierr = KSPSetFromOptions (moghadam_schur_ksp);// CHKERRQ(ierr);
+
+	// setup the ksp
+	ierr = KSPSetUp(moghadam_schur_ksp);// CHKERRQ(ierr);
+
+	// ksp view it
+	//ierr = KSPView(moghadam_schur_ksp,PETSC_VIEWER_STDOUT_WORLD);
+}
+
+
+// ********************** SETUP LIBMESH LEFT JACOBI **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::moghadam_libmesh_jacobi_pre(TransientLinearImplicitSystem * system)
+{
+
+	std::cout << "Scaling the Moghadam matrices jacobi before solve" << std::endl;
+
+	// to do left jacobi, we need to scale the system matrix and the rhs
+
+	// scale the system matrix
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+
+	// we need the velocity diagonal from the Navier-Stokes matrix 
+	// (not including moghadam terms)
+	// and we need the pressure diagonal from the pressure matrix
+
+	// best thing to do is probably to get the full diagonal and then split it up
+	diagonal = NumericVector<Number>::build(mesh.comm()).release();
+	velocity_diagonal = NumericVector<Number>::build(mesh.comm()).release();
+	pressure_diagonal = NumericVector<Number>::build(mesh.comm()).release();
+
+	//std::cout << "hello" << std::endl;
+	system->rhs->create_subvector(*diagonal,all_var_idx);
+
+	//std::cout << "hello" << std::endl;
+
+	// take the diagonal from the matrix that doesn't have the moghadam terms
+	system->request_matrix("Preconditioner")->close();
+	system->request_matrix("Preconditioner")->get_diagonal(*diagonal);
+
+	diagonal->close();
+
+	// now we need to get the velocity_diagonal and pressure_diagonal
+	diagonal->create_subvector(*velocity_diagonal, U_var_idx);
+	diagonal->create_subvector(*pressure_diagonal, p_var_idx);
+	velocity_diagonal->close();
+	pressure_diagonal->close();
+
+	// check no zeros
+
+	// diagonal
+	for(unsigned int i=0; i<all_var_idx.size(); i++)
+	{
+		double value = diagonal->el(i);
+		if(fabs(value) < 1.e-10)
+		{
+			diagonal->set(i,1.0);
+		}
+	}
+	// velocity_diagonal
+	for(unsigned int i=0; i<U_var_idx.size(); i++)
+	{
+		double value = velocity_diagonal->el(i);
+		if(fabs(value) < 1.e-10)
+		{
+			velocity_diagonal->set(i,1.0);
+		}
+	}
+
+	// pressure_diagonal
+	for(unsigned int i=0; i<p_var_idx.size(); i++)
+	{
+		double value = pressure_diagonal->el(i);
+		if(fabs(value) < 1.e-10)
+		{
+			pressure_diagonal->set(i,1.0);
+		}
+	}
+
+	// if symmetric preconditioning get the sqrt
+	// for symmetric preconditioning, we need the square root of the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		// diagonal
+		for(unsigned int i=0; i<all_var_idx.size(); i++)
+		{
+			double sqrt_value = sqrt(fabs(diagonal->el(i)));
+			diagonal->set(i,sqrt_value);
+		}
+
+		// velocity_diagonal
+		for(unsigned int i=0; i<U_var_idx.size(); i++)
+		{
+			double sqrt_value = sqrt(fabs(velocity_diagonal->el(i)));
+			velocity_diagonal->set(i,sqrt_value);
+		}
+
+		// pressure_diagonal
+		for(unsigned int i=0; i<p_var_idx.size(); i++)
+		{
+			double sqrt_value = sqrt(fabs(pressure_diagonal->el(i)));
+			pressure_diagonal->set(i,sqrt_value);
+		}
+	}
+
+	//std::cout << "diagonal norm before reciprocal = " << diagonal->l2_norm() << std::endl;
+
+	// get the reciprocals of the vectors
+	diagonal->close();
+	velocity_diagonal->close();
+	pressure_diagonal->close();
+	//std::cout << "hello" << std::endl;
+	// take the reciprocal of the vectors
+	diagonal->reciprocal();
+	velocity_diagonal->reciprocal();
+	pressure_diagonal->reciprocal();
+	//std::cout << "hello" << std::endl;
+	diagonal->close();
+	velocity_diagonal->close();
+	pressure_diagonal->close();
+
+
+	//std::cout << "diagonal norm after reciprocal = " << diagonal->l2_norm() << std::endl;
+	// so we have the reciprocal of the diagonal
+	// this definitely multiplies the matrices
+
+
+
+	// we need to scale the following matrices
+	//  moghadam_velocity_matrix;
+	//  moghadam_velocity_preconditioner_matrix;
+	//  moghadam_b_matrix;
+	//  moghadam_bt_matrix;
+	//  moghadam_c_matrix;
+
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 1)
+	{
+		
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),NULL);
+		
+		// moghadam preconditioner has already been scaled with symmetric jacobi
+		if(false)//es->parameters.get<unsigned int> ("moghadam_preconditioner_type") == 0)
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),NULL);
+		
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_b_matrix)->mat(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec(),NULL);
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_bt_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),NULL);
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_c_matrix)->mat(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec(),NULL);
+
+		if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_h_inverse_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),NULL);
+		
+	}
+	else if(es->parameters.get<unsigned int>("libmesh_jacobi") == 2)
+	{
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		// moghadam preconditioner has already been scaled with symmetric jacobi
+		if(false)//es->parameters.get<unsigned int> ("moghadam_preconditioner_type") == 0)
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_b_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_bt_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_c_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec());
+
+		if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_h_inverse_matrix)->mat(),NULL,cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+	}
+	else if(es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		// moghadam preconditioner has already been scaled with symmetric jacobi
+		if(false)//es->parameters.get<unsigned int> ("moghadam_preconditioner_type") == 0)
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_preconditioner_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_b_matrix)->mat(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_bt_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec());
+		MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_c_matrix)->mat(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(pressure_diagonal)->vec());
+
+
+		if(es->parameters.get<bool>("construct_moghadam_h_inverse"))
+			MatDiagonalScale(cast_ptr<PetscMatrix<Number>*>(moghadam_velocity_h_inverse_matrix)->mat(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec(),cast_ptr<PetscVector<Number>*>(velocity_diagonal)->vec());
+	}
+
+	//std::cout << "hello" << std::endl;
+
+}
+
+
+
+// ********************** SETUP LIBMESH LEFT JACOBI **************************** //
+// setup the preconditioner for use in the solver
+// jacobi precondition the rhs after it has been reassembled.
+int NavierStokesCoupled::moghadam_libmesh_jacobi_pre_rhs(TransientLinearImplicitSystem * system)
+{
+	
+	std::cout << "Scaling the RHS jacobi before solve" << std::endl;
+
+	// to do left jacobi, we need to scale the system matrix and the rhs
+
+	// scale the system matrix
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+	// the reciprocal of the diagonal or reciprocal of the sqrt of the diagonal should already have been computed
+
+	// in the construction of the rhs used in moghadam,
+	// we use the rhs that has been constructed
+	// for this reason, we only need to scale the system->rhs
+
+	//std::cout << "diagonal reciprocal in pre rhs = " << diagonal->l2_norm() << std::endl;
+
+	// if left preconditioning then we scale the by the inverse of the diagonal
+	// for some reason there is no *= elementewise for vectors, so we take the reciprocal afterwards
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 1 || es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		//std::cout << "hello" << std::endl;
+		// scale the rhs
+		for(unsigned int i=0; i<all_var_idx.size(); i++)
+			system->rhs->set(i,system->rhs->el(i) * diagonal->el(i));
+
+	}
+
+	system->rhs->close();
+	//std::cout << "hello" << std::endl;
+
+}
+
+
+
+
+
+// ********************** SETUP LIBMESH LEFT JACOBI **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::moghadam_libmesh_jacobi_post(TransientLinearImplicitSystem * system)
+{
+	std::cout << "Scaling the solution jacobi post solve" << std::endl;
+
+	// to do left jacobi, we need to scale the system matrix and the rhs
+
+	// scale the system matrix
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+	//std::cout << "boo" << std::endl;
+	// the reciprocal is saved in diagonal
+	// we want to divide by the reciprocal
+
+	//std::cout << "diagonal reciprocal in pre rhs = " << diagonal->l2_norm() << std::endl;
+	// if right preconditioning then we scale the solution by the diagonal reciprocal
+
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 2 || es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		//std::cout << "hello" << std::endl;
+		// scale the rhs
+		for(unsigned int i=0; i<all_var_idx.size(); i++)
+			system->solution->set(i,system->solution->el(i) * diagonal->el(i));
+	}
+
+
+	// need to scale the rhs to its original form so that can compare residuals with System Matrix that is not scaled
+	// if right preconditioning then we scale the solution by the diagonal
+	if(es->parameters.get<unsigned int>("libmesh_jacobi") == 1 || es->parameters.get<unsigned int>("libmesh_jacobi") == 3)
+	{
+		//std::cout << "hello" << std::endl;
+		// scale the rhs
+		// diagonal is the reciprocal so need to divide
+		for(unsigned int i=0; i<all_var_idx.size(); i++)
+			system->rhs->set(i,system->rhs->el(i) / diagonal->el(i));
+	}
+
+	system->rhs->close();
+	system->solution->close();
+
+	//std::cout << "hello" << std::endl;
+
+}
+
+
+
+
+
+
+
+
+
+// ********************** SETUP PRECONDITIONERS **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::setup_moghadam_velocity_1(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	std::cout << "Setting up vectors for velocity solve 1." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+
+	// ****** construct the velocity rhs *************** //
+	moghadam_velocity_rhs = NumericVector<Number>::build(mesh.comm()).release();
+	system->rhs->create_subvector(*moghadam_velocity_rhs,U_var_idx);
+
+	// ****** construct the temp velocity solution *************** //
+	moghadam_velocity_temp_solution = NumericVector<Number>::build(mesh.comm()).release();
+	system->solution->create_subvector(*moghadam_velocity_temp_solution,U_var_idx);
+
+	//std::cout << "Done setting up vectors for velocity solve 1." << std::endl;
+
+
+
+
+
+
+
+	return 0;	
+}
+
+// ********************************************************************** //
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP PRECONDITIONERS **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::setup_moghadam_schur(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	std::cout << "Setting up schur vector for moghadam preconditioner." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+
+	// ****** construct the schur rhs *************** //
+	// -R_p - B*u
+	// rhs = -R_p
+	moghadam_schur_rhs = NumericVector<Number>::build(mesh.comm()).release();
+	system->rhs->create_subvector(*moghadam_schur_rhs,p_var_idx);
+
+	moghadam_schur_rhs->scale(-1.0);
+	moghadam_schur_rhs->add_vector(*moghadam_velocity_temp_solution, *moghadam_b_matrix);
+	moghadam_schur_rhs->scale(-1.0);
+
+	// test making negative
+	//moghadam_schur_rhs->scale(-1.0);
+
+
+
+	// ****** construct the temp velocity solution *************** //
+	moghadam_schur_temp_solution = NumericVector<Number>::build(mesh.comm()).release();
+	system->solution->create_subvector(*moghadam_schur_temp_solution,p_var_idx);
+
+
+	if(es->parameters.get<bool>("ksp_view_before"))
+	{
+		ierr = KSPView(moghadam_schur_ksp,PETSC_VIEWER_STDOUT_WORLD); CHKERRQ(ierr);
+	}
+
+	//std::cout << "Done setting up vectors for moghadam preconditioner matrices for schur." << std::endl;
+
+	
+
+
+	return 0;	
+}
+
+// ********************************************************************** //
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP PRECONDITIONERS **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::setup_moghadam_velocity_2(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	std::cout << "Setting up matrices for velocity 2 preconditioner." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+
+
+
+
+
+
+
+
+
+	//std::cout << "hello" << std::endl << std::flush;
+
+	// ****** construct the velocity rhs 2 *************** //
+	moghadam_velocity_rhs_2 = NumericVector<Number>::build(mesh.comm()).release();
+	system->rhs->create_subvector(*moghadam_velocity_rhs_2,U_var_idx);
+
+	moghadam_velocity_rhs_2->zero();
+	moghadam_velocity_rhs_2->add_vector(*moghadam_schur_temp_solution, *moghadam_bt_matrix);
+
+	// ****** construct the temp velocity solution *************** //
+	moghadam_velocity_temp_solution_2 = NumericVector<Number>::build(mesh.comm()).release();
+	system->solution->create_subvector(*moghadam_velocity_temp_solution_2,U_var_idx);
+
+	//std::cout << "Done setting up matrices for moghadam preconditioner matrices for gmres 2." << std::endl;
+
+
+
+
+
+
+
+	return 0;	
+}
+
+// ********************************************************************** //
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ********************** SETUP PRECONDITIONERS **************************** //
+// setup the preconditioner for use in the solver
+// construct submatrices from full matrices that they were assembled as.
+int NavierStokesCoupled::update_moghadam_solution_vector(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	//std::cout << "Calculating corrected velocity." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+
+
+
+	// compute the full velocity
+	moghadam_velocity_temp_solution->close();
+	moghadam_velocity_temp_solution_2->close();
+	moghadam_velocity_temp_solution->add(-1.,*moghadam_velocity_temp_solution_2);
+
+	moghadam_velocity_temp_solution->close();
+	//std::cout << "hello" << std::endl;
+	// put the velocity and pressure into the solution vector
+	system->solution->insert(*moghadam_velocity_temp_solution,U_var_idx);
+	//std::cout << "hello" << std::endl;
+	system->solution->insert(*moghadam_schur_temp_solution,p_var_idx);
+	//std::cout << "hello" << std::endl;
+
+	system->solution->close();
+
+
+
+	return 0;	
+}
+
+// ********************************************************************** //
+
+
+
+
+// **** check the preconditioned system
+//
+// first equation is F*u + Bt*p - fu = 0
+// second equation is B*u + C*p - fp = 0
+int NavierStokesCoupled::check_moghadam_preconditioned_solution(TransientLinearImplicitSystem * system)
+{
+
+
+	PetscErrorCode ierr;
+
+	std::cout << "Calculating corrected velocity." << std::endl;
+
+  	
+	// ********* CONSTRUCT SUBMATRICES ********** //
+
+
+	// set up variable dofs to set up submatrices
+	const unsigned int u_var = system->variable_number ("u");
+	const unsigned int v_var = system->variable_number ("v");
+	unsigned int w_var = 0;
+	if(threed)
+		w_var = system->variable_number ("w");
+	const unsigned int p_var = system->variable_number ("p");
+
+	std::vector<dof_id_type> 
+		U_var_idx, u_var_idx, v_var_idx, w_var_idx, p_var_idx, all_var_idx;
+
+	system->get_dof_map().local_variable_indices
+		(u_var_idx, system->get_mesh(), u_var);
+	system->get_dof_map().local_variable_indices
+		(v_var_idx, system->get_mesh(), v_var);
+
+	if(threed)
+		system->get_dof_map().local_variable_indices
+			(w_var_idx, system->get_mesh(), w_var);
+
+	system->get_dof_map().local_variable_indices
+		(p_var_idx, system->get_mesh(), p_var);
+
+	// concatenate all velocity dofs
+	U_var_idx.insert(U_var_idx.end(),u_var_idx.begin(),u_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),v_var_idx.begin(),v_var_idx.end());
+	U_var_idx.insert(U_var_idx.end(),w_var_idx.begin(),w_var_idx.end());
+
+
+	std::sort(U_var_idx.begin(),U_var_idx.end());
+
+	all_var_idx.insert(all_var_idx.end(),U_var_idx.begin(),U_var_idx.end());
+	all_var_idx.insert(all_var_idx.end(),p_var_idx.begin(),p_var_idx.end());
+
+	std::sort(all_var_idx.begin(),all_var_idx.end());
+
+
+
+
+	// the preconditioned soln is in moghadam_velocity_temp_solution and moghadam_schur_temp_solution
+	// we can use moghadam_velocity_rhs and moghadam_schur_rhs
+	// first equation is F*u + Bt*p - fu = 0
+
+	// we need fu
+	moghadam_velocity_rhs->zero();
+	system->rhs->create_subvector(*moghadam_velocity_rhs,U_var_idx);
+	moghadam_velocity_rhs->scale(-1.0);
+	moghadam_velocity_rhs->add_vector(*moghadam_velocity_temp_solution,*moghadam_velocity_matrix);
+	moghadam_velocity_rhs->add_vector(*moghadam_schur_temp_solution,*moghadam_bt_matrix);
+	moghadam_velocity_rhs->close();
+
+	// second equation is B*u + C*p - fp = 0
+	moghadam_schur_rhs->zero();
+	system->rhs->create_subvector(*moghadam_schur_rhs,p_var_idx);
+	moghadam_schur_rhs->scale(-1.0);
+	moghadam_schur_rhs->add_vector(*moghadam_velocity_temp_solution,*moghadam_b_matrix);
+	moghadam_schur_rhs->add_vector(*moghadam_schur_temp_solution,*moghadam_c_matrix);
+	moghadam_schur_rhs->close();
+
+	std::cout << "velocity eqn prec norm = " << moghadam_velocity_rhs->l2_norm() << std::endl;
+	std::cout << "schur eqn prec norm = " << moghadam_schur_rhs->l2_norm() << std::endl;
+
+
+	return 0;	
+}
+
+// ********************************************************************** //
 
 
 
@@ -2712,6 +5567,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 	PetscErrorCode ierr;
 
 	std::cout << "Setting up submatrices for preconditioners." << std::endl;
+
+	perf_log.push("matrix setup");
+
 
 	//std::exit(0);
 
@@ -2866,6 +5724,8 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 			//std::exit(0);
 		if(es->parameters.get<bool>("assemble_pressure_convection_diffusion_matrix"))
 		{
+			std::cout << "Assembling pressure convection diffusion matrix" << std::endl;
+
 			// ************ pressure convection diffusion matrix ***************** //
 			pressure_convection_diffusion_matrix = cast_ptr<PetscMatrix<Number>*>(SparseMatrix<Number>::build(mesh.comm()).release());
 			system->request_matrix("Pressure Convection Diffusion Matrix")->create_submatrix(*pressure_convection_diffusion_matrix,p_var_idx,p_var_idx);
@@ -3372,9 +6232,14 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 	}
 
-	// all preconditioners except direct and straight gmres
-	if((!es->parameters.get<bool>("create_3d_preconditioner_once") || !shell_pc_created)
-		&& nonlinear_iteration == 1 && es->parameters.get<unsigned int>("preconditioner_type_3d") > 1)
+
+	perf_log.pop("matrix setup");
+
+	// all preconditioners except direct and straight gmres, preconditioners from 13 onwards aren't fieldsplit preconditioners
+	// just build it every time dude, why only the first iteration
+	if((!es->parameters.get<bool>("create_3d_preconditioner_once") || !shell_pc_created) &&
+		 nonlinear_iteration == 1	&& 
+		(es->parameters.get<unsigned int>("preconditioner_type_3d") > 1 && es->parameters.get<unsigned int>("preconditioner_type_3d") < 13))
 	{
 
 
@@ -3536,6 +6401,12 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 				PC schur_pc;
 				ierr = KSPGetPC(velocity_subksp[1],&schur_pc); CHKERRQ(ierr);
 
+				if(shell_pc_created && sim_type !=5)
+				{
+					std::cout << "About to destroy pcd shell pc" << std::endl;
+					ierr = NSShellDestroy(schur_pc);	// do destroy it every time because A_0D could change
+				}
+
 				ierr = PCSetType(schur_pc,PCSHELL); CHKERRQ(ierr);
 
 				ierr = ShellPCCreate(&shell); CHKERRQ(ierr);
@@ -3681,7 +6552,9 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 
 				ierr = PCShellSetName(schur_pc,"LSC James Scaled Stabilised Preconditioner"); CHKERRQ(ierr);
 
+	perf_log.push("lsc  setup");
 				ierr = LSCScaledStabilisedShellPCSetUp(schur_pc,velocity_mass_matrix->mat(),velocity_subksp[1],es->parameters.get<bool> ("negative_bfbt_schur_complement")); CHKERRQ(ierr);
+	perf_log.pop("lsc  setup");
 
 				shell_pc_created = true;
 			}
@@ -3861,11 +6734,6 @@ int NavierStokesCoupled::setup_preconditioners(TransientLinearImplicitSystem * s
 }
 
 // ********************************************************************** //
-
-
-
-
-
 
 
 
@@ -4471,7 +7339,7 @@ int NavierStokesCoupled::setup_is_simple (TransientLinearImplicitSystem * sys,
                             PC my_pc)
 {
 
-
+	std::cout << "IS setup" << std::endl;
   
   for(unsigned int i=0; i<2; i++)
   {
@@ -4686,11 +7554,13 @@ int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitS
 		std::cout << "Computing eigenvalues..." << std::endl;
 		ierr = KSPComputeEigenvaluesExplicitly(system_ksp,nmax,r,c); CHKERRQ(ierr);
 
+		/*
 		std::cout << "Printing eigenvalues:" << std::endl;
 		for(unsigned int i=0; i<num_dofs; i++)
 		{
 			std::cout << " eig " << i << " = " << r[i] << " + " << c[i] << "i" << std::endl;
 		}
+		*/
 
 		if(es->parameters.get<bool> ("write_eigenvalues"))
 		{
@@ -4706,10 +7576,44 @@ int NavierStokesCoupled::compute_and_output_eigenvalues(TransientLinearImplicitS
 	}
 	else
 	{
-		std::cout << "Calculating eigenvalues for large system not implemented yet." << std::endl;
+		std::cout << "Calculating all eigenvalues for large system not implemented yet." << std::endl;
 		//std::cout << "Calculating extremum eigenvalues for preconditioned system." << std::endl;
 		//ierr = KSPComputeEigenvalues(KSP ksp,PetscInt n,PetscReal r[],PetscReal c[],PetscInt *neig)
 	}
+
+	// we also want to calculate the top ten eigenvalues in all cases
+	
+	std::cout << "Approximately calculating some eigenvalues for preconditioned system." << std::endl;
+	PetscInt maxits = 0;
+	KSPGetTolerances(system_ksp,NULL,NULL,NULL,&maxits);
+	std::cout << "maxits = " << maxits << std::endl;
+	PetscInt neig = maxits;
+	PetscInt r_size = maxits;
+	PetscReal r[r_size];
+	PetscReal c[r_size];		
+	
+	std::cout << "Computing approximate eigenvalues..." << std::endl;
+	// it will try and compute 10 but may not
+	ierr = KSPComputeEigenvalues(system_ksp,neig,r,c,&neig); CHKERRQ(ierr);
+
+	std::cout << "Printing approximate eigenvalues:" << std::endl;
+	for(unsigned int i=0; i<neig; i++)
+	{
+		std::cout << " eig " << i << " = " << r[i] << " + " << c[i] << "i" << std::endl;
+	}
+
+	if(es->parameters.get<bool> ("write_eigenvalues"))
+	{
+		eigenvalues_approx_file << t_step << "\t" << nonlinear_iteration;
+
+		for(unsigned int i=0; i<neig; i++)
+		{
+			eigenvalues_approx_file << "\t" << r[i] << "\t" << c[i];
+		}
+
+		eigenvalues_approx_file << std::endl;
+	}
+
 
 	
 	return 0;
@@ -5194,7 +8098,7 @@ void NavierStokesCoupled::copy_3d_solution_output_to_program()
   std::vector<Number> output_soln;
   system_3d_output->update_global_solution (output_soln);
 
-	std::vector<int> dof_variable_vector_output = dof_variable_type_3d;
+	std::vector<int> dof_variable_vector_output = dof_variable_type_3d_output;
 
 	std::vector<int> dof_variable_vector_program;
 	if(sim_type == 5)
@@ -5325,7 +8229,7 @@ void NavierStokesCoupled::copy_3d_solution_program_to_output()
   std::vector<Number> program_soln;
   system_program->update_global_solution (program_soln);
 
-	std::vector<int> dof_variable_vector_output = dof_variable_type_3d;
+	std::vector<int> dof_variable_vector_output = dof_variable_type_3d_output;
 
 	std::vector<int> dof_variable_vector_program;
 	if(sim_type == 5)
@@ -5415,5 +8319,104 @@ void NavierStokesCoupled::copy_3d_solution_program_to_output()
 	system_3d_output->solution->close();
 
 }
+
+
+
+// calculate the total pressure and put it into extra_3d_data
+// 
+void NavierStokesCoupled::calculate_total_pressure()
+{
+
+	TransientLinearImplicitSystem * system_program;
+  // Get a reference to the Program Stokes system object.
+	if(sim_type == 5)
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d1d");
+	}
+	else
+	{
+		system_program =
+		  &es->get_system<TransientLinearImplicitSystem> ("ns3d");
+	}
+  const double rho = es->parameters.get < double >("density");
+
+  // Numeric ids corresponding to each variable in the program system
+  const int u_var_output = system_3d_output->variable_number ("u");
+  const int v_var_output = system_3d_output->variable_number ("v");
+	int w_var_output = 0;
+	if(threed)
+  	w_var_output = system_3d_output->variable_number ("w");
+  const int p_var_output = system_3d_output->variable_number ("p");
+
+  const int total_p_var_extra = extra_3d_data_system->variable_number ("total_p");
+
+	// need to make the output solution vector global and get its values
+  std::vector<Number> output_soln;
+  system_3d_output->update_global_solution (output_soln);
+
+
+	double u=0., v=0., w=0., p=0.;
+	unsigned int output_i = 0.;
+	bool vars_found = false;
+
+	for(unsigned int i=0; i<dof_variable_type_3d_output.size(); i++)
+	{
+
+
+		if(dof_variable_type_3d_output[i] == u_var_output)
+		{
+			// get the u soln from the program soln
+			u = output_soln[i];
+		}
+
+		if(dof_variable_type_3d_output[i] == v_var_output)
+		{
+			// get the v soln from the program soln
+			v = output_soln[i];
+		}
+
+		if(threed)
+		{
+			if(dof_variable_type_3d_output[i] == w_var_output)
+			{
+				// get the v soln from the program soln
+				w = output_soln[i];
+			}
+		}
+
+		if(dof_variable_type_3d_output[i] == p_var_output)
+		{
+			// get the v soln from the program soln
+			p = output_soln[i];
+			vars_found = true;
+		}
+
+		// iterate until we find the p variable in the output vector
+		if(vars_found)
+		{
+			while(dof_variable_type_3d_extra[output_i] != total_p_var_extra)
+				output_i++;
+
+			double velocity_mag_squared = pow(u,2.0) + pow(v,2.0) + pow(w,2.0);
+
+			double total_p = p + 0.5 * rho * velocity_mag_squared;
+
+			extra_3d_data_system->solution->set(output_i,total_p);
+
+			// set variables to zero again
+			u = 0.;
+			v = 0.;
+			w = 0.;
+			p = 0.;
+			vars_found = false;
+			output_i++;
+		}
+
+	}
+
+
+}
+
 
 

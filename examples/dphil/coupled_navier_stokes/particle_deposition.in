@@ -7,6 +7,7 @@ particle_deposition_start_time = 0.				# not in use, or kept at 0
 particle_deposition_start_time_step = 0		# not in use or kept at 0
 unsteady_from_steady = true								# run particle sim from steady velocity, file must be 0001
 particle_dt = 0.01												# dt to use for 3d and 0d particle sims
+particle_0d_dt = 0.01											# dt to use for 0d particle sims
 particle_end_time = 4.0										# end time of particle sim
 read_end_time = 1.0												# end of time from which airflow sim is read (greater than end_time)
 read_time_steps = true										# read in the time step size from airflow out.dat, else use contsant step
@@ -33,7 +34,7 @@ particle_air_density = 1.2
 particle_air_viscosity = 2.04e-5
 mean_free_path = 68.0e-9
 gravity = 9.81
-# 0 is normal gravity in -z direction or -y direction, 1 - user defined gravity, 2 - in the direction of surface deposition boundary/trachea
+# 0 is normal gravity in -z direction or -y direction, 1 - user defined gravity, 2 - in the direction of surface deposition boundary/trachea, 3 - weibel geometry gravity angles
 gravity_type = 1		
 gravity_x = 1.0
 gravity_y = 0.
